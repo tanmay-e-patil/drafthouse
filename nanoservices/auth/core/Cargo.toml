@@ -8,6 +8,7 @@ kernel = { path = "../../../dal/kernel" }
 utils = { path = "../../../crates/utils" }
 dal = { path = "../../../dal/dal" }
 argon2 = "0.5"
+sha2 = "0.10"
 rand = "0.8"
 jsonwebtoken = "9"
 chrono = { workspace = true }

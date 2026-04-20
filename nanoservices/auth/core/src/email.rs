@@ -41,9 +41,12 @@ pub async fn send_verification_email(to_email: &str, token: &str) -> Result<(), 
         html,
     };
 
+    let base_url = env::var("RESEND_API_BASE_URL")
+        .unwrap_or_else(|_| "https://api.resend.com".into());
+
     let client = reqwest::Client::new();
     let response = client
-        .post("https://api.resend.com/emails")
+        .post(format!("{}/emails", base_url))
         .header("Authorization", format!("Bearer {}", api_key))
         .json(&payload)
         .send()

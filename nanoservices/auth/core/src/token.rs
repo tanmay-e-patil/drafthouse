@@ -11,12 +11,10 @@ pub fn generate_verification_token() -> Result<String, NanoServiceError> {
 }
 
 pub fn hash_token(token: &str) -> String {
-    use std::collections::hash_map::DefaultHasher;
-    use std::hash::{Hash, Hasher};
-
-    let mut hasher = DefaultHasher::new();
-    token.hash(&mut hasher);
-    format!("{:x}", hasher.finish())
+    use sha2::{Digest, Sha256};
+    let mut hasher = Sha256::new();
+    hasher.update(token.as_bytes());
+    format!("{:x}", hasher.finalize())
 }
 
 #[cfg(test)]
