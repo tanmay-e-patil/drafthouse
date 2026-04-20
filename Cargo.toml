@@ -1,0 +1,38 @@
+[workspace]
+resolver = "2"
+members = [
+    "ingress",
+    "crates/utils",
+    "crates/dal-tx-impl",
+    "crates/migrate-scylla",
+    "dal/kernel",
+    "dal/dal",
+    "nanoservices/auth/networking",
+    "nanoservices/auth/core",
+    "nanoservices/auth/dal",
+    "nanoservices/documents/networking",
+    "nanoservices/documents/core",
+    "nanoservices/documents/dal",
+    "nanoservices/collab/networking",
+    "nanoservices/collab/core",
+    "nanoservices/collab/dal",
+]
+
+[workspace.dependencies]
+tokio        = { version = "1",    features = ["full"] }
+serde        = { version = "1",    features = ["derive"] }
+serde_json   = "1"
+uuid         = { version = "1",    features = ["v4", "serde"] }
+chrono       = { version = "0.4",  features = ["serde"] }
+tracing      = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter", "json"] }
+actix-web    = "4"
+sqlx         = { version = "0.8",  features = ["runtime-tokio", "postgres", "uuid", "chrono", "migrate"] }
+scylla       = "0.15"
+thiserror    = "2"
+anyhow       = "1"
+
+# proc-macro support
+proc-macro2  = "1"
+quote        = "1"
+syn          = { version = "2", features = ["full"] }

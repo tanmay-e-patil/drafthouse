@@ -1,0 +1,2 @@
+-- Initial migration: no-op placeholder.
+-- Keyspace and tables will be created in subsequent migrations.

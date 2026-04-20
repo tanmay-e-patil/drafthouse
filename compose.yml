@@ -1,0 +1,92 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: drafthouse
+      POSTGRES_PASSWORD: drafthouse
+      POSTGRES_DB: drafthouse
+    ports:
+      - "5432:5432"
+    volumes:
+      - pg_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U drafthouse"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  scylla:
+    image: scylladb/scylla:6.2
+    command: --smp 1 --memory 512M --developer-mode 1
+    ports:
+      - "9042:9042"
+    volumes:
+      - scylla_data:/var/lib/scylla
+    healthcheck:
+      test: ["CMD-SHELL", "cqlsh -e 'describe cluster' || exit 1"]
+      interval: 10s
+      timeout: 10s
+      retries: 15
+      start_period: 30s
+
+  migrate-pg:
+    image: ghcr.io/tanmay-e-patil/drafthouse:latest
+    command: sqlx migrate run --source migrations/postgres
+    environment:
+      DATABASE_URL: postgres://drafthouse:drafthouse@postgres:5432/drafthouse
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: "no"
+
+  migrate-scylla:
+    image: ghcr.io/tanmay-e-patil/drafthouse:latest
+    command: /app/migrate-scylla
+    environment:
+      SCYLLA_NODES: scylla:9042
+      SCYLLA_KEYSPACE: drafthouse
+      SCYLLA_MIGRATIONS_DIR: /app/migrations/scylla
+    depends_on:
+      scylla:
+        condition: service_healthy
+    restart: "no"
+
+  app:
+    image: ghcr.io/tanmay-e-patil/drafthouse:latest
+    ports:
+      - "8080:8080"
+    environment:
+      DATABASE_URL: postgres://drafthouse:drafthouse@postgres:5432/drafthouse
+      SCYLLA_NODES: scylla:9042
+      SCYLLA_KEYSPACE: drafthouse
+    depends_on:
+      migrate-pg:
+        condition: service_completed_successfully
+      migrate-scylla:
+        condition: service_completed_successfully
+
+  prometheus:
+    image: prom/prometheus:v2.53.0
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./infra/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+    depends_on:
+      - app
+
+  grafana:
+    image: grafana/grafana:11.1.0
+    ports:
+      - "3001:3000"
+    environment:
+      GF_AUTH_ANONYMOUS_ENABLED: "true"
+      GF_AUTH_ANONYMOUS_ORG_ROLE: Admin
+    volumes:
+      - grafana_data:/var/lib/grafana
+    depends_on:
+      - prometheus
+
+volumes:
+  pg_data:
+  scylla_data:
+  grafana_data:
