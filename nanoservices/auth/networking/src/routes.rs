@@ -11,6 +11,10 @@ pub fn configure(cfg: &mut web::ServiceConfig, dal: web::Data<SqlxPostGresDescri
             .route(
                 "/resend-verification",
                 web::post().to(handlers::resend_verification),
-            ),
+            )
+            .route("/login", web::post().to(handlers::login))
+            .route("/refresh", web::post().to(handlers::refresh))
+            .route("/logout", web::post().to(handlers::logout))
+            .route("/logout-all", web::post().to(handlers::logout_all)),
     );
 }

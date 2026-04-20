@@ -1,9 +1,12 @@
 use crate::auth_txs::{
-    CreateEmailVerificationToken, CreateUser, GetEmailVerificationToken, GetUserByEmail,
+    CreateEmailVerificationToken, CreateRefreshToken, CreateUser, DeleteAllRefreshTokensForUser,
+    DeleteRefreshToken, GetEmailVerificationToken, GetRefreshTokenByHash, GetUserByEmail,
     GetUserById, InvalidateEmailVerificationTokens, MarkUserVerified,
 };
 use dal_tx_impl::impl_transaction;
-use kernel::{EmailVerificationToken, NewEmailVerificationToken, NewUser, User};
+use kernel::{
+    EmailVerificationToken, NewEmailVerificationToken, NewRefreshToken, NewUser, RefreshToken, User,
+};
 use sqlx::PgPool;
 use utils::errors::{NanoServiceError, NanoServiceErrorStatus};
 
@@ -127,6 +130,82 @@ async fn mark_user_verified(&self, user_id: uuid::Uuid) -> Result<(), NanoServic
             .await,
         NanoServiceErrorStatus::InternalServerError,
         "Failed to mark user verified"
+    )?;
+    Ok(())
+}
+
+#[impl_transaction(SqlxPostGresDescriptor, CreateRefreshToken, create_refresh_token)]
+async fn create_refresh_token(
+    &self,
+    new_token: NewRefreshToken,
+) -> Result<RefreshToken, NanoServiceError> {
+    let row = sqlx::query_as::<_, RefreshToken>(
+        "INSERT INTO refresh_tokens (user_id, token_hash, expires_at) VALUES ($1, $2, $3) RETURNING id, user_id, token_hash, expires_at",
+    )
+    .bind(new_token.user_id)
+    .bind(&new_token.token_hash)
+    .bind(new_token.expires_at)
+    .fetch_one(&self.pool)
+    .await
+    .map_err(|e| NanoServiceError::new(format!("Failed to create refresh token: {}", e), NanoServiceErrorStatus::InternalServerError))?;
+
+    Ok(row)
+}
+
+#[impl_transaction(
+    SqlxPostGresDescriptor,
+    GetRefreshTokenByHash,
+    get_refresh_token_by_hash
+)]
+async fn get_refresh_token_by_hash(
+    &self,
+    token_hash: String,
+) -> Result<Option<RefreshToken>, NanoServiceError> {
+    let row = sqlx::query_as::<_, RefreshToken>(
+        "SELECT id, user_id, token_hash, expires_at FROM refresh_tokens WHERE token_hash = $1",
+    )
+    .bind(&token_hash)
+    .fetch_optional(&self.pool)
+    .await
+    .map_err(|e| {
+        NanoServiceError::new(
+            format!("Failed to get refresh token: {}", e),
+            NanoServiceErrorStatus::InternalServerError,
+        )
+    })?;
+
+    Ok(row)
+}
+
+#[impl_transaction(SqlxPostGresDescriptor, DeleteRefreshToken, delete_refresh_token)]
+async fn delete_refresh_token(&self, token_hash: String) -> Result<(), NanoServiceError> {
+    utils::safe_eject!(
+        sqlx::query("DELETE FROM refresh_tokens WHERE token_hash = $1")
+            .bind(&token_hash)
+            .execute(&self.pool)
+            .await,
+        NanoServiceErrorStatus::InternalServerError,
+        "Failed to delete refresh token"
+    )?;
+    Ok(())
+}
+
+#[impl_transaction(
+    SqlxPostGresDescriptor,
+    DeleteAllRefreshTokensForUser,
+    delete_all_refresh_tokens_for_user
+)]
+async fn delete_all_refresh_tokens_for_user(
+    &self,
+    user_id: uuid::Uuid,
+) -> Result<(), NanoServiceError> {
+    utils::safe_eject!(
+        sqlx::query("DELETE FROM refresh_tokens WHERE user_id = $1")
+            .bind(user_id)
+            .execute(&self.pool)
+            .await,
+        NanoServiceErrorStatus::InternalServerError,
+        "Failed to delete all refresh tokens for user"
     )?;
     Ok(())
 }

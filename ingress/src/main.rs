@@ -31,6 +31,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 actix_web::http::header::CONTENT_TYPE,
                 actix_web::http::header::ACCEPT,
             ])
+            .allow_any_header()
+            .supports_credentials()
             .max_age(3600);
 
         App::new()

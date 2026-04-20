@@ -1,7 +1,7 @@
 use actix_web::{App, http::StatusCode, test, web};
 use auth_networking::routes;
 use dal::postgres_txs::SqlxPostGresDescriptor;
-use kernel::{RegisterRequest, ResendVerificationRequest, VerifyEmailRequest};
+use kernel::{LoginRequest, RegisterRequest, ResendVerificationRequest, VerifyEmailRequest};
 use serial_test::serial;
 use sqlx::PgPool;
 use testcontainers_modules::{
@@ -318,4 +318,224 @@ async fn resend_success() {
     unsafe {
         std::env::remove_var("RESEND_API_BASE_URL");
     }
+}
+
+// ── helpers ───────────────────────────────────────────────────────────────────
+
+async fn create_verified_user(pool: &sqlx::PgPool, email: &str, password: &str) {
+    let hash = auth_core::password::hash_password(password).unwrap();
+    sqlx::query(
+        "INSERT INTO users (email, password_hash, email_verified_at) VALUES ($1, $2, NOW())",
+    )
+    .bind(email)
+    .bind(&hash)
+    .execute(pool)
+    .await
+    .unwrap();
+}
+
+fn extract_refresh_cookie(resp: &actix_web::dev::ServiceResponse) -> Option<String> {
+    resp.response()
+        .cookies()
+        .find(|c| c.name() == "refresh_token")
+        .map(|c| c.value().to_string())
+}
+
+// ── login ─────────────────────────────────────────────────────────────────────
+
+#[tokio::test]
+async fn login_valid_credentials_returns_200_and_tokens() {
+    let env = TestEnv::new().await;
+    create_verified_user(&env.pool, "login@example.com", "password123").await;
+    let app = make_app!(env);
+
+    let req = test::TestRequest::post()
+        .uri("/auth/login")
+        .set_json(LoginRequest {
+            email: "login@example.com".into(),
+            password: "password123".into(),
+        })
+        .to_request();
+
+    let resp = test::call_service(&app, req).await;
+    assert_eq!(resp.status(), StatusCode::OK);
+
+    let cookie = extract_refresh_cookie(&resp);
+    assert!(cookie.is_some(), "refresh_token cookie must be set");
+
+    let body: serde_json::Value = test::read_body_json(resp).await;
+    assert!(body["access_token"].is_string());
+    assert_eq!(body["token_type"], "Bearer");
+}
+
+#[tokio::test]
+async fn login_wrong_password_returns_401() {
+    let env = TestEnv::new().await;
+    create_verified_user(&env.pool, "wrongpw@example.com", "correct123").await;
+    let app = make_app!(env);
+
+    let req = test::TestRequest::post()
+        .uri("/auth/login")
+        .set_json(LoginRequest {
+            email: "wrongpw@example.com".into(),
+            password: "wrongpassword".into(),
+        })
+        .to_request();
+
+    let resp = test::call_service(&app, req).await;
+    assert_eq!(resp.status(), StatusCode::UNAUTHORIZED);
+}
+
+#[tokio::test]
+async fn login_unknown_email_returns_401() {
+    let env = TestEnv::new().await;
+    let app = make_app!(env);
+
+    let req = test::TestRequest::post()
+        .uri("/auth/login")
+        .set_json(LoginRequest {
+            email: "nobody@example.com".into(),
+            password: "password123".into(),
+        })
+        .to_request();
+
+    let resp = test::call_service(&app, req).await;
+    assert_eq!(resp.status(), StatusCode::UNAUTHORIZED);
+}
+
+#[tokio::test]
+async fn login_unverified_account_returns_403() {
+    let env = TestEnv::new().await;
+    let hash = auth_core::password::hash_password("password123").unwrap();
+    sqlx::query("INSERT INTO users (email, password_hash) VALUES ($1, $2)")
+        .bind("unverified2@example.com")
+        .bind(&hash)
+        .execute(&env.pool)
+        .await
+        .unwrap();
+
+    let app = make_app!(env);
+
+    let req = test::TestRequest::post()
+        .uri("/auth/login")
+        .set_json(LoginRequest {
+            email: "unverified2@example.com".into(),
+            password: "password123".into(),
+        })
+        .to_request();
+
+    let resp = test::call_service(&app, req).await;
+    assert_eq!(resp.status(), StatusCode::FORBIDDEN);
+}
+
+// ── refresh ───────────────────────────────────────────────────────────────────
+
+#[tokio::test]
+async fn refresh_valid_cookie_returns_new_access_token() {
+    let env = TestEnv::new().await;
+    create_verified_user(&env.pool, "refreshuser@example.com", "password123").await;
+    let app = make_app!(env);
+
+    let login_req = test::TestRequest::post()
+        .uri("/auth/login")
+        .set_json(LoginRequest {
+            email: "refreshuser@example.com".into(),
+            password: "password123".into(),
+        })
+        .to_request();
+    let login_resp = test::call_service(&app, login_req).await;
+    let refresh_cookie = extract_refresh_cookie(&login_resp).unwrap();
+
+    let refresh_req = test::TestRequest::post()
+        .uri("/auth/refresh")
+        .cookie(actix_web::cookie::Cookie::new(
+            "refresh_token",
+            refresh_cookie,
+        ))
+        .to_request();
+
+    let refresh_resp = test::call_service(&app, refresh_req).await;
+    assert_eq!(refresh_resp.status(), StatusCode::OK);
+
+    let body: serde_json::Value = test::read_body_json(refresh_resp).await;
+    assert!(body["access_token"].is_string());
+}
+
+#[tokio::test]
+async fn refresh_missing_cookie_returns_401() {
+    let env = TestEnv::new().await;
+    let app = make_app!(env);
+
+    let req = test::TestRequest::post().uri("/auth/refresh").to_request();
+
+    let resp = test::call_service(&app, req).await;
+    assert_eq!(resp.status(), StatusCode::UNAUTHORIZED);
+}
+
+#[tokio::test]
+async fn refresh_invalid_token_returns_401() {
+    let env = TestEnv::new().await;
+    let app = make_app!(env);
+
+    let req = test::TestRequest::post()
+        .uri("/auth/refresh")
+        .cookie(actix_web::cookie::Cookie::new(
+            "refresh_token",
+            "bogus_token",
+        ))
+        .to_request();
+
+    let resp = test::call_service(&app, req).await;
+    assert_eq!(resp.status(), StatusCode::UNAUTHORIZED);
+}
+
+// ── login → expire → refresh → retry cycle (integration) ─────────────────────
+
+#[tokio::test]
+async fn login_refresh_cycle_token_rotates() {
+    let env = TestEnv::new().await;
+    create_verified_user(&env.pool, "cycle@example.com", "password123").await;
+    let app = make_app!(env);
+
+    let login_resp = test::call_service(
+        &app,
+        test::TestRequest::post()
+            .uri("/auth/login")
+            .set_json(LoginRequest {
+                email: "cycle@example.com".into(),
+                password: "password123".into(),
+            })
+            .to_request(),
+    )
+    .await;
+    let first_cookie = extract_refresh_cookie(&login_resp).unwrap();
+
+    let refresh_resp = test::call_service(
+        &app,
+        test::TestRequest::post()
+            .uri("/auth/refresh")
+            .cookie(actix_web::cookie::Cookie::new(
+                "refresh_token",
+                first_cookie.clone(),
+            ))
+            .to_request(),
+    )
+    .await;
+    assert_eq!(refresh_resp.status(), StatusCode::OK);
+    let second_cookie = extract_refresh_cookie(&refresh_resp).unwrap();
+    assert_ne!(first_cookie, second_cookie, "token must rotate");
+
+    // Old token must be invalidated
+    let replay = test::call_service(
+        &app,
+        test::TestRequest::post()
+            .uri("/auth/refresh")
+            .cookie(actix_web::cookie::Cookie::new(
+                "refresh_token",
+                first_cookie,
+            ))
+            .to_request(),
+    )
+    .await;
+    assert_eq!(replay.status(), StatusCode::UNAUTHORIZED);
 }
