@@ -2,6 +2,7 @@ pub mod email;
 pub mod jwt;
 pub mod login;
 pub mod password;
+pub mod password_reset;
 pub mod register;
 pub mod resend;
 pub mod token;

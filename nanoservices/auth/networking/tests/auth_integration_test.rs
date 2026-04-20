@@ -1,7 +1,10 @@
 use actix_web::{App, http::StatusCode, test, web};
 use auth_networking::routes;
 use dal::postgres_txs::SqlxPostGresDescriptor;
-use kernel::{LoginRequest, RegisterRequest, ResendVerificationRequest, VerifyEmailRequest};
+use kernel::{
+    ForgotPasswordRequest, LoginRequest, RegisterRequest, ResendVerificationRequest,
+    ResetPasswordRequest, VerifyEmailRequest,
+};
 use serial_test::serial;
 use sqlx::PgPool;
 use testcontainers_modules::{
@@ -534,6 +537,362 @@ async fn login_refresh_cycle_token_rotates() {
                 "refresh_token",
                 first_cookie,
             ))
+            .to_request(),
+    )
+    .await;
+    assert_eq!(replay.status(), StatusCode::UNAUTHORIZED);
+}
+
+// ── logout ──────────────────────────────────────────────────────────────────
+
+#[tokio::test]
+async fn logout_revokes_single_refresh_token() {
+    let env = TestEnv::new().await;
+    create_verified_user(&env.pool, "logoutuser@example.com", "password123").await;
+    let app = make_app!(env);
+
+    let login_resp = test::call_service(
+        &app,
+        test::TestRequest::post()
+            .uri("/auth/login")
+            .set_json(LoginRequest {
+                email: "logoutuser@example.com".into(),
+                password: "password123".into(),
+            })
+            .to_request(),
+    )
+    .await;
+    let cookie = extract_refresh_cookie(&login_resp).unwrap();
+
+    let logout_resp = test::call_service(
+        &app,
+        test::TestRequest::post()
+            .uri("/auth/logout")
+            .cookie(actix_web::cookie::Cookie::new("refresh_token", cookie))
+            .to_request(),
+    )
+    .await;
+    assert_eq!(logout_resp.status(), StatusCode::OK);
+
+    let replay = test::call_service(
+        &app,
+        test::TestRequest::post()
+            .uri("/auth/refresh")
+            .cookie(actix_web::cookie::Cookie::new(
+                "refresh_token",
+                extract_refresh_cookie(&login_resp).unwrap(),
+            ))
+            .to_request(),
+    )
+    .await;
+    assert_eq!(replay.status(), StatusCode::UNAUTHORIZED);
+}
+
+// ── logout-all ──────────────────────────────────────────────────────────────
+
+#[tokio::test]
+async fn logout_all_revokes_all_sessions() {
+    let env = TestEnv::new().await;
+    create_verified_user(&env.pool, "logoutall@example.com", "password123").await;
+    let app = make_app!(env);
+
+    let login_resp_1 = test::call_service(
+        &app,
+        test::TestRequest::post()
+            .uri("/auth/login")
+            .set_json(LoginRequest {
+                email: "logoutall@example.com".into(),
+                password: "password123".into(),
+            })
+            .to_request(),
+    )
+    .await;
+    let body_1: serde_json::Value = test::read_body_json(login_resp_1).await;
+    let access_token = body_1["access_token"].as_str().unwrap();
+
+    let login_resp_2 = test::call_service(
+        &app,
+        test::TestRequest::post()
+            .uri("/auth/login")
+            .set_json(LoginRequest {
+                email: "logoutall@example.com".into(),
+                password: "password123".into(),
+            })
+            .to_request(),
+    )
+    .await;
+    let cookie = extract_refresh_cookie(&login_resp_2).unwrap();
+
+    let logout_resp = test::call_service(
+        &app,
+        test::TestRequest::post()
+            .uri("/auth/logout-all")
+            .insert_header(("Authorization", format!("Bearer {}", access_token)))
+            .to_request(),
+    )
+    .await;
+    assert_eq!(logout_resp.status(), StatusCode::OK);
+
+    let replay = test::call_service(
+        &app,
+        test::TestRequest::post()
+            .uri("/auth/refresh")
+            .cookie(actix_web::cookie::Cookie::new("refresh_token", cookie))
+            .to_request(),
+    )
+    .await;
+    assert_eq!(replay.status(), StatusCode::UNAUTHORIZED);
+}
+
+// ── forgot-password ─────────────────────────────────────────────────────────
+
+#[tokio::test]
+async fn forgot_password_known_email_returns_200() {
+    let env = TestEnv::new().await;
+    create_verified_user(&env.pool, "forgot@example.com", "password123").await;
+
+    let mock_server = MockServer::start().await;
+    Mock::given(method("POST"))
+        .and(path("/emails"))
+        .respond_with(
+            ResponseTemplate::new(200).set_body_json(serde_json::json!({"id": "test-id"})),
+        )
+        .mount(&mock_server)
+        .await;
+
+    unsafe {
+        std::env::set_var("RESEND_API_BASE_URL", mock_server.uri());
+    }
+
+    let app = make_app!(env);
+
+    let req = test::TestRequest::post()
+        .uri("/auth/forgot-password")
+        .set_json(ForgotPasswordRequest {
+            email: "forgot@example.com".into(),
+        })
+        .to_request();
+
+    let resp = test::call_service(&app, req).await;
+    assert_eq!(resp.status(), StatusCode::OK);
+
+    let body: serde_json::Value = test::read_body_json(resp).await;
+    assert!(body["message"].as_str().unwrap().contains("reset link"));
+
+    unsafe {
+        std::env::remove_var("RESEND_API_BASE_URL");
+    }
+}
+
+#[tokio::test]
+async fn forgot_password_unknown_email_returns_200_generic() {
+    let env = TestEnv::new().await;
+    let app = make_app!(env);
+
+    let req = test::TestRequest::post()
+        .uri("/auth/forgot-password")
+        .set_json(ForgotPasswordRequest {
+            email: "nobody@example.com".into(),
+        })
+        .to_request();
+
+    let resp = test::call_service(&app, req).await;
+    assert_eq!(resp.status(), StatusCode::OK);
+
+    let body: serde_json::Value = test::read_body_json(resp).await;
+    assert!(body["message"].as_str().unwrap().contains("reset link"));
+}
+
+// ── reset-password ──────────────────────────────────────────────────────────
+
+#[tokio::test]
+async fn reset_password_full_flow() {
+    let env = TestEnv::new().await;
+    create_verified_user(&env.pool, "resetuser@example.com", "oldPassword123").await;
+
+    let mock_server = MockServer::start().await;
+    Mock::given(method("POST"))
+        .and(path("/emails"))
+        .respond_with(
+            ResponseTemplate::new(200).set_body_json(serde_json::json!({"id": "test-id"})),
+        )
+        .mount(&mock_server)
+        .await;
+
+    unsafe {
+        std::env::set_var("RESEND_API_BASE_URL", mock_server.uri());
+    }
+
+    let app = make_app!(env);
+
+    let forgot_resp = test::call_service(
+        &app,
+        test::TestRequest::post()
+            .uri("/auth/forgot-password")
+            .set_json(ForgotPasswordRequest {
+                email: "resetuser@example.com".into(),
+            })
+            .to_request(),
+    )
+    .await;
+    assert_eq!(forgot_resp.status(), StatusCode::OK);
+
+    unsafe {
+        std::env::remove_var("RESEND_API_BASE_URL");
+    }
+
+    let raw_token = "reset_test_token_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
+    let token_hash = auth_core::token::hash_token(raw_token);
+
+    sqlx::query("INSERT INTO password_reset_tokens (user_id, token_hash, expires_at) SELECT id, $1, NOW() + INTERVAL '15 minutes' FROM users WHERE email = 'resetuser@example.com'")
+        .bind(&token_hash)
+        .execute(&env.pool)
+        .await
+        .unwrap();
+
+    let reset_resp = test::call_service(
+        &app,
+        test::TestRequest::post()
+            .uri("/auth/reset-password")
+            .set_json(ResetPasswordRequest {
+                token: raw_token.into(),
+                new_password: "brandNewPassword456".into(),
+            })
+            .to_request(),
+    )
+    .await;
+    assert_eq!(reset_resp.status(), StatusCode::OK);
+
+    let login_resp = test::call_service(
+        &app,
+        test::TestRequest::post()
+            .uri("/auth/login")
+            .set_json(LoginRequest {
+                email: "resetuser@example.com".into(),
+                password: "brandNewPassword456".into(),
+            })
+            .to_request(),
+    )
+    .await;
+    assert_eq!(login_resp.status(), StatusCode::OK);
+}
+
+#[tokio::test]
+async fn reset_password_expired_token_returns_400() {
+    let env = TestEnv::new().await;
+    create_verified_user(&env.pool, "expiredreset@example.com", "password123").await;
+    let app = make_app!(env);
+
+    let raw_token = "expired_reset_token_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
+    let token_hash = auth_core::token::hash_token(raw_token);
+
+    sqlx::query("INSERT INTO password_reset_tokens (user_id, token_hash, expires_at) SELECT id, $1, NOW() - INTERVAL '1 hour' FROM users WHERE email = 'expiredreset@example.com'")
+        .bind(&token_hash)
+        .execute(&env.pool)
+        .await
+        .unwrap();
+
+    let req = test::TestRequest::post()
+        .uri("/auth/reset-password")
+        .set_json(ResetPasswordRequest {
+            token: raw_token.into(),
+            new_password: "newPassword123".into(),
+        })
+        .to_request();
+
+    let resp = test::call_service(&app, req).await;
+    assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
+}
+
+#[tokio::test]
+async fn reset_password_used_token_returns_400() {
+    let env = TestEnv::new().await;
+    create_verified_user(&env.pool, "usedreset@example.com", "password123").await;
+    let app = make_app!(env);
+
+    let raw_token = "used_reset_token_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
+    let token_hash = auth_core::token::hash_token(raw_token);
+
+    sqlx::query("INSERT INTO password_reset_tokens (user_id, token_hash, expires_at, used_at) SELECT id, $1, NOW() + INTERVAL '15 minutes', NOW() FROM users WHERE email = 'usedreset@example.com'")
+        .bind(&token_hash)
+        .execute(&env.pool)
+        .await
+        .unwrap();
+
+    let req = test::TestRequest::post()
+        .uri("/auth/reset-password")
+        .set_json(ResetPasswordRequest {
+            token: raw_token.into(),
+            new_password: "newPassword123".into(),
+        })
+        .to_request();
+
+    let resp = test::call_service(&app, req).await;
+    assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
+}
+
+#[tokio::test]
+async fn reset_password_invalid_token_returns_400() {
+    let env = TestEnv::new().await;
+    let app = make_app!(env);
+
+    let req = test::TestRequest::post()
+        .uri("/auth/reset-password")
+        .set_json(ResetPasswordRequest {
+            token: "nonexistent_token".into(),
+            new_password: "newPassword123".into(),
+        })
+        .to_request();
+
+    let resp = test::call_service(&app, req).await;
+    assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
+}
+
+#[tokio::test]
+async fn reset_password_revokes_all_sessions() {
+    let env = TestEnv::new().await;
+    create_verified_user(&env.pool, "revokesessions@example.com", "password123").await;
+    let app = make_app!(env);
+
+    let login_resp = test::call_service(
+        &app,
+        test::TestRequest::post()
+            .uri("/auth/login")
+            .set_json(LoginRequest {
+                email: "revokesessions@example.com".into(),
+                password: "password123".into(),
+            })
+            .to_request(),
+    )
+    .await;
+    let cookie = extract_refresh_cookie(&login_resp).unwrap();
+
+    let raw_token = "revokesessions_token_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
+    let token_hash = auth_core::token::hash_token(raw_token);
+
+    sqlx::query("INSERT INTO password_reset_tokens (user_id, token_hash, expires_at) SELECT id, $1, NOW() + INTERVAL '15 minutes' FROM users WHERE email = 'revokesessions@example.com'")
+        .bind(&token_hash)
+        .execute(&env.pool)
+        .await
+        .unwrap();
+
+    test::call_service(
+        &app,
+        test::TestRequest::post()
+            .uri("/auth/reset-password")
+            .set_json(ResetPasswordRequest {
+                token: raw_token.into(),
+                new_password: "afterResetPassword".into(),
+            })
+            .to_request(),
+    )
+    .await;
+
+    let replay = test::call_service(
+        &app,
+        test::TestRequest::post()
+            .uri("/auth/refresh")
+            .cookie(actix_web::cookie::Cookie::new("refresh_token", cookie))
             .to_request(),
     )
     .await;

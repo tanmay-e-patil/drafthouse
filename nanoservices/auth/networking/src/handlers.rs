@@ -1,6 +1,9 @@
 use actix_web::{HttpRequest, HttpResponse, cookie::Cookie, web};
 use dal::postgres_txs::SqlxPostGresDescriptor;
-use kernel::{LoginRequest, RegisterRequest, ResendVerificationRequest, VerifyEmailRequest};
+use kernel::{
+    ForgotPasswordRequest, LoginRequest, RegisterRequest, ResendVerificationRequest,
+    ResetPasswordRequest, VerifyEmailRequest,
+};
 use utils::errors::{NanoServiceError, NanoServiceErrorStatus};
 
 type DalData = web::Data<SqlxPostGresDescriptor>;
@@ -131,4 +134,23 @@ pub async fn logout_all(req: HttpRequest) -> Result<HttpResponse, NanoServiceErr
         .finish();
 
     Ok(HttpResponse::Ok().cookie(expired_cookie).finish())
+}
+
+pub async fn forgot_password(
+    req: HttpRequest,
+    body: web::Json<ForgotPasswordRequest>,
+) -> Result<HttpResponse, NanoServiceError> {
+    let dal = get_dal(&req)?;
+    let result = auth_core::password_reset::forgot_password(dal, &body.email).await?;
+    Ok(HttpResponse::Ok().json(result))
+}
+
+pub async fn reset_password(
+    req: HttpRequest,
+    body: web::Json<ResetPasswordRequest>,
+) -> Result<HttpResponse, NanoServiceError> {
+    let dal = get_dal(&req)?;
+    let result =
+        auth_core::password_reset::reset_password(dal, &body.token, &body.new_password).await?;
+    Ok(HttpResponse::Ok().json(result))
 }
