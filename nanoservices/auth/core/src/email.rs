@@ -32,7 +32,7 @@ pub async fn send_verification_email(to_email: &str, token: &str) -> Result<(), 
     );
 
     let from =
-        env::var("EMAIL_FROM").unwrap_or_else(|_| "Drafthouse <onboarding@drafthouse.app>".into());
+        env::var("EMAIL_FROM").unwrap_or_else(|_| "Drafthouse <onboarding@tanmayep.dev>".into());
 
     let payload = ResendEmailPayload {
         from,
@@ -96,7 +96,7 @@ pub async fn send_password_reset_email(
     );
 
     let from =
-        env::var("EMAIL_FROM").unwrap_or_else(|_| "Drafthouse <onboarding@drafthouse.app>".into());
+        env::var("EMAIL_FROM").unwrap_or_else(|_| "Drafthouse <onboarding@tanmayep.dev>".into());
 
     let payload = ResendEmailPayload {
         from,
