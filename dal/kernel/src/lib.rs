@@ -140,3 +140,43 @@ pub struct ResetPasswordRequest {
 pub struct ResetPasswordResponse {
     pub message: String,
 }
+
+#[derive(Debug, Clone, Serialize, Deserialize, sqlx::FromRow)]
+pub struct Document {
+    pub id: Uuid,
+    pub owner_id: Uuid,
+    pub title: String,
+    pub is_public: bool,
+    pub created_at: DateTime<Utc>,
+    pub updated_at: DateTime<Utc>,
+}
+
+pub struct NewDocument {
+    pub owner_id: Uuid,
+    pub title: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct UpdateDocumentRequest {
+    pub title: Option<String>,
+    pub is_public: Option<bool>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CreateDocumentRequest {
+    pub title: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct DocumentListResponse {
+    pub data: Vec<Document>,
+    pub next_cursor: Option<Uuid>,
+    pub has_more: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct DocumentMember {
+    pub doc_id: Uuid,
+    pub user_id: Uuid,
+    pub role: String,
+}

@@ -1,0 +1,547 @@
+use actix_web::{App, http::StatusCode, test, web};
+use auth_networking::routes as auth_routes;
+use dal::postgres_txs::SqlxPostGresDescriptor;
+use kernel::{CreateDocumentRequest, LoginRequest, UpdateDocumentRequest};
+use sqlx::PgPool;
+use testcontainers_modules::{
+    postgres::Postgres,
+    testcontainers::{ContainerAsync, runners::AsyncRunner},
+};
+use uuid::Uuid;
+
+struct TestEnv {
+    pool: PgPool,
+    _container: ContainerAsync<Postgres>,
+}
+
+impl TestEnv {
+    async fn new() -> Self {
+        let container = Postgres::default().start().await.unwrap();
+        let port = container.get_host_port_ipv4(5432).await.unwrap();
+        let url = format!("postgres://postgres:postgres@127.0.0.1:{}/postgres", port);
+        let pool = PgPool::connect(&url).await.unwrap();
+        sqlx::migrate!("../../../migrations/postgres")
+            .run(&pool)
+            .await
+            .unwrap();
+        Self {
+            pool,
+            _container: container,
+        }
+    }
+}
+
+macro_rules! make_app {
+    ($env:expr) => {{
+        let pool = $env.pool.clone();
+        test::init_service(App::new().configure(move |cfg| {
+            let dal = web::Data::new(SqlxPostGresDescriptor { pool: pool.clone() });
+            auth_routes::configure(cfg, dal.clone());
+            documents_networking::routes::configure(cfg, dal);
+        }))
+        .await
+    }};
+}
+
+macro_rules! login_token {
+    ($app:expr, $email:expr, $password:expr) => {{
+        let resp = test::call_service(
+            $app,
+            test::TestRequest::post()
+                .uri("/auth/login")
+                .set_json(LoginRequest {
+                    email: $email.into(),
+                    password: $password.into(),
+                })
+                .to_request(),
+        )
+        .await;
+        let body: serde_json::Value = test::read_body_json(resp).await;
+        body["access_token"].as_str().unwrap().to_string()
+    }};
+}
+
+macro_rules! create_verified_user {
+    ($pool:expr, $email:expr, $password:expr) => {{
+        let hash = auth_core::password::hash_password($password).unwrap();
+        sqlx::query(
+            "INSERT INTO users (email, password_hash, email_verified_at) VALUES ($1, $2, NOW())",
+        )
+        .bind($email)
+        .bind(&hash)
+        .execute($pool)
+        .await
+        .unwrap();
+    }};
+}
+
+// ── create document ──────────────────────────────────────────────────────
+
+#[tokio::test]
+async fn create_document_returns_201() {
+    let env = TestEnv::new().await;
+    create_verified_user!(&env.pool, "docuser@example.com", "password123");
+    let app = make_app!(env);
+    let token = login_token!(&app, "docuser@example.com", "password123");
+
+    let req = test::TestRequest::post()
+        .uri("/documents")
+        .insert_header(("Authorization", format!("Bearer {}", token)))
+        .set_json(CreateDocumentRequest {
+            title: Some("My Doc".into()),
+        })
+        .to_request();
+
+    let resp = test::call_service(&app, req).await;
+    assert_eq!(resp.status(), StatusCode::CREATED);
+
+    let body: serde_json::Value = test::read_body_json(resp).await;
+    assert_eq!(body["title"], "My Doc");
+    assert!(body["id"].is_string());
+}
+
+#[tokio::test]
+async fn create_document_default_title() {
+    let env = TestEnv::new().await;
+    create_verified_user!(&env.pool, "defaultitle@example.com", "password123");
+    let app = make_app!(env);
+    let token = login_token!(&app, "defaultitle@example.com", "password123");
+
+    let req = test::TestRequest::post()
+        .uri("/documents")
+        .insert_header(("Authorization", format!("Bearer {}", token)))
+        .set_json(CreateDocumentRequest { title: None })
+        .to_request();
+
+    let resp = test::call_service(&app, req).await;
+    assert_eq!(resp.status(), StatusCode::CREATED);
+
+    let body: serde_json::Value = test::read_body_json(resp).await;
+    assert_eq!(body["title"], "Untitled");
+}
+
+#[tokio::test]
+async fn create_document_unauthenticated_returns_401() {
+    let env = TestEnv::new().await;
+    let app = make_app!(env);
+
+    let req = test::TestRequest::post()
+        .uri("/documents")
+        .set_json(CreateDocumentRequest {
+            title: Some("No Auth".into()),
+        })
+        .to_request();
+
+    let resp = test::call_service(&app, req).await;
+    assert_eq!(resp.status(), StatusCode::UNAUTHORIZED);
+}
+
+// ── list documents ───────────────────────────────────────────────────────
+
+#[tokio::test]
+async fn list_documents_returns_owned() {
+    let env = TestEnv::new().await;
+    create_verified_user!(&env.pool, "listuser@example.com", "password123");
+    let app = make_app!(env);
+    let token = login_token!(&app, "listuser@example.com", "password123");
+
+    let user_id: Uuid = sqlx::query_scalar("SELECT id FROM users WHERE email = $1")
+        .bind("listuser@example.com")
+        .fetch_one(&env.pool)
+        .await
+        .unwrap();
+
+    sqlx::query("INSERT INTO documents (owner_id, title) VALUES ($1, 'Doc A')")
+        .bind(user_id)
+        .execute(&env.pool)
+        .await
+        .unwrap();
+    sqlx::query("INSERT INTO documents (owner_id, title) VALUES ($1, 'Doc B')")
+        .bind(user_id)
+        .execute(&env.pool)
+        .await
+        .unwrap();
+
+    let req = test::TestRequest::get()
+        .uri("/documents")
+        .insert_header(("Authorization", format!("Bearer {}", token)))
+        .to_request();
+
+    let resp = test::call_service(&app, req).await;
+    assert_eq!(resp.status(), StatusCode::OK);
+
+    let body: serde_json::Value = test::read_body_json(resp).await;
+    assert_eq!(body["data"].as_array().unwrap().len(), 2);
+    assert!(!body["has_more"].as_bool().unwrap());
+}
+
+#[tokio::test]
+async fn list_documents_empty() {
+    let env = TestEnv::new().await;
+    create_verified_user!(&env.pool, "emptylist@example.com", "password123");
+    let app = make_app!(env);
+    let token = login_token!(&app, "emptylist@example.com", "password123");
+
+    let req = test::TestRequest::get()
+        .uri("/documents")
+        .insert_header(("Authorization", format!("Bearer {}", token)))
+        .to_request();
+
+    let resp = test::call_service(&app, req).await;
+    assert_eq!(resp.status(), StatusCode::OK);
+
+    let body: serde_json::Value = test::read_body_json(resp).await;
+    assert_eq!(body["data"].as_array().unwrap().len(), 0);
+    assert!(!body["has_more"].as_bool().unwrap());
+}
+
+// ── get document ─────────────────────────────────────────────────────────
+
+#[tokio::test]
+async fn get_document_by_id() {
+    let env = TestEnv::new().await;
+    create_verified_user!(&env.pool, "getuser@example.com", "password123");
+    let app = make_app!(env);
+    let token = login_token!(&app, "getuser@example.com", "password123");
+
+    let req = test::TestRequest::post()
+        .uri("/documents")
+        .insert_header(("Authorization", format!("Bearer {}", token)))
+        .set_json(CreateDocumentRequest {
+            title: Some("Get Me".into()),
+        })
+        .to_request();
+    let resp = test::call_service(&app, req).await;
+    let body: serde_json::Value = test::read_body_json(resp).await;
+    let doc_id = body["id"].as_str().unwrap();
+
+    let get_req = test::TestRequest::get()
+        .uri(&format!("/documents/{}", doc_id))
+        .insert_header(("Authorization", format!("Bearer {}", token)))
+        .to_request();
+
+    let get_resp = test::call_service(&app, get_req).await;
+    assert_eq!(get_resp.status(), StatusCode::OK);
+
+    let get_body: serde_json::Value = test::read_body_json(get_resp).await;
+    assert_eq!(get_body["title"], "Get Me");
+}
+
+#[tokio::test]
+async fn get_document_not_found() {
+    let env = TestEnv::new().await;
+    create_verified_user!(&env.pool, "notfound@example.com", "password123");
+    let app = make_app!(env);
+    let token = login_token!(&app, "notfound@example.com", "password123");
+
+    let req = test::TestRequest::get()
+        .uri(&format!("/documents/{}", Uuid::new_v4()))
+        .insert_header(("Authorization", format!("Bearer {}", token)))
+        .to_request();
+
+    let resp = test::call_service(&app, req).await;
+    assert_eq!(resp.status(), StatusCode::NOT_FOUND);
+}
+
+// ── update document ──────────────────────────────────────────────────────
+
+#[tokio::test]
+async fn update_document_title() {
+    let env = TestEnv::new().await;
+    create_verified_user!(&env.pool, "updateuser@example.com", "password123");
+    let app = make_app!(env);
+    let token = login_token!(&app, "updateuser@example.com", "password123");
+
+    let create_resp = test::call_service(
+        &app,
+        test::TestRequest::post()
+            .uri("/documents")
+            .insert_header(("Authorization", format!("Bearer {}", token)))
+            .set_json(CreateDocumentRequest {
+                title: Some("Original".into()),
+            })
+            .to_request(),
+    )
+    .await;
+    let create_body: serde_json::Value = test::read_body_json(create_resp).await;
+    let doc_id = create_body["id"].as_str().unwrap();
+
+    let update_resp = test::call_service(
+        &app,
+        test::TestRequest::patch()
+            .uri(&format!("/documents/{}", doc_id))
+            .insert_header(("Authorization", format!("Bearer {}", token)))
+            .set_json(UpdateDocumentRequest {
+                title: Some("Renamed".into()),
+                is_public: None,
+            })
+            .to_request(),
+    )
+    .await;
+
+    assert_eq!(update_resp.status(), StatusCode::OK);
+    let update_body: serde_json::Value = test::read_body_json(update_resp).await;
+    assert_eq!(update_body["title"], "Renamed");
+}
+
+#[tokio::test]
+async fn update_document_non_owner_returns_403() {
+    let env = TestEnv::new().await;
+    create_verified_user!(&env.pool, "owner@example.com", "password123");
+    create_verified_user!(&env.pool, "other@example.com", "password123");
+    let app = make_app!(env);
+
+    let owner_token = login_token!(&app, "owner@example.com", "password123");
+    let other_token = login_token!(&app, "other@example.com", "password123");
+
+    let create_resp = test::call_service(
+        &app,
+        test::TestRequest::post()
+            .uri("/documents")
+            .insert_header(("Authorization", format!("Bearer {}", owner_token)))
+            .set_json(CreateDocumentRequest {
+                title: Some("Mine".into()),
+            })
+            .to_request(),
+    )
+    .await;
+    let create_body: serde_json::Value = test::read_body_json(create_resp).await;
+    let doc_id = create_body["id"].as_str().unwrap();
+
+    let update_resp = test::call_service(
+        &app,
+        test::TestRequest::patch()
+            .uri(&format!("/documents/{}", doc_id))
+            .insert_header(("Authorization", format!("Bearer {}", other_token)))
+            .set_json(UpdateDocumentRequest {
+                title: Some("Hacked".into()),
+                is_public: None,
+            })
+            .to_request(),
+    )
+    .await;
+
+    assert_eq!(update_resp.status(), StatusCode::FORBIDDEN);
+}
+
+// ── delete document ──────────────────────────────────────────────────────
+
+#[tokio::test]
+async fn delete_document_owner_returns_204() {
+    let env = TestEnv::new().await;
+    create_verified_user!(&env.pool, "deluser@example.com", "password123");
+    let app = make_app!(env);
+    let token = login_token!(&app, "deluser@example.com", "password123");
+
+    let create_resp = test::call_service(
+        &app,
+        test::TestRequest::post()
+            .uri("/documents")
+            .insert_header(("Authorization", format!("Bearer {}", token)))
+            .set_json(CreateDocumentRequest {
+                title: Some("To Delete".into()),
+            })
+            .to_request(),
+    )
+    .await;
+    let create_body: serde_json::Value = test::read_body_json(create_resp).await;
+    let doc_id = create_body["id"].as_str().unwrap();
+
+    let del_resp = test::call_service(
+        &app,
+        test::TestRequest::delete()
+            .uri(&format!("/documents/{}", doc_id))
+            .insert_header(("Authorization", format!("Bearer {}", token)))
+            .to_request(),
+    )
+    .await;
+
+    assert_eq!(del_resp.status(), StatusCode::NO_CONTENT);
+
+    let get_resp = test::call_service(
+        &app,
+        test::TestRequest::get()
+            .uri(&format!("/documents/{}", doc_id))
+            .insert_header(("Authorization", format!("Bearer {}", token)))
+            .to_request(),
+    )
+    .await;
+    assert_eq!(get_resp.status(), StatusCode::NOT_FOUND);
+}
+
+#[tokio::test]
+async fn delete_document_non_owner_returns_403() {
+    let env = TestEnv::new().await;
+    create_verified_user!(&env.pool, "delowner@example.com", "password123");
+    create_verified_user!(&env.pool, "delother@example.com", "password123");
+    let app = make_app!(env);
+
+    let owner_token = login_token!(&app, "delowner@example.com", "password123");
+    let other_token = login_token!(&app, "delother@example.com", "password123");
+
+    let create_resp = test::call_service(
+        &app,
+        test::TestRequest::post()
+            .uri("/documents")
+            .insert_header(("Authorization", format!("Bearer {}", owner_token)))
+            .set_json(CreateDocumentRequest {
+                title: Some("Protected".into()),
+            })
+            .to_request(),
+    )
+    .await;
+    let create_body: serde_json::Value = test::read_body_json(create_resp).await;
+    let doc_id = create_body["id"].as_str().unwrap();
+
+    let del_resp = test::call_service(
+        &app,
+        test::TestRequest::delete()
+            .uri(&format!("/documents/{}", doc_id))
+            .insert_header(("Authorization", format!("Bearer {}", other_token)))
+            .to_request(),
+    )
+    .await;
+
+    assert_eq!(del_resp.status(), StatusCode::FORBIDDEN);
+}
+
+#[tokio::test]
+async fn delete_document_not_found_returns_404() {
+    let env = TestEnv::new().await;
+    create_verified_user!(&env.pool, "del404@example.com", "password123");
+    let app = make_app!(env);
+    let token = login_token!(&app, "del404@example.com", "password123");
+
+    let del_resp = test::call_service(
+        &app,
+        test::TestRequest::delete()
+            .uri(&format!("/documents/{}", Uuid::new_v4()))
+            .insert_header(("Authorization", format!("Bearer {}", token)))
+            .to_request(),
+    )
+    .await;
+
+    assert_eq!(del_resp.status(), StatusCode::NOT_FOUND);
+}
+
+// ── pagination ───────────────────────────────────────────────────────────
+
+#[tokio::test]
+async fn pagination_with_20_plus_docs() {
+    let env = TestEnv::new().await;
+    create_verified_user!(&env.pool, "paguser@example.com", "password123");
+    let app = make_app!(env);
+    let token = login_token!(&app, "paguser@example.com", "password123");
+
+    let user_id: Uuid = sqlx::query_scalar("SELECT id FROM users WHERE email = $1")
+        .bind("paguser@example.com")
+        .fetch_one(&env.pool)
+        .await
+        .unwrap();
+
+    for i in 0..25 {
+        sqlx::query("INSERT INTO documents (owner_id, title, updated_at) VALUES ($1, $2, now() - ($3 || ' seconds')::interval)")
+            .bind(user_id)
+            .bind(format!("Doc {}", i))
+            .bind(i * 10)
+            .execute(&env.pool)
+            .await
+            .unwrap();
+    }
+
+    let first_req = test::TestRequest::get()
+        .uri("/documents?limit=20")
+        .insert_header(("Authorization", format!("Bearer {}", token)))
+        .to_request();
+    let first_resp = test::call_service(&app, first_req).await;
+    assert_eq!(first_resp.status(), StatusCode::OK);
+    let first_body: serde_json::Value = test::read_body_json(first_resp).await;
+    assert_eq!(first_body["data"].as_array().unwrap().len(), 20);
+    assert!(first_body["has_more"].as_bool().unwrap());
+    let next_cursor = first_body["next_cursor"].as_str().unwrap();
+
+    let second_req = test::TestRequest::get()
+        .uri(&format!("/documents?limit=20&cursor={}", next_cursor))
+        .insert_header(("Authorization", format!("Bearer {}", token)))
+        .to_request();
+    let second_resp = test::call_service(&app, second_req).await;
+    assert_eq!(second_resp.status(), StatusCode::OK);
+    let second_body: serde_json::Value = test::read_body_json(second_resp).await;
+    assert_eq!(second_body["data"].as_array().unwrap().len(), 5);
+    assert!(!second_body["has_more"].as_bool().unwrap());
+}
+
+// ── full CRUD cycle ─────────────────────────────────────────────────────
+
+#[tokio::test]
+async fn full_crud_cycle() {
+    let env = TestEnv::new().await;
+    create_verified_user!(&env.pool, "crud@example.com", "password123");
+    let app = make_app!(env);
+    let token = login_token!(&app, "crud@example.com", "password123");
+
+    let create_resp = test::call_service(
+        &app,
+        test::TestRequest::post()
+            .uri("/documents")
+            .insert_header(("Authorization", format!("Bearer {}", token)))
+            .set_json(CreateDocumentRequest {
+                title: Some("CRUD Doc".into()),
+            })
+            .to_request(),
+    )
+    .await;
+    assert_eq!(create_resp.status(), StatusCode::CREATED);
+    let create_body: serde_json::Value = test::read_body_json(create_resp).await;
+    let doc_id = create_body["id"].as_str().unwrap().to_string();
+
+    let list_resp = test::call_service(
+        &app,
+        test::TestRequest::get()
+            .uri("/documents")
+            .insert_header(("Authorization", format!("Bearer {}", token)))
+            .to_request(),
+    )
+    .await;
+    assert_eq!(list_resp.status(), StatusCode::OK);
+    let list_body: serde_json::Value = test::read_body_json(list_resp).await;
+    assert_eq!(list_body["data"].as_array().unwrap().len(), 1);
+
+    let update_resp = test::call_service(
+        &app,
+        test::TestRequest::patch()
+            .uri(&format!("/documents/{}", doc_id))
+            .insert_header(("Authorization", format!("Bearer {}", token)))
+            .set_json(UpdateDocumentRequest {
+                title: Some("Updated Doc".into()),
+                is_public: Some(true),
+            })
+            .to_request(),
+    )
+    .await;
+    assert_eq!(update_resp.status(), StatusCode::OK);
+    let update_body: serde_json::Value = test::read_body_json(update_resp).await;
+    assert_eq!(update_body["title"], "Updated Doc");
+    assert!(update_body["is_public"].as_bool().unwrap());
+
+    let del_resp = test::call_service(
+        &app,
+        test::TestRequest::delete()
+            .uri(&format!("/documents/{}", doc_id))
+            .insert_header(("Authorization", format!("Bearer {}", token)))
+            .to_request(),
+    )
+    .await;
+    assert_eq!(del_resp.status(), StatusCode::NO_CONTENT);
+
+    let list_after_resp = test::call_service(
+        &app,
+        test::TestRequest::get()
+            .uri("/documents")
+            .insert_header(("Authorization", format!("Bearer {}", token)))
+            .to_request(),
+    )
+    .await;
+    let list_after_body: serde_json::Value = test::read_body_json(list_after_resp).await;
+    assert_eq!(list_after_body["data"].as_array().unwrap().len(), 0);
+}

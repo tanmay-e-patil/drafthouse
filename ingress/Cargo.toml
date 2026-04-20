@@ -13,3 +13,4 @@ tokio = { workspace = true }
 dal = { path = "../dal/dal" }
 utils = { path = "../crates/utils" }
 auth-networking = { path = "../nanoservices/auth/networking" }
+documents-networking = { path = "../nanoservices/documents/networking" }
