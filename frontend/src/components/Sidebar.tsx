@@ -106,16 +106,18 @@ export default function Sidebar() {
     }
   }
 
-  function handleKeyDown(e: React.KeyboardEvent) {
-    if ((e.metaKey || e.ctrlKey) && e.key === "n") {
+  function handleKeyDown(e: Event) {
+    const ke = e as KeyboardEvent;
+    if ((ke.metaKey || ke.ctrlKey) && ke.key === "n") {
       e.preventDefault();
       handleCreate();
     }
   }
 
   useEffect(() => {
-    window.addEventListener("keydown", handleKeyDown);
-    return () => window.removeEventListener("keydown", handleKeyDown);
+    const handler = (e: Event) => handleKeyDown(e);
+    window.addEventListener("keydown", handler);
+    return () => window.removeEventListener("keydown", handler);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 

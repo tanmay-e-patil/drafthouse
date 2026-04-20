@@ -1,7 +1,9 @@
 use actix_web::{App, http::StatusCode, test, web};
 use auth_networking::routes as auth_routes;
 use dal::postgres_txs::SqlxPostGresDescriptor;
-use kernel::{CreateDocumentRequest, LoginRequest, UpdateDocumentRequest};
+use kernel::{
+    CreateDocumentRequest, LoginRequest, UpdateDocumentContentRequest, UpdateDocumentRequest,
+};
 use sqlx::PgPool;
 use testcontainers_modules::{
     postgres::Postgres,
@@ -544,4 +546,176 @@ async fn full_crud_cycle() {
     .await;
     let list_after_body: serde_json::Value = test::read_body_json(list_after_resp).await;
     assert_eq!(list_after_body["data"].as_array().unwrap().len(), 0);
+}
+
+// ── document content ────────────────────────────────────────────────────
+
+#[tokio::test]
+async fn get_document_content_returns_empty_for_new_doc() {
+    let env = TestEnv::new().await;
+    create_verified_user!(&env.pool, "contentuser@example.com", "password123");
+    let app = make_app!(env);
+    let token = login_token!(&app, "contentuser@example.com", "password123");
+
+    let create_resp = test::call_service(
+        &app,
+        test::TestRequest::post()
+            .uri("/documents")
+            .insert_header(("Authorization", format!("Bearer {}", token)))
+            .set_json(CreateDocumentRequest {
+                title: Some("Empty Content".into()),
+            })
+            .to_request(),
+    )
+    .await;
+    let create_body: serde_json::Value = test::read_body_json(create_resp).await;
+    let doc_id = create_body["id"].as_str().unwrap();
+
+    let get_resp = test::call_service(
+        &app,
+        test::TestRequest::get()
+            .uri(&format!("/documents/{}/content", doc_id))
+            .insert_header(("Authorization", format!("Bearer {}", token)))
+            .to_request(),
+    )
+    .await;
+    assert_eq!(get_resp.status(), StatusCode::OK);
+
+    let get_body: serde_json::Value = test::read_body_json(get_resp).await;
+    assert_eq!(get_body["content"], "");
+}
+
+#[tokio::test]
+async fn update_and_get_document_content() {
+    let env = TestEnv::new().await;
+    create_verified_user!(&env.pool, "contentupd@example.com", "password123");
+    let app = make_app!(env);
+    let token = login_token!(&app, "contentupd@example.com", "password123");
+
+    let create_resp = test::call_service(
+        &app,
+        test::TestRequest::post()
+            .uri("/documents")
+            .insert_header(("Authorization", format!("Bearer {}", token)))
+            .set_json(CreateDocumentRequest {
+                title: Some("With Content".into()),
+            })
+            .to_request(),
+    )
+    .await;
+    let create_body: serde_json::Value = test::read_body_json(create_resp).await;
+    let doc_id = create_body["id"].as_str().unwrap().to_string();
+
+    let update_resp = test::call_service(
+        &app,
+        test::TestRequest::patch()
+            .uri(&format!("/documents/{}/content", doc_id))
+            .insert_header(("Authorization", format!("Bearer {}", token)))
+            .set_json(UpdateDocumentContentRequest {
+                content: "# Hello\n\nWorld".into(),
+            })
+            .to_request(),
+    )
+    .await;
+    assert_eq!(update_resp.status(), StatusCode::OK);
+
+    let get_resp = test::call_service(
+        &app,
+        test::TestRequest::get()
+            .uri(&format!("/documents/{}/content", doc_id))
+            .insert_header(("Authorization", format!("Bearer {}", token)))
+            .to_request(),
+    )
+    .await;
+    assert_eq!(get_resp.status(), StatusCode::OK);
+
+    let get_body: serde_json::Value = test::read_body_json(get_resp).await;
+    assert_eq!(get_body["content"], "# Hello\n\nWorld");
+}
+
+#[tokio::test]
+async fn get_document_content_not_found() {
+    let env = TestEnv::new().await;
+    create_verified_user!(&env.pool, "content404@example.com", "password123");
+    let app = make_app!(env);
+    let token = login_token!(&app, "content404@example.com", "password123");
+
+    let get_resp = test::call_service(
+        &app,
+        test::TestRequest::get()
+            .uri(&format!("/documents/{}/content", Uuid::new_v4()))
+            .insert_header(("Authorization", format!("Bearer {}", token)))
+            .to_request(),
+    )
+    .await;
+    assert_eq!(get_resp.status(), StatusCode::NOT_FOUND);
+}
+
+#[tokio::test]
+async fn update_document_content_not_found() {
+    let env = TestEnv::new().await;
+    create_verified_user!(&env.pool, "contentupd404@example.com", "password123");
+    let app = make_app!(env);
+    let token = login_token!(&app, "contentupd404@example.com", "password123");
+
+    let update_resp = test::call_service(
+        &app,
+        test::TestRequest::patch()
+            .uri(&format!("/documents/{}/content", Uuid::new_v4()))
+            .insert_header(("Authorization", format!("Bearer {}", token)))
+            .set_json(UpdateDocumentContentRequest {
+                content: "nope".into(),
+            })
+            .to_request(),
+    )
+    .await;
+    assert_eq!(update_resp.status(), StatusCode::NOT_FOUND);
+}
+
+#[tokio::test]
+async fn update_document_content_multiple_times() {
+    let env = TestEnv::new().await;
+    create_verified_user!(&env.pool, "multicontent@example.com", "password123");
+    let app = make_app!(env);
+    let token = login_token!(&app, "multicontent@example.com", "password123");
+
+    let create_resp = test::call_service(
+        &app,
+        test::TestRequest::post()
+            .uri("/documents")
+            .insert_header(("Authorization", format!("Bearer {}", token)))
+            .set_json(CreateDocumentRequest {
+                title: Some("Multi".into()),
+            })
+            .to_request(),
+    )
+    .await;
+    let create_body: serde_json::Value = test::read_body_json(create_resp).await;
+    let doc_id = create_body["id"].as_str().unwrap().to_string();
+
+    for i in 0..5 {
+        let update_resp = test::call_service(
+            &app,
+            test::TestRequest::patch()
+                .uri(&format!("/documents/{}/content", doc_id))
+                .insert_header(("Authorization", format!("Bearer {}", token)))
+                .set_json(UpdateDocumentContentRequest {
+                    content: format!("Version {}", i),
+                })
+                .to_request(),
+        )
+        .await;
+        assert_eq!(update_resp.status(), StatusCode::OK);
+    }
+
+    let get_resp = test::call_service(
+        &app,
+        test::TestRequest::get()
+            .uri(&format!("/documents/{}/content", doc_id))
+            .insert_header(("Authorization", format!("Bearer {}", token)))
+            .to_request(),
+    )
+    .await;
+    let get_body: serde_json::Value = test::read_body_json(get_resp).await;
+    assert_eq!(get_body["content"], "Version 4");
 }

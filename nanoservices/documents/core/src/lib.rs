@@ -1,8 +1,11 @@
 use dal::{
-    CountDocumentsByOwner, CreateDocument, DeleteDocument, GetDocumentById, ListDocumentsByOwner,
-    UpdateDocument,
+    CountDocumentsByOwner, CreateDocument, DeleteDocument, GetDocumentById, GetDocumentContent,
+    ListDocumentsByOwner, UpdateDocument, UpdateDocumentContent,
 };
-use kernel::{Document, DocumentListResponse, NewDocument, UpdateDocumentRequest};
+use kernel::{
+    Document, DocumentContentResponse, DocumentListResponse, NewDocument,
+    UpdateDocumentContentRequest, UpdateDocumentRequest,
+};
 use utils::errors::{NanoServiceError, NanoServiceErrorStatus};
 
 const DEFAULT_PAGE_LIMIT: i64 = 20;
@@ -115,6 +118,37 @@ where
     })
 }
 
+pub async fn get_document_content<D>(
+    dal: &D,
+    id: uuid::Uuid,
+) -> Result<DocumentContentResponse, NanoServiceError>
+where
+    D: GetDocumentById + GetDocumentContent,
+{
+    dal.get_document_by_id(id).await?.ok_or_else(|| {
+        NanoServiceError::new("Document not found", NanoServiceErrorStatus::NotFound)
+    })?;
+
+    let content = dal.get_document_content(id).await?.unwrap_or_default();
+    Ok(DocumentContentResponse { content })
+}
+
+pub async fn update_document_content<D>(
+    dal: &D,
+    id: uuid::Uuid,
+    request: &UpdateDocumentContentRequest,
+) -> Result<(), NanoServiceError>
+where
+    D: GetDocumentById + UpdateDocumentContent,
+{
+    dal.get_document_by_id(id).await?.ok_or_else(|| {
+        NanoServiceError::new("Document not found", NanoServiceErrorStatus::NotFound)
+    })?;
+
+    dal.update_document_content(id, request.content.clone())
+        .await
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -136,6 +170,7 @@ mod tests {
     struct MockDal {
         documents: Arc<Mutex<Vec<Document>>>,
         next_id: Arc<Mutex<Uuid>>,
+        content: Arc<Mutex<std::collections::HashMap<Uuid, String>>>,
     }
 
     impl MockDal {
@@ -143,6 +178,7 @@ mod tests {
             Self {
                 documents: Arc::new(Mutex::new(vec![])),
                 next_id: Arc::new(Mutex::new(Uuid::new_v4())),
+                content: Arc::new(Mutex::new(std::collections::HashMap::new())),
             }
         }
 
@@ -150,6 +186,7 @@ mod tests {
             Self {
                 documents: Arc::new(Mutex::new(vec![doc])),
                 next_id: Arc::new(Mutex::new(Uuid::new_v4())),
+                content: Arc::new(Mutex::new(std::collections::HashMap::new())),
             }
         }
 
@@ -157,6 +194,17 @@ mod tests {
             Self {
                 documents: Arc::new(Mutex::new(docs)),
                 next_id: Arc::new(Mutex::new(Uuid::new_v4())),
+                content: Arc::new(Mutex::new(std::collections::HashMap::new())),
+            }
+        }
+
+        fn with_document_and_content(doc: Document, content: &str) -> Self {
+            let mut map = std::collections::HashMap::new();
+            map.insert(doc.id, content.to_string());
+            Self {
+                documents: Arc::new(Mutex::new(vec![doc])),
+                next_id: Arc::new(Mutex::new(Uuid::new_v4())),
+                content: Arc::new(Mutex::new(map)),
             }
         }
     }
@@ -284,6 +332,31 @@ mod tests {
                     .iter()
                     .filter(|d| d.owner_id == owner_id)
                     .count() as i64)
+            }
+        }
+    }
+
+    impl GetDocumentContent for MockDal {
+        fn get_document_content(
+            &self,
+            id: Uuid,
+        ) -> impl std::future::Future<Output = Result<Option<String>, NanoServiceError>> + Send
+        {
+            let content = Arc::clone(&self.content);
+            async move { Ok(content.lock().unwrap().get(&id).cloned()) }
+        }
+    }
+
+    impl UpdateDocumentContent for MockDal {
+        fn update_document_content(
+            &self,
+            id: Uuid,
+            content: String,
+        ) -> impl std::future::Future<Output = Result<(), NanoServiceError>> + Send {
+            let content_map = Arc::clone(&self.content);
+            async move {
+                content_map.lock().unwrap().insert(id, content);
+                Ok(())
             }
         }
     }
@@ -475,5 +548,70 @@ mod tests {
             .unwrap();
         assert_eq!(second_page.data.len(), 2);
         assert!(!second_page.has_more);
+    }
+
+    // ── get_document_content ──────────────────────────────────────────────────
+
+    #[tokio::test]
+    async fn get_document_content_returns_content() {
+        let owner_id = Uuid::new_v4();
+        let doc = test_document(owner_id);
+        let dal = MockDal::with_document_and_content(doc.clone(), "# Hello");
+        let result = get_document_content(&dal, doc.id).await;
+        assert!(result.is_ok());
+        assert_eq!(result.unwrap().content, "# Hello");
+    }
+
+    #[tokio::test]
+    async fn get_document_content_returns_empty_when_no_content() {
+        let owner_id = Uuid::new_v4();
+        let doc = test_document(owner_id);
+        let dal = MockDal::with_document(doc.clone());
+        let result = get_document_content(&dal, doc.id).await;
+        assert!(result.is_ok());
+        assert_eq!(result.unwrap().content, "");
+    }
+
+    #[tokio::test]
+    async fn get_document_content_not_found_returns_404() {
+        let dal = MockDal::new();
+        let result = get_document_content(&dal, Uuid::new_v4()).await;
+        assert!(result.is_err());
+        assert_eq!(result.unwrap_err().status, NanoServiceErrorStatus::NotFound);
+    }
+
+    // ── update_document_content ───────────────────────────────────────────────
+
+    #[tokio::test]
+    async fn update_document_content_succeeds() {
+        let owner_id = Uuid::new_v4();
+        let doc = test_document(owner_id);
+        let dal = MockDal::with_document(doc.clone());
+        let result = update_document_content(
+            &dal,
+            doc.id,
+            &UpdateDocumentContentRequest {
+                content: "# New Content".to_string(),
+            },
+        )
+        .await;
+        assert!(result.is_ok());
+        let content = dal.content.lock().unwrap().get(&doc.id).cloned();
+        assert_eq!(content, Some("# New Content".to_string()));
+    }
+
+    #[tokio::test]
+    async fn update_document_content_not_found_returns_404() {
+        let dal = MockDal::new();
+        let result = update_document_content(
+            &dal,
+            Uuid::new_v4(),
+            &UpdateDocumentContentRequest {
+                content: "content".to_string(),
+            },
+        )
+        .await;
+        assert!(result.is_err());
+        assert_eq!(result.unwrap_err().status, NanoServiceErrorStatus::NotFound);
     }
 }

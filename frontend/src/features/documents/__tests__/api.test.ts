@@ -5,6 +5,8 @@ import {
   getDocumentApi,
   updateDocumentApi,
   deleteDocumentApi,
+  getDocumentContentApi,
+  updateDocumentContentApi,
 } from "../api";
 import { useAuthStore } from "#/features/auth/store";
 
@@ -203,5 +205,101 @@ describe("deleteDocumentApi", () => {
     );
 
     await expect(deleteDocumentApi("bad-id")).rejects.toThrow("owner");
+  });
+});
+
+describe("getDocumentContentApi", () => {
+  it("returns content on success", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue({
+        ok: true,
+        json: async () => ({ content: "# Hello" }),
+      })
+    );
+
+    const result = await getDocumentContentApi(mockDoc.id);
+    expect(result.content).toBe("# Hello");
+  });
+
+  it("returns empty content for new document", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue({
+        ok: true,
+        json: async () => ({ content: "" }),
+      })
+    );
+
+    const result = await getDocumentContentApi(mockDoc.id);
+    expect(result.content).toBe("");
+  });
+
+  it("throws on 404", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue({
+        ok: false,
+        json: async () => ({ detail: "Document not found" }),
+      })
+    );
+
+    await expect(getDocumentContentApi("bad-id")).rejects.toThrow("Document not found");
+  });
+
+  it("sends GET with auth header", async () => {
+    const mockFetch = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({ content: "" }),
+    });
+    vi.stubGlobal("fetch", mockFetch);
+
+    await getDocumentContentApi(mockDoc.id);
+    expect(mockFetch).toHaveBeenCalledWith(
+      expect.stringContaining("/content"),
+      expect.objectContaining({
+        method: "GET",
+        headers: expect.objectContaining({
+          Authorization: "Bearer test_token",
+        }),
+      })
+    );
+  });
+});
+
+describe("updateDocumentContentApi", () => {
+  it("resolves void on success", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue({ ok: true, status: 200 })
+    );
+
+    await expect(updateDocumentContentApi(mockDoc.id, "# New content")).resolves.toBeUndefined();
+  });
+
+  it("sends PATCH with content body", async () => {
+    const mockFetch = vi.fn().mockResolvedValue({ ok: true, status: 200 });
+    vi.stubGlobal("fetch", mockFetch);
+
+    await updateDocumentContentApi(mockDoc.id, "# Hello");
+    expect(mockFetch).toHaveBeenCalledWith(
+      expect.stringContaining("/content"),
+      expect.objectContaining({
+        method: "PATCH",
+        body: JSON.stringify({ content: "# Hello" }),
+      })
+    );
+  });
+
+  it("throws on error", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue({
+        ok: false,
+        json: async () => ({ detail: "Document not found" }),
+      })
+    );
+
+    await expect(updateDocumentContentApi("bad-id", "content")).rejects.toThrow("Document not found");
   });
 });

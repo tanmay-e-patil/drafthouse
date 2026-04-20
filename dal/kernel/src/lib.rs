@@ -180,3 +180,13 @@ pub struct DocumentMember {
     pub user_id: Uuid,
     pub role: String,
 }
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct DocumentContentResponse {
+    pub content: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct UpdateDocumentContentRequest {
+    pub content: String,
+}

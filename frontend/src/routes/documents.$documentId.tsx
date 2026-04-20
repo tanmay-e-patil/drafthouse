@@ -4,10 +4,13 @@ import {
   getDocumentApi,
   updateDocumentApi,
   createDocumentApi,
+  getDocumentContentApi,
+  updateDocumentContentApi,
 } from "#/features/documents/api";
 import { useDocumentStore } from "#/features/documents/store";
 import { useAuthStore } from "#/features/auth/store";
 import Sidebar from "#/components/Sidebar";
+import Editor from "#/widgets/editor/Editor";
 import type { Document } from "#/features/documents/api";
 
 export const Route = createFileRoute("/documents/$documentId")({
@@ -24,6 +27,8 @@ function DocumentEditor() {
   const [title, setTitle] = useState("");
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [content, setContent] = useState("");
+  const [contentLoading, setContentLoading] = useState(true);
   const titleRef = useRef<HTMLInputElement>(null);
   const { prependDocument } = useDocumentStore();
 
@@ -33,14 +38,20 @@ function DocumentEditor() {
 
   const fetchDocument = useCallback(async () => {
     setLoading(true);
+    setContentLoading(true);
     try {
-      const doc = await getDocumentApi(documentId);
+      const [doc, contentResp] = await Promise.all([
+        getDocumentApi(documentId),
+        getDocumentContentApi(documentId),
+      ]);
       setDocument(doc);
       setTitle(doc.title);
+      setContent(contentResp.content);
     } catch {
       navigate({ to: "/" });
     } finally {
       setLoading(false);
+      setContentLoading(false);
     }
   }, [documentId, navigate]);
 
@@ -51,10 +62,10 @@ function DocumentEditor() {
   }, [hydrated, accessToken, fetchDocument]);
 
   useEffect(() => {
-    if (!loading && titleRef.current) {
+    if (!loading && !contentLoading && titleRef.current) {
       titleRef.current.focus();
     }
-  }, [loading]);
+  }, [loading, contentLoading]);
 
   async function handleTitleBlur() {
     if (!document || saving) return;
@@ -73,8 +84,13 @@ function DocumentEditor() {
     }
   }
 
-  async function handleKeyDown(e: React.KeyboardEvent) {
-    if ((e.metaKey || e.ctrlKey) && e.key === "n") {
+  async function handleContentSave(newContent: string) {
+    await updateDocumentContentApi(documentId, newContent);
+  }
+
+  async function handleKeyDown(e: Event) {
+    const ke = e as KeyboardEvent;
+    if ((ke.metaKey || ke.ctrlKey) && ke.key === "n") {
       e.preventDefault();
       try {
         const doc = await createDocumentApi();
@@ -87,8 +103,9 @@ function DocumentEditor() {
   }
 
   useEffect(() => {
-    window.addEventListener("keydown", handleKeyDown);
-    return () => window.removeEventListener("keydown", handleKeyDown);
+    const handler = (e: Event) => handleKeyDown(e as KeyboardEvent);
+    window.addEventListener("keydown", handler);
+    return () => window.removeEventListener("keydown", handler);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -97,7 +114,7 @@ function DocumentEditor() {
       <div className="editor-layout">
         <Sidebar />
         <main className="editor-area">
-          <p style={{ padding: "2rem", color: "var(--sea-ink-soft)" }}>Loading...</p>
+          <p style={{ padding: "2rem", color: "var(--ink-soft)" }}>Loading...</p>
         </main>
       </div>
     );
@@ -118,11 +135,17 @@ function DocumentEditor() {
           disabled={saving}
           placeholder="Untitled"
         />
-        <div className="editor-content">
-          <p style={{ color: "var(--sea-ink-soft)" }}>
-            Start writing here...
-          </p>
-        </div>
+        {contentLoading ? (
+          <div className="editor-content">
+            <p style={{ color: "var(--ink-soft)" }}>Loading editor...</p>
+          </div>
+        ) : (
+          <Editor
+            key={documentId}
+            initialContent={content}
+            onSave={handleContentSave}
+          />
+        )}
       </main>
     </div>
   );

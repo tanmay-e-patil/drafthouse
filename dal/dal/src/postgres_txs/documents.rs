@@ -1,7 +1,7 @@
 use super::auth::SqlxPostGresDescriptor;
 use crate::documents_txs::{
-    CountDocumentsByOwner, CreateDocument, DeleteDocument, GetDocumentById, ListDocumentsByOwner,
-    UpdateDocument,
+    CountDocumentsByOwner, CreateDocument, DeleteDocument, GetDocumentById, GetDocumentContent,
+    ListDocumentsByOwner, UpdateDocument, UpdateDocumentContent,
 };
 use dal_tx_impl::impl_transaction;
 use kernel::{Document, NewDocument};
@@ -115,4 +115,39 @@ async fn count_documents_by_owner(&self, owner_id: uuid::Uuid) -> Result<i64, Na
         })?;
 
     Ok(row.0)
+}
+
+#[impl_transaction(SqlxPostGresDescriptor, GetDocumentContent, get_document_content)]
+async fn get_document_content(&self, id: uuid::Uuid) -> Result<Option<String>, NanoServiceError> {
+    let row: Option<(Option<String>,)> =
+        sqlx::query_as("SELECT content FROM documents WHERE id = $1")
+            .bind(id)
+            .fetch_optional(&self.pool)
+            .await
+            .map_err(|e| {
+                NanoServiceError::new(
+                    format!("Failed to get document content: {}", e),
+                    NanoServiceErrorStatus::InternalServerError,
+                )
+            })?;
+
+    Ok(row.map(|(c,)| c.unwrap_or_default()))
+}
+
+#[impl_transaction(SqlxPostGresDescriptor, UpdateDocumentContent, update_document_content)]
+async fn update_document_content(
+    &self,
+    id: uuid::Uuid,
+    content: String,
+) -> Result<(), NanoServiceError> {
+    utils::safe_eject!(
+        sqlx::query("UPDATE documents SET content = $1, updated_at = now() WHERE id = $2")
+            .bind(&content)
+            .bind(id)
+            .execute(&self.pool)
+            .await,
+        NanoServiceErrorStatus::InternalServerError,
+        "Failed to update document content"
+    )?;
+    Ok(())
 }
