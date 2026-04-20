@@ -8,7 +8,10 @@ use testcontainers_modules::{
     postgres::Postgres,
     testcontainers::{ContainerAsync, runners::AsyncRunner},
 };
-use wiremock::{Mock, MockServer, ResponseTemplate, matchers::{method, path}};
+use wiremock::{
+    Mock, MockServer, ResponseTemplate,
+    matchers::{method, path},
+};
 
 struct TestEnv {
     pool: PgPool,
@@ -25,7 +28,10 @@ impl TestEnv {
             .run(&pool)
             .await
             .unwrap();
-        Self { pool, _container: container }
+        Self {
+            pool,
+            _container: container,
+        }
     }
 }
 
@@ -153,7 +159,9 @@ async fn verify_email_success() {
 
     let req = test::TestRequest::post()
         .uri("/auth/verify-email")
-        .set_json(VerifyEmailRequest { token: raw_token.into() })
+        .set_json(VerifyEmailRequest {
+            token: raw_token.into(),
+        })
         .to_request();
 
     let resp = test::call_service(&app, req).await;
@@ -165,7 +173,10 @@ async fn verify_email_success() {
             .fetch_one(&env.pool)
             .await
             .unwrap();
-    assert!(verified_at.is_some(), "user should be marked verified in DB");
+    assert!(
+        verified_at.is_some(),
+        "user should be marked verified in DB"
+    );
 }
 
 #[tokio::test]
@@ -175,7 +186,9 @@ async fn verify_email_invalid_token_returns_400() {
 
     let req = test::TestRequest::post()
         .uri("/auth/verify-email")
-        .set_json(VerifyEmailRequest { token: "nonexistent_token".into() })
+        .set_json(VerifyEmailRequest {
+            token: "nonexistent_token".into(),
+        })
         .to_request();
 
     let resp = test::call_service(&app, req).await;
@@ -212,7 +225,9 @@ async fn verify_email_expired_token_returns_400() {
 
     let req = test::TestRequest::post()
         .uri("/auth/verify-email")
-        .set_json(VerifyEmailRequest { token: raw_token.into() })
+        .set_json(VerifyEmailRequest {
+            token: raw_token.into(),
+        })
         .to_request();
 
     let resp = test::call_service(&app, req).await;
@@ -228,7 +243,9 @@ async fn resend_unknown_email_returns_400() {
 
     let req = test::TestRequest::post()
         .uri("/auth/resend-verification")
-        .set_json(ResendVerificationRequest { email: "ghost@example.com".into() })
+        .set_json(ResendVerificationRequest {
+            email: "ghost@example.com".into(),
+        })
         .to_request();
 
     let resp = test::call_service(&app, req).await;
@@ -252,7 +269,9 @@ async fn resend_already_verified_returns_400() {
 
     let req = test::TestRequest::post()
         .uri("/auth/resend-verification")
-        .set_json(ResendVerificationRequest { email: "alreadyverified@example.com".into() })
+        .set_json(ResendVerificationRequest {
+            email: "alreadyverified@example.com".into(),
+        })
         .to_request();
 
     let resp = test::call_service(&app, req).await;
@@ -267,7 +286,9 @@ async fn resend_success() {
     let mock_server = MockServer::start().await;
     Mock::given(method("POST"))
         .and(path("/emails"))
-        .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({"id": "test-id"})))
+        .respond_with(
+            ResponseTemplate::new(200).set_body_json(serde_json::json!({"id": "test-id"})),
+        )
         .mount(&mock_server)
         .await;
 
@@ -277,18 +298,18 @@ async fn resend_success() {
 
     let app = make_app!(env);
 
-    sqlx::query(
-        "INSERT INTO users (email, password_hash) VALUES ($1, $2)",
-    )
-    .bind("resend@example.com")
-    .bind("irrelevant_hash")
-    .execute(&env.pool)
-    .await
-    .unwrap();
+    sqlx::query("INSERT INTO users (email, password_hash) VALUES ($1, $2)")
+        .bind("resend@example.com")
+        .bind("irrelevant_hash")
+        .execute(&env.pool)
+        .await
+        .unwrap();
 
     let req = test::TestRequest::post()
         .uri("/auth/resend-verification")
-        .set_json(ResendVerificationRequest { email: "resend@example.com".into() })
+        .set_json(ResendVerificationRequest {
+            email: "resend@example.com".into(),
+        })
         .to_request();
 
     let resp = test::call_service(&app, req).await;
