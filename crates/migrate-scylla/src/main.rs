@@ -21,7 +21,7 @@ async fn main() -> Result<()> {
         .context("read migrations/scylla")?
         .filter_map(|e| e.ok())
         .map(|e| e.path())
-        .filter(|p| p.extension().map_or(false, |x| x == "cql"))
+        .filter(|p| p.extension().is_some_and(|x| x == "cql"))
         .collect();
     paths.sort();
 
