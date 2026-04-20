@@ -27,7 +27,7 @@ function VerifyEmail() {
       return;
     }
 
-    fetch(`${API_BASE}/auth/verify`, {
+    fetch(`${API_BASE}/auth/verify-email`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ token }),

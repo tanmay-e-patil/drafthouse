@@ -1,5 +1,6 @@
 use kernel::{
-    EmailVerificationToken, NewEmailVerificationToken, NewRefreshToken, NewUser, RefreshToken, User,
+    EmailVerificationToken, NewEmailVerificationToken, NewPasswordResetToken, NewRefreshToken,
+    NewUser, PasswordResetToken, RefreshToken, User,
 };
 
 crate::define_dal_transactions!(
@@ -13,5 +14,9 @@ crate::define_dal_transactions!(
     CreateRefreshToken => create_refresh_token(new_token: NewRefreshToken) -> RefreshToken,
     GetRefreshTokenByHash => get_refresh_token_by_hash(token_hash: String) -> Option<RefreshToken>,
     DeleteRefreshToken => delete_refresh_token(token_hash: String) -> (),
-    DeleteAllRefreshTokensForUser => delete_all_refresh_tokens_for_user(user_id: uuid::Uuid) -> ()
+    DeleteAllRefreshTokensForUser => delete_all_refresh_tokens_for_user(user_id: uuid::Uuid) -> (),
+    CreatePasswordResetToken => create_password_reset_token(new_token: NewPasswordResetToken) -> PasswordResetToken,
+    GetPasswordResetToken => get_password_reset_token(token_hash: String) -> Option<PasswordResetToken>,
+    MarkPasswordResetTokenUsed => mark_password_reset_token_used(token_hash: String) -> (),
+    UpdateUserPassword => update_user_password(user_id: uuid::Uuid, password_hash: String) -> ()
 );
