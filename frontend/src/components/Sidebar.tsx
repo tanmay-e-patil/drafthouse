@@ -6,6 +6,7 @@ import {
   createDocumentApi,
 } from "#/features/documents/api";
 import { useDocumentStore } from "#/features/documents/store";
+import { useAuthStore } from "#/features/auth/store";
 import type { Document } from "#/features/documents/api";
 
 function formatRelativeTime(dateStr: string): string {
@@ -38,6 +39,8 @@ export default function Sidebar() {
     setLoading,
   } = useDocumentStore();
 
+  const hydrated = useAuthStore((s) => s.hydrated);
+  const accessToken = useAuthStore((s) => s.accessToken);
   const hasFetched = useRef(false);
 
   const fetchDocuments = useCallback(
@@ -65,12 +68,12 @@ export default function Sidebar() {
   );
 
   useEffect(() => {
-    if (!hasFetched.current) {
+    if (hydrated && accessToken && !hasFetched.current) {
       hasFetched.current = true;
       fetchDocuments();
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, []);
+  }, [hydrated, accessToken]);
 
   async function handleCreate() {
     try {
