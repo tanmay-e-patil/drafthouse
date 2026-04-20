@@ -941,14 +941,46 @@ dependencies = [
 [[package]]
 name = "documents-core"
 version = "0.1.0"
+dependencies = [
+ "chrono",
+ "dal",
+ "kernel",
+ "tokio",
+ "tracing",
+ "utils",
+ "uuid",
+]
 
 [[package]]
 name = "documents-dal"
 version = "0.1.0"
+dependencies = [
+ "dal",
+ "kernel",
+ "utils",
+]
 
 [[package]]
 name = "documents-networking"
 version = "0.1.0"
+dependencies = [
+ "actix-web",
+ "auth-core",
+ "auth-networking",
+ "chrono",
+ "dal",
+ "documents-core",
+ "kernel",
+ "serde",
+ "serde_json",
+ "serial_test",
+ "sqlx",
+ "testcontainers-modules",
+ "tokio",
+ "tracing",
+ "utils",
+ "uuid",
+]
 
 [[package]]
 name = "dotenvy"
@@ -1690,6 +1722,7 @@ dependencies = [
  "actix-web",
  "auth-networking",
  "dal",
+ "documents-networking",
  "sqlx",
  "tokio",
  "tracing",

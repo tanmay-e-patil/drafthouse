@@ -39,6 +39,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             .wrap(actix_middleware::Logger::default())
             .wrap(cors)
             .configure(|cfg| auth_networking::routes::configure(cfg, dal.clone()))
+            .configure(|cfg| documents_networking::routes::configure(cfg, dal.clone()))
     })
     .bind(&bind_addr)?
     .run()

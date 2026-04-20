@@ -4,3 +4,6 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
+dal = { path = "../../../dal/dal" }
+kernel = { path = "../../../dal/kernel" }
+utils = { path = "../../../crates/utils" }

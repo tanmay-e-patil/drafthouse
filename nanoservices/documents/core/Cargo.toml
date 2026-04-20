@@ -4,3 +4,12 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
+kernel = { path = "../../../dal/kernel" }
+utils = { path = "../../../crates/utils" }
+dal = { path = "../../../dal/dal" }
+uuid = { workspace = true }
+tracing = { workspace = true }
+
+[dev-dependencies]
+tokio = { workspace = true }
+chrono = { workspace = true }
