@@ -11,7 +11,7 @@ vi.mock("@tanstack/react-router", () => ({
 
 beforeEach(() => {
   useDocumentStore.getState().reset();
-  useAuthStore.getState().setAccessToken("test_token");
+  useAuthStore.setState({ accessToken: "test_token", hydrated: true });
   vi.restoreAllMocks();
 });
 
