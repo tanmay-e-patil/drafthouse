@@ -18,12 +18,18 @@ function DocumentEditor() {
   const { documentId } = useParams({ strict: false }) as { documentId: string };
   const navigate = useNavigate();
   const accessToken = useAuthStore((s) => s.accessToken);
+  const hydrated = useAuthStore((s) => s.hydrated);
+  const hydrate = useAuthStore((s) => s.hydrate);
   const [document, setDocument] = useState<Document | null>(null);
   const [title, setTitle] = useState("");
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const titleRef = useRef<HTMLInputElement>(null);
   const { prependDocument } = useDocumentStore();
+
+  useEffect(() => {
+    hydrate();
+  }, [hydrate]);
 
   const fetchDocument = useCallback(async () => {
     setLoading(true);
@@ -39,10 +45,10 @@ function DocumentEditor() {
   }, [documentId, navigate]);
 
   useEffect(() => {
-    if (accessToken) {
+    if (hydrated && accessToken) {
       fetchDocument();
     }
-  }, [accessToken, fetchDocument]);
+  }, [hydrated, accessToken, fetchDocument]);
 
   useEffect(() => {
     if (!loading && titleRef.current) {

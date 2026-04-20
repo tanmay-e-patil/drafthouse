@@ -1,3 +1,5 @@
+CREATE TYPE member_role AS ENUM ('editor', 'viewer');
+
 CREATE TABLE documents (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     owner_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
@@ -13,9 +15,8 @@ CREATE INDEX idx_documents_updated ON documents(owner_id, updated_at DESC);
 CREATE TABLE document_members (
     doc_id UUID NOT NULL REFERENCES documents(id) ON DELETE CASCADE,
     user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-    role TEXT NOT NULL DEFAULT 'viewer',
-    PRIMARY KEY (doc_id, user_id),
-    CONSTRAINT document_members_role_check CHECK (role IN ('editor', 'viewer'))
+    role member_role NOT NULL DEFAULT 'viewer',
+    PRIMARY KEY (doc_id, user_id)
 );
 
 CREATE INDEX idx_document_members_user ON document_members(user_id);
