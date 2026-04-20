@@ -1,8 +1,12 @@
 pub mod email;
+pub mod forgot_password;
 pub mod jwt;
 pub mod login;
+pub mod logout;
+pub mod logout_all;
 pub mod password;
 pub mod register;
 pub mod resend;
+pub mod reset_password;
 pub mod token;
 pub mod verify;

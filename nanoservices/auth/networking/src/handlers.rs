@@ -1,6 +1,9 @@
 use actix_web::{HttpRequest, HttpResponse, cookie::Cookie, web};
 use dal::postgres_txs::SqlxPostGresDescriptor;
-use kernel::{LoginRequest, RegisterRequest, ResendVerificationRequest, VerifyEmailRequest};
+use kernel::{
+    ForgotPasswordRequest, LoginRequest, RegisterRequest, ResendVerificationRequest,
+    ResetPasswordRequest, VerifyEmailRequest,
+};
 use utils::errors::{NanoServiceError, NanoServiceErrorStatus};
 
 type DalData = web::Data<SqlxPostGresDescriptor>;
@@ -105,7 +108,7 @@ pub async fn logout(req: HttpRequest) -> Result<HttpResponse, NanoServiceError> 
     let dal = get_dal(&req)?;
 
     if let Some(cookie) = req.cookie(REFRESH_COOKIE) {
-        auth_core::login::logout(dal, cookie.value()).await?;
+        auth_core::logout::logout(dal, cookie.value()).await?;
     }
 
     let expired_cookie = Cookie::build(REFRESH_COOKIE, "")
@@ -121,7 +124,7 @@ pub async fn logout(req: HttpRequest) -> Result<HttpResponse, NanoServiceError> 
 pub async fn logout_all(req: HttpRequest) -> Result<HttpResponse, NanoServiceError> {
     let dal = get_dal(&req)?;
     let claims = crate::middleware::extract_verified_jwt(&req).await?;
-    auth_core::login::logout_all(dal, claims.sub).await?;
+    auth_core::logout_all::logout_all(dal, claims.sub).await?;
 
     let expired_cookie = Cookie::build(REFRESH_COOKIE, "")
         .http_only(true)
@@ -131,4 +134,23 @@ pub async fn logout_all(req: HttpRequest) -> Result<HttpResponse, NanoServiceErr
         .finish();
 
     Ok(HttpResponse::Ok().cookie(expired_cookie).finish())
+}
+
+pub async fn forgot_password(
+    req: HttpRequest,
+    body: web::Json<ForgotPasswordRequest>,
+) -> Result<HttpResponse, NanoServiceError> {
+    let dal = get_dal(&req)?;
+    let result = auth_core::forgot_password::forgot_password(dal, &body.email).await?;
+    Ok(HttpResponse::Ok().json(result))
+}
+
+pub async fn reset_password(
+    req: HttpRequest,
+    body: web::Json<ResetPasswordRequest>,
+) -> Result<HttpResponse, NanoServiceError> {
+    let dal = get_dal(&req)?;
+    let result =
+        auth_core::reset_password::reset_password(dal, &body.token, &body.new_password).await?;
+    Ok(HttpResponse::Ok().json(result))
 }

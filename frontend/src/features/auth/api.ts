@@ -49,3 +49,37 @@ export async function logoutApi(): Promise<void> {
     credentials: "include",
   });
 }
+
+export async function logoutAllApi(): Promise<void> {
+  const res = await fetch(`${API_BASE}/auth/logout-all`, {
+    method: "POST",
+    credentials: "include",
+  });
+  if (!res.ok) {
+    throw new Error("Logout all failed");
+  }
+}
+
+export async function forgotPasswordApi(email: string): Promise<void> {
+  const res = await fetch(`${API_BASE}/auth/forgot-password`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ email }),
+  });
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({}));
+    throw new Error(data.detail ?? "Forgot password failed");
+  }
+}
+
+export async function resetPasswordApi(token: string, new_password: string): Promise<void> {
+  const res = await fetch(`${API_BASE}/auth/reset-password`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ token, new_password }),
+  });
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({}));
+    throw new Error(data.detail ?? "Reset password failed");
+  }
+}

@@ -1,11 +1,14 @@
 use crate::auth_txs::{
-    CreateEmailVerificationToken, CreateRefreshToken, CreateUser, DeleteAllRefreshTokensForUser,
-    DeleteRefreshToken, GetEmailVerificationToken, GetRefreshTokenByHash, GetUserByEmail,
-    GetUserById, InvalidateEmailVerificationTokens, MarkUserVerified,
+    CreateEmailVerificationToken, CreatePasswordResetToken, CreateRefreshToken, CreateUser,
+    DeleteAllRefreshTokensForUser, DeleteRefreshToken, GetEmailVerificationToken,
+    GetPasswordResetToken, GetRefreshTokenByHash, GetUserByEmail, GetUserById,
+    InvalidateEmailVerificationTokens, MarkPasswordResetTokenUsed, MarkUserVerified,
+    UpdateUserPassword,
 };
 use dal_tx_impl::impl_transaction;
 use kernel::{
-    EmailVerificationToken, NewEmailVerificationToken, NewRefreshToken, NewUser, RefreshToken, User,
+    EmailVerificationToken, NewEmailVerificationToken, NewPasswordResetToken, NewRefreshToken,
+    NewUser, PasswordResetToken, RefreshToken, User,
 };
 use sqlx::PgPool;
 use utils::errors::{NanoServiceError, NanoServiceErrorStatus};
@@ -206,6 +209,86 @@ async fn delete_all_refresh_tokens_for_user(
             .await,
         NanoServiceErrorStatus::InternalServerError,
         "Failed to delete all refresh tokens for user"
+    )?;
+    Ok(())
+}
+
+#[impl_transaction(
+    SqlxPostGresDescriptor,
+    CreatePasswordResetToken,
+    create_password_reset_token
+)]
+async fn create_password_reset_token(
+    &self,
+    new_token: NewPasswordResetToken,
+) -> Result<PasswordResetToken, NanoServiceError> {
+    let row = sqlx::query_as::<_, PasswordResetToken>(
+        "INSERT INTO password_reset_tokens (user_id, token_hash, expires_at) VALUES ($1, $2, $3) RETURNING id, user_id, token_hash, expires_at, used_at",
+    )
+    .bind(new_token.user_id)
+    .bind(&new_token.token_hash)
+    .bind(new_token.expires_at)
+    .fetch_one(&self.pool)
+    .await
+    .map_err(|e| NanoServiceError::new(format!("Failed to create password reset token: {}", e), NanoServiceErrorStatus::InternalServerError))?;
+
+    Ok(row)
+}
+
+#[impl_transaction(
+    SqlxPostGresDescriptor,
+    GetPasswordResetToken,
+    get_password_reset_token
+)]
+async fn get_password_reset_token(
+    &self,
+    token_hash: String,
+) -> Result<Option<PasswordResetToken>, NanoServiceError> {
+    let row = sqlx::query_as::<_, PasswordResetToken>(
+        "SELECT id, user_id, token_hash, expires_at, used_at FROM password_reset_tokens WHERE token_hash = $1",
+    )
+    .bind(&token_hash)
+    .fetch_optional(&self.pool)
+    .await
+    .map_err(|e| NanoServiceError::new(format!("Failed to get password reset token: {}", e), NanoServiceErrorStatus::InternalServerError))?;
+
+    Ok(row)
+}
+
+#[impl_transaction(
+    SqlxPostGresDescriptor,
+    MarkPasswordResetTokenUsed,
+    mark_password_reset_token_used
+)]
+async fn mark_password_reset_token_used(
+    &self,
+    token_hash: String,
+) -> Result<(), NanoServiceError> {
+    utils::safe_eject!(
+        sqlx::query("UPDATE password_reset_tokens SET used_at = now() WHERE token_hash = $1")
+            .bind(&token_hash)
+            .execute(&self.pool)
+            .await,
+        NanoServiceErrorStatus::InternalServerError,
+        "Failed to mark password reset token as used"
+    )?;
+    Ok(())
+}
+
+#[impl_transaction(SqlxPostGresDescriptor, UpdateUserPassword, update_user_password)]
+async fn update_user_password(
+    &self,
+    user_id: uuid::Uuid,
+    new_password_hash: String,
+) -> Result<(), NanoServiceError> {
+    utils::safe_eject!(
+        sqlx::query("UPDATE users SET password_hash = $1 WHERE id = $2")
+            .bind(&new_password_hash)
+            .bind(user_id)
+            .execute(&self.pool)
+            .await,
+        NanoServiceErrorStatus::InternalServerError,
+        "Failed to update user password"
     )?;
     Ok(())
 }
