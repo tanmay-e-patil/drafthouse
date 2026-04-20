@@ -1,6 +1,6 @@
 use actix_web::{HttpRequest, HttpResponse, web};
 use dal::postgres_txs::SqlxPostGresDescriptor;
-use kernel::{CreateDocumentRequest, UpdateDocumentRequest};
+use kernel::{CreateDocumentRequest, UpdateDocumentContentRequest, UpdateDocumentRequest};
 use utils::errors::{NanoServiceError, NanoServiceErrorStatus};
 use uuid::Uuid;
 
@@ -85,4 +85,23 @@ pub async fn delete_document(
 pub struct ListDocumentsQuery {
     pub cursor: Option<String>,
     pub limit: Option<i32>,
+}
+
+pub async fn get_document_content(
+    req: HttpRequest,
+    path: web::Path<Uuid>,
+) -> Result<HttpResponse, NanoServiceError> {
+    let dal = get_dal(&req)?;
+    let result = documents_core::get_document_content(dal, *path).await?;
+    Ok(HttpResponse::Ok().json(result))
+}
+
+pub async fn update_document_content(
+    req: HttpRequest,
+    path: web::Path<Uuid>,
+    body: web::Json<UpdateDocumentContentRequest>,
+) -> Result<HttpResponse, NanoServiceError> {
+    let dal = get_dal(&req)?;
+    documents_core::update_document_content(dal, *path, &body).await?;
+    Ok(HttpResponse::Ok().finish())
 }

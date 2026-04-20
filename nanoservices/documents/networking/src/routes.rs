@@ -10,6 +10,14 @@ pub fn configure(cfg: &mut web::ServiceConfig, dal: web::Data<SqlxPostGresDescri
             .route("", web::get().to(handlers::list_documents))
             .route("/{id}", web::get().to(handlers::get_document))
             .route("/{id}", web::patch().to(handlers::update_document))
-            .route("/{id}", web::delete().to(handlers::delete_document)),
+            .route("/{id}", web::delete().to(handlers::delete_document))
+            .route(
+                "/{id}/content",
+                web::get().to(handlers::get_document_content),
+            )
+            .route(
+                "/{id}/content",
+                web::patch().to(handlers::update_document_content),
+            ),
     );
 }

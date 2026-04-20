@@ -21,6 +21,10 @@ export interface ApiError {
   detail: string;
 }
 
+export interface DocumentContentResponse {
+  content: string;
+}
+
 function getAuthHeaders(): Record<string, string> {
   const token = useAuthStore.getState().accessToken;
   return {
@@ -102,5 +106,34 @@ export async function deleteDocumentApi(id: string): Promise<void> {
     const data = await res.json().catch(() => ({}));
     const err = data as ApiError;
     throw new Error(err.detail ?? "Failed to delete document");
+  }
+}
+
+export async function getDocumentContentApi(
+  id: string
+): Promise<DocumentContentResponse> {
+  const res = await fetch(`${API_BASE}/documents/${id}/content`, {
+    method: "GET",
+    headers: getAuthHeaders(),
+    credentials: "include",
+  });
+  return handleResponse<DocumentContentResponse>(res, "Failed to get document content");
+}
+
+export async function updateDocumentContentApi(
+  id: string,
+  content: string
+): Promise<void> {
+  const res = await fetch(`${API_BASE}/documents/${id}/content`, {
+    method: "PATCH",
+    headers: getAuthHeaders(),
+    body: JSON.stringify({ content }),
+    credentials: "include",
+  });
+
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({}));
+    const err = data as ApiError;
+    throw new Error(err.detail ?? "Failed to save document content");
   }
 }
