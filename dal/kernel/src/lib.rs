@@ -72,3 +72,35 @@ pub struct JwtClaims {
     pub exp: usize,
     pub iat: usize,
 }
+
+#[derive(Debug, Clone, Serialize, Deserialize, sqlx::FromRow)]
+pub struct RefreshToken {
+    pub id: Uuid,
+    pub user_id: Uuid,
+    pub token_hash: String,
+    pub expires_at: DateTime<Utc>,
+}
+
+pub struct NewRefreshToken {
+    pub user_id: Uuid,
+    pub token_hash: String,
+    pub expires_at: DateTime<Utc>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct LoginRequest {
+    pub email: String,
+    pub password: String,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct LoginResponse {
+    pub access_token: String,
+    pub token_type: String,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct RefreshResponse {
+    pub access_token: String,
+    pub token_type: String,
+}
