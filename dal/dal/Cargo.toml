@@ -4,3 +4,11 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
+kernel = { path = "../kernel" }
+utils = { path = "../../crates/utils" }
+dal-tx-impl = { path = "../../crates/dal-tx-impl" }
+sqlx = { workspace = true }
+uuid = { workspace = true }
+chrono = { workspace = true }
+async-trait = "0.1"
+tokio = { workspace = true }

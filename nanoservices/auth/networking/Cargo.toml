@@ -4,3 +4,20 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
+kernel = { path = "../../../dal/kernel" }
+utils = { path = "../../../crates/utils" }
+dal = { path = "../../../dal/dal" }
+auth-core = { path = "../core" }
+actix-web = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+tracing = { workspace = true }
+
+[dev-dependencies]
+tokio = { workspace = true }
+chrono = { workspace = true }
+testcontainers-modules = { version = "0.11", features = ["postgres"] }
+wiremock = "0.6"
+serial_test = "3"
+auth-core = { path = "../core" }
+sqlx = { workspace = true }

@@ -4,3 +4,12 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
+actix-web = { workspace = true }
+actix-cors = "0.7"
+sqlx = { workspace = true }
+tracing = { workspace = true }
+tracing-subscriber = { workspace = true }
+tokio = { workspace = true }
+dal = { path = "../dal/dal" }
+utils = { path = "../crates/utils" }
+auth-networking = { path = "../nanoservices/auth/networking" }
