@@ -18,6 +18,7 @@ pub fn configure(cfg: &mut web::ServiceConfig, dal: web::Data<SqlxPostGresDescri
             .route(
                 "/{id}/content",
                 web::patch().to(handlers::update_document_content),
-            ),
+            )
+            .route("/{id}/ws-ticket", web::post().to(handlers::issue_ws_ticket)),
     );
 }

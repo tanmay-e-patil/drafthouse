@@ -9,7 +9,10 @@ utils = { path = "../../../crates/utils" }
 dal = { path = "../../../dal/dal" }
 uuid = { workspace = true }
 tracing = { workspace = true }
+chrono = { workspace = true }
+sha2 = { workspace = true }
+hex = { workspace = true }
+rand = { workspace = true }
 
 [dev-dependencies]
 tokio = { workspace = true }
-chrono = { workspace = true }

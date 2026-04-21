@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import { useCollabStore, type ConnectionStatus } from "#/features/collab/store";
 import { EditorState } from "@codemirror/state";
 import { EditorView, keymap, lineNumbers, highlightActiveLineGutter, highlightSpecialChars, drawSelection, highlightActiveLine } from "@codemirror/view";
 import { defaultKeymap, history, historyKeymap } from "@codemirror/commands";
@@ -16,7 +17,22 @@ interface EditorProps {
 
 const DEBOUNCE_MS = 500;
 
+const STATUS_LABEL: Record<ConnectionStatus, string> = {
+  connecting: "Connecting...",
+  connected: "Synced",
+  syncing: "Syncing...",
+  disconnected: "Working offline",
+};
+
+const STATUS_COLOR: Record<ConnectionStatus, string> = {
+  connecting: "var(--color-yellow-500, #eab308)",
+  connected: "var(--color-green-500, #22c55e)",
+  syncing: "var(--color-yellow-500, #eab308)",
+  disconnected: "var(--color-red-500, #ef4444)",
+};
+
 export default function Editor({ initialContent, onSave }: EditorProps) {
+  const collabStatus = useCollabStore((s) => s.status);
   const editorRef = useRef<HTMLDivElement>(null);
   const viewRef = useRef<EditorView | null>(null);
   const [mode, setMode] = useState<"edit" | "preview">("edit");
@@ -168,6 +184,19 @@ export default function Editor({ initialContent, onSave }: EditorProps) {
         </button>
         {saving && <span className="save-indicator saving">Saving...</span>}
         {!saving && hasUnsavedChanges && <span className="save-indicator unsaved">Unsaved</span>}
+        <span className="connection-status" title={STATUS_LABEL[collabStatus]}>
+          <span
+            style={{
+              display: "inline-block",
+              width: 8,
+              height: 8,
+              borderRadius: "50%",
+              backgroundColor: STATUS_COLOR[collabStatus],
+              marginRight: 4,
+            }}
+          />
+          {STATUS_LABEL[collabStatus]}
+        </span>
       </div>
       <div ref={editorRef} className="cm-editor-container" />
     </div>

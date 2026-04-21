@@ -1,10 +1,11 @@
 use super::auth::SqlxPostGresDescriptor;
 use crate::documents_txs::{
-    CountDocumentsByOwner, CreateDocument, DeleteDocument, GetDocumentById, GetDocumentContent,
-    ListDocumentsByOwner, UpdateDocument, UpdateDocumentContent,
+    CountDocumentsByOwner, CreateDocument, CreateWsTicket, DeleteDocument, DeleteWsTicket,
+    GetDocumentById, GetDocumentContent, GetWsTicketByHash, ListDocumentsByOwner, UpdateDocument,
+    UpdateDocumentContent,
 };
 use dal_tx_impl::impl_transaction;
-use kernel::{Document, NewDocument};
+use kernel::{Document, NewDocument, NewWsTicket, WsTicket};
 use utils::errors::{NanoServiceError, NanoServiceErrorStatus};
 
 #[impl_transaction(SqlxPostGresDescriptor, CreateDocument, create_document)]
@@ -148,6 +149,54 @@ async fn update_document_content(
             .await,
         NanoServiceErrorStatus::InternalServerError,
         "Failed to update document content"
+    )?;
+    Ok(())
+}
+
+#[impl_transaction(SqlxPostGresDescriptor, CreateWsTicket, create_ws_ticket)]
+async fn create_ws_ticket(&self, new_ticket: NewWsTicket) -> Result<WsTicket, NanoServiceError> {
+    let row = sqlx::query_as::<_, WsTicket>(
+        "INSERT INTO ws_tickets (token_hash, doc_id, user_id, expires_at) VALUES ($1, $2, $3, $4) RETURNING token_hash, doc_id, user_id, expires_at",
+    )
+    .bind(&new_ticket.token_hash)
+    .bind(new_ticket.doc_id)
+    .bind(new_ticket.user_id)
+    .bind(new_ticket.expires_at)
+    .fetch_one(&self.pool)
+    .await
+    .map_err(|e| NanoServiceError::new(format!("Failed to create ws ticket: {}", e), NanoServiceErrorStatus::InternalServerError))?;
+    Ok(row)
+}
+
+#[impl_transaction(SqlxPostGresDescriptor, GetWsTicketByHash, get_ws_ticket_by_hash)]
+async fn get_ws_ticket_by_hash(
+    &self,
+    token_hash: String,
+) -> Result<Option<WsTicket>, NanoServiceError> {
+    let row = sqlx::query_as::<_, WsTicket>(
+        "SELECT token_hash, doc_id, user_id, expires_at FROM ws_tickets WHERE token_hash = $1",
+    )
+    .bind(&token_hash)
+    .fetch_optional(&self.pool)
+    .await
+    .map_err(|e| {
+        NanoServiceError::new(
+            format!("Failed to get ws ticket: {}", e),
+            NanoServiceErrorStatus::InternalServerError,
+        )
+    })?;
+    Ok(row)
+}
+
+#[impl_transaction(SqlxPostGresDescriptor, DeleteWsTicket, delete_ws_ticket)]
+async fn delete_ws_ticket(&self, token_hash: String) -> Result<(), NanoServiceError> {
+    utils::safe_eject!(
+        sqlx::query("DELETE FROM ws_tickets WHERE token_hash = $1")
+            .bind(&token_hash)
+            .execute(&self.pool)
+            .await,
+        NanoServiceErrorStatus::InternalServerError,
+        "Failed to delete ws ticket"
     )?;
     Ok(())
 }

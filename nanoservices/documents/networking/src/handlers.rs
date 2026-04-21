@@ -105,3 +105,13 @@ pub async fn update_document_content(
     documents_core::update_document_content(dal, *path, &body).await?;
     Ok(HttpResponse::Ok().finish())
 }
+
+pub async fn issue_ws_ticket(
+    req: HttpRequest,
+    path: web::Path<Uuid>,
+) -> Result<HttpResponse, NanoServiceError> {
+    let dal = get_dal(&req)?;
+    let claims = crate::middleware::extract_verified_jwt(&req).await?;
+    let resp = documents_core::issue_ws_ticket(dal, *path, claims.sub).await?;
+    Ok(HttpResponse::Created().json(resp))
+}
