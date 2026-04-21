@@ -67,7 +67,7 @@ macro_rules! create_verified_user {
     ($pool:expr, $email:expr, $password:expr) => {{
         let hash = auth_core::password::hash_password($password).unwrap();
         sqlx::query(
-            "INSERT INTO users (email, password_hash, email_verified_at) VALUES ($1, $2, NOW())",
+            "INSERT INTO users (email, password_hash, email_verified_at, welcome_doc_created) VALUES ($1, $2, NOW(), true)",
         )
         .bind($email)
         .bind(&hash)

@@ -64,6 +64,36 @@ describe("loginApi", () => {
       expect.objectContaining({ credentials: "include" })
     );
   });
+
+  it("returns welcome_doc_id when present in response", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue({
+        ok: true,
+        json: async () => ({
+          access_token: "jwt_token",
+          token_type: "Bearer",
+          welcome_doc_id: "550e8400-e29b-41d4-a716-446655440000",
+        }),
+      })
+    );
+
+    const result = await loginApi("new@example.com", "password123");
+    expect(result.welcome_doc_id).toBe("550e8400-e29b-41d4-a716-446655440000");
+  });
+
+  it("welcome_doc_id is absent on returning user login", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue({
+        ok: true,
+        json: async () => ({ access_token: "jwt_token", token_type: "Bearer" }),
+      })
+    );
+
+    const result = await loginApi("existing@example.com", "password123");
+    expect(result.welcome_doc_id).toBeUndefined();
+  });
 });
 
 describe("refreshApi", () => {

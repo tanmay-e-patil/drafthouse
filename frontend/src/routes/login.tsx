@@ -21,7 +21,14 @@ function Login() {
     try {
       const data = await loginApi(email, password);
       setAccessToken(data.access_token);
-      navigate({ to: "/" });
+      if (data.welcome_doc_id) {
+        navigate({
+          to: "/documents/$documentId",
+          params: { documentId: data.welcome_doc_id },
+        });
+      } else {
+        navigate({ to: "/" });
+      }
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : "Login failed");
     } finally {

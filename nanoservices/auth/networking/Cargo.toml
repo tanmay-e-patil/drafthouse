@@ -8,6 +8,7 @@ kernel = { path = "../../../dal/kernel" }
 utils = { path = "../../../crates/utils" }
 dal = { path = "../../../dal/dal" }
 auth-core = { path = "../core" }
+documents-core = { path = "../../documents/core" }
 actix-web = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }

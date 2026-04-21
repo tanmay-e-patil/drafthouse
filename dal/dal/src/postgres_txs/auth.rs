@@ -3,7 +3,7 @@ use crate::auth_txs::{
     DeleteAllRefreshTokensForUser, DeleteRefreshToken, GetEmailVerificationToken,
     GetPasswordResetToken, GetRefreshTokenByHash, GetUserByEmail, GetUserById,
     InvalidateEmailVerificationTokens, MarkPasswordResetTokenUsed, MarkUserVerified,
-    UpdateUserPassword,
+    MarkWelcomeDocCreated, UpdateUserPassword,
 };
 use dal_tx_impl::impl_transaction;
 use kernel::{
@@ -20,7 +20,7 @@ pub struct SqlxPostGresDescriptor {
 #[impl_transaction(SqlxPostGresDescriptor, CreateUser, create_user)]
 async fn create_user(&self, new_user: NewUser) -> Result<User, NanoServiceError> {
     let row = sqlx::query_as::<_, User>(
-        "INSERT INTO users (email, password_hash) VALUES ($1, $2) RETURNING id, email, password_hash, email_verified_at, created_at",
+        "INSERT INTO users (email, password_hash) VALUES ($1, $2) RETURNING id, email, password_hash, email_verified_at, created_at, welcome_doc_created",
     )
     .bind(&new_user.email)
     .bind(&new_user.password_hash)
@@ -34,7 +34,7 @@ async fn create_user(&self, new_user: NewUser) -> Result<User, NanoServiceError>
 #[impl_transaction(SqlxPostGresDescriptor, GetUserByEmail, get_user_by_email)]
 async fn get_user_by_email(&self, email: String) -> Result<Option<User>, NanoServiceError> {
     let row = sqlx::query_as::<_, User>(
-        "SELECT id, email, password_hash, email_verified_at, created_at FROM users WHERE email = $1",
+        "SELECT id, email, password_hash, email_verified_at, created_at, welcome_doc_created FROM users WHERE email = $1",
     )
     .bind(&email)
     .fetch_optional(&self.pool)
@@ -47,7 +47,7 @@ async fn get_user_by_email(&self, email: String) -> Result<Option<User>, NanoSer
 #[impl_transaction(SqlxPostGresDescriptor, GetUserById, get_user_by_id)]
 async fn get_user_by_id(&self, id: uuid::Uuid) -> Result<Option<User>, NanoServiceError> {
     let row = sqlx::query_as::<_, User>(
-        "SELECT id, email, password_hash, email_verified_at, created_at FROM users WHERE id = $1",
+        "SELECT id, email, password_hash, email_verified_at, created_at, welcome_doc_created FROM users WHERE id = $1",
     )
     .bind(id)
     .fetch_optional(&self.pool)
@@ -286,6 +286,23 @@ async fn update_user_password(
             .await,
         NanoServiceErrorStatus::InternalServerError,
         "Failed to update user password"
+    )?;
+    Ok(())
+}
+
+#[impl_transaction(
+    SqlxPostGresDescriptor,
+    MarkWelcomeDocCreated,
+    mark_welcome_doc_created
+)]
+async fn mark_welcome_doc_created(&self, user_id: uuid::Uuid) -> Result<(), NanoServiceError> {
+    utils::safe_eject!(
+        sqlx::query("UPDATE users SET welcome_doc_created = true WHERE id = $1")
+            .bind(user_id)
+            .execute(&self.pool)
+            .await,
+        NanoServiceErrorStatus::InternalServerError,
+        "Failed to mark welcome doc created"
     )?;
     Ok(())
 }

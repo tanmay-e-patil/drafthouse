@@ -1,7 +1,7 @@
 use chrono::Utc;
 use dal::{
     CreateRefreshToken, DeleteAllRefreshTokensForUser, DeleteRefreshToken, GetRefreshTokenByHash,
-    GetUserByEmail, GetUserById,
+    GetUserByEmail, GetUserById, MarkWelcomeDocCreated,
 };
 use kernel::{LoginResponse, NewRefreshToken, RefreshResponse};
 use utils::errors::{NanoServiceError, NanoServiceErrorStatus};
@@ -19,9 +19,9 @@ pub async fn login_user<D>(
     dal: &D,
     email: &str,
     plain_password: &str,
-) -> Result<(LoginResponse, String), NanoServiceError>
+) -> Result<(LoginResponse, String, uuid::Uuid, bool), NanoServiceError>
 where
-    D: GetUserByEmail + CreateRefreshToken,
+    D: GetUserByEmail + CreateRefreshToken + MarkWelcomeDocCreated,
 {
     let invalid_err = || {
         NanoServiceError::new(
@@ -46,6 +46,11 @@ where
         return Err(invalid_err());
     }
 
+    let is_first_login = !user.welcome_doc_created;
+    if is_first_login {
+        dal.mark_welcome_doc_created(user.id).await?;
+    }
+
     let access_token = jwt::create_jwt(user.id, &user.email, true)?;
     let raw_refresh = token::generate_verification_token()?;
     let token_hash = token::hash_token(&raw_refresh);
@@ -62,8 +67,11 @@ where
         LoginResponse {
             access_token,
             token_type: "Bearer".to_string(),
+            welcome_doc_id: None,
         },
         raw_refresh,
+        user.id,
+        is_first_login,
     ))
 }
 
@@ -151,6 +159,18 @@ mod tests {
             password_hash: password::hash_password("password123").unwrap(),
             email_verified_at: Some(Utc::now()),
             created_at: Utc::now(),
+            welcome_doc_created: false,
+        }
+    }
+
+    fn verified_user_returning() -> User {
+        User {
+            id: Uuid::new_v4(),
+            email: "returning@example.com".to_string(),
+            password_hash: password::hash_password("password123").unwrap(),
+            email_verified_at: Some(Utc::now()),
+            created_at: Utc::now(),
+            welcome_doc_created: true,
         }
     }
 
@@ -161,12 +181,14 @@ mod tests {
             password_hash: password::hash_password("password123").unwrap(),
             email_verified_at: None,
             created_at: Utc::now(),
+            welcome_doc_created: false,
         }
     }
 
     struct MockDal {
         user: Option<User>,
         refresh_tokens: Arc<Mutex<Vec<RefreshToken>>>,
+        welcome_marked: Arc<Mutex<Vec<Uuid>>>,
     }
 
     impl MockDal {
@@ -174,6 +196,7 @@ mod tests {
             Self {
                 user: Some(user),
                 refresh_tokens: Arc::new(Mutex::new(vec![])),
+                welcome_marked: Arc::new(Mutex::new(vec![])),
             }
         }
 
@@ -181,6 +204,7 @@ mod tests {
             Self {
                 user: Some(user),
                 refresh_tokens: Arc::new(Mutex::new(vec![token])),
+                welcome_marked: Arc::new(Mutex::new(vec![])),
             }
         }
 
@@ -188,6 +212,7 @@ mod tests {
             Self {
                 user: None,
                 refresh_tokens: Arc::new(Mutex::new(vec![])),
+                welcome_marked: Arc::new(Mutex::new(vec![])),
             }
         }
     }
@@ -282,6 +307,19 @@ mod tests {
         }
     }
 
+    impl dal::MarkWelcomeDocCreated for MockDal {
+        fn mark_welcome_doc_created(
+            &self,
+            user_id: Uuid,
+        ) -> impl std::future::Future<Output = Result<(), NanoServiceError>> + Send {
+            let marked = Arc::clone(&self.welcome_marked);
+            async move {
+                marked.lock().unwrap().push(user_id);
+                Ok(())
+            }
+        }
+    }
+
     // ── login_user ─────────────────────────────────────────────────────────────
 
     #[tokio::test]
@@ -290,7 +328,7 @@ mod tests {
         let dal = MockDal::with_user(user);
         let result = login_user(&dal, "test@example.com", "password123").await;
         assert!(result.is_ok());
-        let (resp, raw_refresh) = result.unwrap();
+        let (resp, raw_refresh, _, _) = result.unwrap();
         assert_eq!(resp.token_type, "Bearer");
         assert!(!resp.access_token.is_empty());
         assert!(!raw_refresh.is_empty());
@@ -333,6 +371,32 @@ mod tests {
             .await
             .unwrap();
         assert_eq!(dal.refresh_tokens.lock().unwrap().len(), 1);
+    }
+
+    #[tokio::test]
+    async fn first_login_returns_is_first_login_true_and_marks_flag() {
+        let user = verified_user();
+        let user_id = user.id;
+        let dal = MockDal::with_user(user);
+        let (_, _, returned_user_id, is_first) =
+            login_user(&dal, "test@example.com", "password123")
+                .await
+                .unwrap();
+        assert!(is_first);
+        assert_eq!(returned_user_id, user_id);
+        assert_eq!(dal.welcome_marked.lock().unwrap().len(), 1);
+        assert_eq!(dal.welcome_marked.lock().unwrap()[0], user_id);
+    }
+
+    #[tokio::test]
+    async fn returning_login_returns_is_first_login_false_and_does_not_remark() {
+        let user = verified_user_returning();
+        let dal = MockDal::with_user(user);
+        let (_, _, _, is_first) = login_user(&dal, "returning@example.com", "password123")
+            .await
+            .unwrap();
+        assert!(!is_first);
+        assert!(dal.welcome_marked.lock().unwrap().is_empty());
     }
 
     // ── refresh_access_token ───────────────────────────────────────────────────
