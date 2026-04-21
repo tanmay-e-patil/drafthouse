@@ -7,10 +7,17 @@ use dal::{
 };
 use kernel::{
     Document, DocumentContentResponse, DocumentListResponse, NewDocument, NewWsTicket,
-    UpdateDocumentContentRequest, UpdateDocumentRequest, WsTicketResponse,
+    TitleUpdated, UpdateDocumentContentRequest, UpdateDocumentRequest, WsTicketResponse,
 };
+use nan_serve_publish_event::publish_event;
 use rand::Rng;
 use utils::errors::{NanoServiceError, NanoServiceErrorStatus};
+
+/// Shared event runtime — re-exported from utils so all crates in this binary
+/// share the same static handler registry.
+pub mod tokio_event_adapter_runtime {
+    pub use utils::event_runtime::*;
+}
 
 const DEFAULT_PAGE_LIMIT: i64 = 20;
 
@@ -63,7 +70,17 @@ where
     }
 
     let title = request.title.as_ref().map(|t| t.trim().to_string());
-    dal.update_document(id, title, request.is_public).await
+    let updated = dal.update_document(id, title, request.is_public).await?;
+
+    if request.title.is_some() {
+        let event = TitleUpdated {
+            doc_id: updated.id,
+            title: updated.title.clone(),
+        };
+        publish_event!(event);
+    }
+
+    Ok(updated)
 }
 
 pub async fn delete_document<D>(
@@ -197,6 +214,8 @@ where
 mod tests {
     use super::*;
     use chrono::Utc;
+    #[allow(unused_imports)]
+    use kernel::TitleUpdated;
     use std::sync::{Arc, Mutex};
     use uuid::Uuid;
 
@@ -430,6 +449,11 @@ mod tests {
         }
     }
 
+    // Needed in tests that register test-only event handlers
+    use std::future::Future;
+    use std::pin::Pin;
+    use std::sync::atomic::{AtomicBool, Ordering};
+
     // ── create_document ─────────────────────────────────────────────────────────
 
     #[tokio::test]
@@ -480,7 +504,83 @@ mod tests {
         assert_eq!(result.unwrap_err().status, NanoServiceErrorStatus::NotFound);
     }
 
-    // ── update_document ───────────────────────────────────────────────────────
+    // ── update_document + TitleUpdated event ──────────────────────────────────
+
+    #[tokio::test]
+    async fn update_document_publishes_title_updated_event() {
+        static FIRED: AtomicBool = AtomicBool::new(false);
+
+        fn handler(data: Vec<u8>) -> Pin<Box<dyn Future<Output = ()> + Send>> {
+            Box::pin(async move {
+                let event: TitleUpdated =
+                    bincode::deserialize(&data).expect("deserialize TitleUpdated");
+                assert_eq!(event.title, "Event Title");
+                FIRED.store(true, Ordering::SeqCst);
+            })
+        }
+        crate::tokio_event_adapter_runtime::insert_into_hashmap(
+            "TitleUpdated".to_string(),
+            handler,
+        );
+
+        let owner_id = Uuid::new_v4();
+        let doc = test_document(owner_id);
+        let dal = MockDal::with_document(doc.clone());
+        update_document(
+            &dal,
+            doc.id,
+            owner_id,
+            &UpdateDocumentRequest {
+                title: Some("Event Title".to_string()),
+                is_public: None,
+            },
+        )
+        .await
+        .unwrap();
+
+        tokio::task::yield_now().await;
+        assert!(
+            FIRED.load(Ordering::SeqCst),
+            "TitleUpdated event not published"
+        );
+    }
+
+    #[tokio::test]
+    async fn update_document_no_event_when_title_not_in_request() {
+        static FIRED2: AtomicBool = AtomicBool::new(false);
+
+        fn handler2(data: Vec<u8>) -> Pin<Box<dyn Future<Output = ()> + Send>> {
+            Box::pin(async move {
+                let _: TitleUpdated = bincode::deserialize(&data).unwrap();
+                FIRED2.store(true, Ordering::SeqCst);
+            })
+        }
+        crate::tokio_event_adapter_runtime::insert_into_hashmap(
+            "TitleUpdated".to_string(),
+            handler2,
+        );
+
+        let owner_id = Uuid::new_v4();
+        let doc = test_document(owner_id);
+        let dal = MockDal::with_document(doc.clone());
+        update_document(
+            &dal,
+            doc.id,
+            owner_id,
+            &UpdateDocumentRequest {
+                title: None,
+                is_public: Some(true),
+            },
+        )
+        .await
+        .unwrap();
+
+        tokio::task::yield_now().await;
+        assert!(
+            !FIRED2.load(Ordering::SeqCst),
+            "TitleUpdated must not fire when title not updated"
+        );
+    }
 
     #[tokio::test]
     async fn update_document_owner_succeeds() {

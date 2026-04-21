@@ -88,6 +88,14 @@ function DocumentEditor() {
     await updateDocumentContentApi(documentId, newContent);
   }
 
+  function handleRemoteTitleUpdate(newTitle: string) {
+    setTitle(newTitle);
+    if (document) {
+      setDocument({ ...document, title: newTitle });
+      useDocumentStore.getState().updateDocumentInList(document.id, { title: newTitle });
+    }
+  }
+
   async function handleKeyDown(e: Event) {
     const ke = e as KeyboardEvent;
     if ((ke.metaKey || ke.ctrlKey) && ke.key === "n") {
@@ -145,6 +153,7 @@ function DocumentEditor() {
             docId={documentId}
             initialContent={content}
             onSave={handleContentSave}
+            onTitleUpdate={handleRemoteTitleUpdate}
           />
         )}
       </main>

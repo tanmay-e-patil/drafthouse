@@ -4,15 +4,18 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
-kernel = { path = "../../../dal/kernel" }
-utils = { path = "../../../crates/utils" }
-dal = { path = "../../../dal/dal" }
-uuid = { workspace = true }
-tracing = { workspace = true }
-chrono = { workspace = true }
-sha2 = { workspace = true }
-hex = { workspace = true }
-rand = { workspace = true }
+kernel       = { path = "../../../dal/kernel" }
+utils        = { path = "../../../crates/utils" }
+dal          = { path = "../../../dal/dal" }
+nan-serve-publish-event = { path = "../../../crates/publish-event" }
+uuid         = { workspace = true }
+tracing      = { workspace = true }
+chrono       = { workspace = true }
+sha2         = { workspace = true }
+hex          = { workspace = true }
+rand         = { workspace = true }
+bincode      = { workspace = true }
+serde        = { workspace = true }
 
 [dev-dependencies]
 tokio = { workspace = true }

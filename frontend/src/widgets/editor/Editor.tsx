@@ -14,6 +14,8 @@ interface EditorProps {
   docId: string;
   initialContent: string;
   onSave: (content: string) => Promise<void>;
+  /** Called when another editor remotely updates the document title. */
+  onTitleUpdate?: (title: string) => void;
 }
 
 const DEBOUNCE_MS = 500;
@@ -32,7 +34,7 @@ const STATUS_COLOR: Record<ConnectionStatus, string> = {
   disconnected: "var(--color-red-500, #ef4444)",
 };
 
-export default function Editor({ docId, initialContent, onSave }: EditorProps) {
+export default function Editor({ docId, initialContent, onSave, onTitleUpdate }: EditorProps) {
   const collabStatus = useCollabStore((s) => s.status);
   const [container, setContainer] = useState<HTMLElement | null>(null);
   const [mode, setMode] = useState<"edit" | "preview">("edit");
@@ -98,7 +100,9 @@ export default function Editor({ docId, initialContent, onSave }: EditorProps) {
   );
 
   useCollabEditor(
-    container && mode === "edit" ? { docId, container, extensions } : null
+    container && mode === "edit"
+      ? { docId, container, extensions, onTitleUpdate }
+      : null
   );
 
   useEffect(() => {

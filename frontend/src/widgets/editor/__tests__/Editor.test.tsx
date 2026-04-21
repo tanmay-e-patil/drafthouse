@@ -70,6 +70,26 @@ describe("Editor", () => {
     vi.restoreAllMocks();
   });
 
+  it("accepts onTitleUpdate prop without error", async () => {
+    const { default: Editor } = await import("../Editor");
+    const onSave = vi.fn().mockResolvedValue(undefined);
+    const onTitleUpdate = vi.fn();
+
+    // Should render without errors when onTitleUpdate is provided
+    const { unmount } = render(
+      <Editor
+        docId="test-doc-id"
+        initialContent="# Hello"
+        onSave={onSave}
+        onTitleUpdate={onTitleUpdate}
+      />
+    );
+    await waitFor(() => {
+      expect(screen.getByText("Edit")).toBeDefined();
+    });
+    unmount();
+  });
+
   it("renders edit mode by default with toolbar buttons", async () => {
     const { default: Editor } = await import("../Editor");
     const onSave = vi.fn().mockResolvedValue(undefined);
