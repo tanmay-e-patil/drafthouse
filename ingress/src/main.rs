@@ -1,8 +1,11 @@
 use actix_cors::Cors;
 use actix_web::{App, HttpServer, middleware as actix_middleware, web};
-use dal::postgres_txs::SqlxPostGresDescriptor;
+use collab_core::DocStore;
+use dal::{ScyllaDescriptor, postgres_txs::SqlxPostGresDescriptor};
+use dashmap::DashMap;
 use sqlx::PgPool;
 use std::env;
+use tokio::time::{Duration, interval};
 use tracing_subscriber::EnvFilter;
 
 #[tokio::main]
@@ -16,9 +19,27 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .unwrap_or_else(|_| "postgres://drafthouse:drafthouse@localhost:5432/drafthouse".into());
 
     let pool = PgPool::connect(&database_url).await?;
-    tracing::info!("Connected to database");
+    tracing::info!("Connected to Postgres");
 
-    let dal = web::Data::new(SqlxPostGresDescriptor { pool });
+    let pg_dal = web::Data::new(SqlxPostGresDescriptor { pool });
+
+    let scylla_dal = web::Data::new(ScyllaDescriptor::new().await?);
+    tracing::info!("Connected to ScyllaDB");
+
+    let doc_store: web::Data<DocStore> = web::Data::new(DashMap::new());
+
+    // Background eviction sweep every 60s
+    {
+        let store = doc_store.clone();
+        let dal = scylla_dal.get_ref().clone();
+        tokio::spawn(async move {
+            let mut ticker = interval(Duration::from_secs(collab_core::room::EVICTION_SWEEP_SECS));
+            loop {
+                ticker.tick().await;
+                collab_core::snapshot::eviction_sweep(&dal, &store).await;
+            }
+        });
+    }
 
     let bind_addr = env::var("BIND_ADDR").unwrap_or_else(|_| "0.0.0.0:8080".into());
 
@@ -38,8 +59,16 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         App::new()
             .wrap(actix_middleware::Logger::default())
             .wrap(cors)
-            .configure(|cfg| auth_networking::routes::configure(cfg, dal.clone()))
-            .configure(|cfg| documents_networking::routes::configure(cfg, dal.clone()))
+            .configure(|cfg| auth_networking::routes::configure(cfg, pg_dal.clone()))
+            .configure(|cfg| documents_networking::routes::configure(cfg, pg_dal.clone()))
+            .configure(|cfg| {
+                collab_networking::routes::configure(
+                    cfg,
+                    pg_dal.clone(),
+                    scylla_dal.clone(),
+                    doc_store.clone(),
+                )
+            })
     })
     .bind(&bind_addr)?
     .run()

@@ -74,7 +74,7 @@ describe("Editor", () => {
     const { default: Editor } = await import("../Editor");
     const onSave = vi.fn().mockResolvedValue(undefined);
 
-    render(<Editor initialContent="# Hello" onSave={onSave} />);
+    render(<Editor docId="test-doc-id" initialContent="# Hello" onSave={onSave} />);
 
     await waitFor(() => {
       expect(screen.getByText("Edit")).toBeDefined();
@@ -86,7 +86,7 @@ describe("Editor", () => {
     const { default: Editor } = await import("../Editor");
     const onSave = vi.fn().mockResolvedValue(undefined);
 
-    render(<Editor initialContent="# Hello" onSave={onSave} />);
+    render(<Editor docId="test-doc-id" initialContent="# Hello" onSave={onSave} />);
 
     await waitFor(() => {
       expect(screen.getByText("Preview")).toBeDefined();
@@ -104,7 +104,7 @@ describe("Editor", () => {
     const { default: Editor } = await import("../Editor");
     const onSave = vi.fn().mockResolvedValue(undefined);
 
-    render(<Editor initialContent="# Hello" onSave={onSave} />);
+    render(<Editor docId="test-doc-id" initialContent="# Hello" onSave={onSave} />);
 
     await waitFor(() => {
       expect(screen.getByText("Preview")).toBeDefined();

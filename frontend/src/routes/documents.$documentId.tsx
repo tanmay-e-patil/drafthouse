@@ -142,6 +142,7 @@ function DocumentEditor() {
         ) : (
           <Editor
             key={documentId}
+            docId={documentId}
             initialContent={content}
             onSave={handleContentSave}
           />

@@ -192,3 +192,57 @@ pub struct DocumentContentResponse {
 pub struct UpdateDocumentContentRequest {
     pub content: String,
 }
+
+#[derive(Debug, Clone, Serialize, Deserialize, sqlx::FromRow)]
+pub struct WsTicket {
+    pub token_hash: String,
+    pub doc_id: Uuid,
+    pub user_id: Uuid,
+    pub expires_at: DateTime<Utc>,
+}
+
+pub struct NewWsTicket {
+    pub token_hash: String,
+    pub doc_id: Uuid,
+    pub user_id: Uuid,
+    pub expires_at: DateTime<Utc>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct WsTicketResponse {
+    pub ticket: String,
+}
+
+#[derive(Debug, Clone)]
+pub struct CollabOp {
+    pub doc_id: Uuid,
+    pub created_at: DateTime<Utc>,
+    pub op_id: Uuid,
+    pub client_id: Uuid,
+    pub data: Vec<u8>,
+}
+
+pub struct NewCollabOp {
+    pub doc_id: Uuid,
+    pub op_id: Uuid,
+    pub client_id: Uuid,
+    pub data: Vec<u8>,
+    pub created_at: DateTime<Utc>,
+}
+
+#[derive(Debug, Clone)]
+pub struct CollabSnapshot {
+    pub doc_id: Uuid,
+    pub version: i32,
+    pub data: Vec<u8>,
+    pub checksum: String,
+    pub taken_at: DateTime<Utc>,
+}
+
+pub struct NewCollabSnapshot {
+    pub doc_id: Uuid,
+    pub version: i32,
+    pub data: Vec<u8>,
+    pub checksum: String,
+    pub taken_at: DateTime<Utc>,
+}
