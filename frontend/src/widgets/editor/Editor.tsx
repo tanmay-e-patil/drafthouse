@@ -1,6 +1,6 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useCollabStore, type ConnectionStatus } from "#/features/collab/store";
-import { EditorState } from "@codemirror/state";
+import { useCollabEditor } from "#/features/collab/useCollabEditor";
 import { EditorView, keymap, lineNumbers, highlightActiveLineGutter, highlightSpecialChars, drawSelection, highlightActiveLine } from "@codemirror/view";
 import { defaultKeymap, history, historyKeymap } from "@codemirror/commands";
 import { syntaxHighlighting, defaultHighlightStyle, bracketMatching } from "@codemirror/language";
@@ -11,6 +11,7 @@ import type { Extension } from "@codemirror/state";
 import { useDebounce } from "./useDebounce";
 
 interface EditorProps {
+  docId: string;
   initialContent: string;
   onSave: (content: string) => Promise<void>;
 }
@@ -31,16 +32,14 @@ const STATUS_COLOR: Record<ConnectionStatus, string> = {
   disconnected: "var(--color-red-500, #ef4444)",
 };
 
-export default function Editor({ initialContent, onSave }: EditorProps) {
+export default function Editor({ docId, initialContent, onSave }: EditorProps) {
   const collabStatus = useCollabStore((s) => s.status);
-  const editorRef = useRef<HTMLDivElement>(null);
-  const viewRef = useRef<EditorView | null>(null);
+  const [container, setContainer] = useState<HTMLElement | null>(null);
   const [mode, setMode] = useState<"edit" | "preview">("edit");
   const [content, setContent] = useState(initialContent);
   const [saving, setSaving] = useState(false);
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
   const [previewHtml, setPreviewHtml] = useState("");
-  const [loading, setLoading] = useState(true);
   const saveLockRef = useRef(false);
 
   const debouncedSave = useDebounce(async (value: string) => {
@@ -59,9 +58,8 @@ export default function Editor({ initialContent, onSave }: EditorProps) {
   }, DEBOUNCE_MS);
 
   const handleChange = useCallback(
-    () => {
-      if (!viewRef.current) return;
-      const newContent = viewRef.current.state.doc.toString();
+    (view: EditorView) => {
+      const newContent = view.state.doc.toString();
       setContent(newContent);
       setHasUnsavedChanges(true);
       debouncedSave(newContent);
@@ -69,29 +67,16 @@ export default function Editor({ initialContent, onSave }: EditorProps) {
     [debouncedSave]
   );
 
-  const isEditMode = mode === "edit";
+  const updateListener = useMemo(
+    () =>
+      EditorView.updateListener.of((update: ViewUpdate) => {
+        if (update.docChanged) handleChange(update.view);
+      }),
+    [handleChange]
+  );
 
-  useEffect(() => {
-    if (!isEditMode) return;
-    if (!editorRef.current) return;
-
-    // Re-create editor if destroyed (viewRef was nulled by cleanup)
-    // We check if the DOM has no .cm-editor child as a proxy for "needs re-creation"
-    const needsInit = !editorRef.current.querySelector(".cm-editor");
-
-    if (!needsInit) {
-      // Already has editor, just focus
-      viewRef.current?.focus();
-      return;
-    }
-
-    const updateListener = EditorView.updateListener.of((update: ViewUpdate) => {
-      if (update.docChanged) {
-        handleChange();
-      }
-    });
-
-    const extensions: Extension[] = [
+  const extensions = useMemo<Extension[]>(
+    () => [
       lineNumbers(),
       highlightActiveLineGutter(),
       highlightSpecialChars(),
@@ -108,26 +93,13 @@ export default function Editor({ initialContent, onSave }: EditorProps) {
         ".cm-scroller": { overflow: "auto" },
         "&.cm-focused": { outline: "none" },
       }),
-    ];
+    ],
+    [updateListener]
+  );
 
-    const state = EditorState.create({
-      doc: content,
-      extensions,
-    });
-
-    const view = new EditorView({
-      state,
-      parent: editorRef.current,
-    });
-
-    viewRef.current = view;
-    setLoading(false);
-
-    return () => {
-      view.destroy();
-      viewRef.current = null;
-    };
-  }, [isEditMode, handleChange]);
+  useCollabEditor(
+    container && mode === "edit" ? { docId, container, extensions } : null
+  );
 
   useEffect(() => {
     if (mode === "preview") {
@@ -141,12 +113,6 @@ export default function Editor({ initialContent, onSave }: EditorProps) {
       });
     }
   }, [mode, content]);
-
-  useEffect(() => {
-    if (viewRef.current) {
-      viewRef.current.focus();
-    }
-  }, [loading]);
 
   if (mode === "preview") {
     return (
@@ -198,7 +164,7 @@ export default function Editor({ initialContent, onSave }: EditorProps) {
           {STATUS_LABEL[collabStatus]}
         </span>
       </div>
-      <div ref={editorRef} className="cm-editor-container" />
+      <div ref={setContainer} className="cm-editor-container" />
     </div>
   );
 }

@@ -31,6 +31,12 @@ pub struct DocRoom {
     pub tx: broadcast::Sender<Bytes>,
 }
 
+impl Default for DocRoom {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl DocRoom {
     pub fn new() -> Self {
         let (tx, _) = broadcast::channel(BROADCAST_CAPACITY);
@@ -80,7 +86,7 @@ impl DocRoom {
     /// True if a snapshot should be triggered (100 ops or 30s elapsed).
     pub fn should_snapshot(&self) -> bool {
         let op_count = self.op_count.load(Ordering::SeqCst);
-        if op_count > 0 && op_count % SNAPSHOT_OPS_THRESHOLD == 0 {
+        if op_count > 0 && op_count.is_multiple_of(SNAPSHOT_OPS_THRESHOLD) {
             return true;
         }
         let elapsed = self.last_snapshot_at.lock().unwrap().elapsed().as_secs();

@@ -90,8 +90,10 @@ pub async fn ws_handler(
 
         // Send SyncStep1 to new client so it replies with its state vector
         {
-            let doc = room_clone.doc.read().unwrap();
-            let step1 = encode_full_sync_step2(&doc);
+            let step1 = {
+                let doc = room_clone.doc.read().unwrap();
+                encode_full_sync_step2(&doc)
+            };
             let _ = session.binary(Bytes::from(step1)).await;
         }
 
@@ -153,8 +155,10 @@ async fn handle_binary<D>(
 {
     match decode_message(data) {
         CollabMessage::SyncStep1(sv_bytes) => {
-            let doc = room.doc.read().unwrap();
-            let step2 = encode_sync_step2(&doc, &sv_bytes);
+            let step2 = {
+                let doc = room.doc.read().unwrap();
+                encode_sync_step2(&doc, &sv_bytes)
+            };
             let _ = session.binary(Bytes::from(step2)).await;
         }
         CollabMessage::Update(update_bytes) | CollabMessage::SyncStep2(update_bytes) => {

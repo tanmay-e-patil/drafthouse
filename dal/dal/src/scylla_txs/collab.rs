@@ -5,7 +5,6 @@ use crate::collab_txs::{
 use chrono::{DateTime, Utc};
 use dal_tx_impl::impl_transaction;
 use kernel::{CollabOp, CollabSnapshot, NewCollabOp, NewCollabSnapshot};
-use scylla::frame::response::result::CqlValue;
 use utils::errors::{NanoServiceError, NanoServiceErrorStatus};
 use uuid::Uuid;
 

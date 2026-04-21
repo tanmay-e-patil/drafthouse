@@ -52,19 +52,21 @@ export function useCollabEditor(
       if (destroyed) return;
       setStatus("connecting");
 
-      let wsUrl = `${WS_BASE}/collab/${docId}`;
+      let ticketParam: Record<string, string> = {};
 
       if (accessToken) {
         try {
           const { ticket } = await issueWsTicket(docId);
-          wsUrl += `?ticket=${encodeURIComponent(ticket)}`;
+          ticketParam = { ticket };
         } catch {
           // unauthenticated viewer — connect without ticket
         }
       }
 
-      provider = new WebsocketProvider(wsUrl, docId, ydoc, {
+      // serverUrl + '/' + roomname is how y-websocket builds the final URL
+      provider = new WebsocketProvider(`${WS_BASE}/collab`, docId, ydoc, {
         connect: true,
+        params: ticketParam,
         // Disable y-websocket's own reconnect; we handle it manually
         resyncInterval: -1,
       });
