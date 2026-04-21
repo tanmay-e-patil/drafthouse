@@ -144,6 +144,17 @@ pub fn encode_update(update_bytes: &[u8]) -> Vec<u8> {
     buf
 }
 
+const MSG_CUSTOM: u8 = 3;
+
+/// Encode a `title_update` custom message (type 3).
+/// Payload is the UTF-8 title bytes, varint-length-prefixed.
+/// Frontend reads this via `decoding.readVarUint8Array` (lib0).
+pub fn encode_title_update(title: &str) -> Vec<u8> {
+    let mut buf = vec![MSG_CUSTOM];
+    write_bytes(&mut buf, title.as_bytes());
+    buf
+}
+
 /// Apply a raw update to the doc inside a catch_unwind boundary.
 /// Returns the serialized update bytes on success (for WAL write + broadcast).
 pub fn apply_update_safe(doc: &Doc, update_bytes: &[u8]) -> Option<Vec<u8>> {
@@ -187,6 +198,32 @@ mod tests {
         let result = apply_update_safe(&doc, &[0xFF, 0xFE, 0xFD]);
         // bad bytes should not panic, just return None
         assert!(result.is_none());
+    }
+
+    #[test]
+    fn encode_title_update_type_byte_is_3() {
+        let msg = encode_title_update("Hello World");
+        assert_eq!(msg[0], 3, "first byte must be MSG_CUSTOM = 3");
+    }
+
+    #[test]
+    fn encode_title_update_payload_roundtrip() {
+        let title = "My Document Title";
+        let msg = encode_title_update(title);
+        // Decode: skip type byte, read varint length, then read that many bytes
+        let mut pos = 1usize;
+        let decoded_bytes = read_bytes(&msg, &mut pos).expect("varint read");
+        assert_eq!(decoded_bytes, title.as_bytes());
+        assert_eq!(std::str::from_utf8(decoded_bytes).unwrap(), title);
+    }
+
+    #[test]
+    fn encode_title_update_empty_title() {
+        let msg = encode_title_update("");
+        assert_eq!(msg[0], 3);
+        let mut pos = 1usize;
+        let decoded_bytes = read_bytes(&msg, &mut pos).expect("varint read");
+        assert_eq!(decoded_bytes, b"");
     }
 
     #[test]

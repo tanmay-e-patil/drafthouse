@@ -28,6 +28,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let doc_store: web::Data<DocStore> = web::Data::new(DashMap::new());
 
+    // Expose DocStore to the collab title-sync event subscriber
+    collab_core::init_doc_store(doc_store.clone().into_inner());
+
     // Background eviction sweep every 60s
     {
         let store = doc_store.clone();

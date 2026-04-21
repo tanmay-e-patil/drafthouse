@@ -5,6 +5,8 @@ members = [
     "crates/utils",
     "crates/dal-tx-impl",
     "crates/migrate-scylla",
+    "crates/event-subscriber",
+    "crates/publish-event",
     "dal/kernel",
     "dal/dal",
     "nanoservices/auth/networking",
@@ -40,6 +42,8 @@ rand         = "0.8"
 futures-util = "0.3"
 bytes        = "1"
 proptest     = "1"
+bincode      = "1"
+ctor         = "0.2"
 
 # proc-macro support
 proc-macro2  = "1"

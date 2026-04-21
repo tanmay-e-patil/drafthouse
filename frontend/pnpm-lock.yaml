@@ -59,6 +59,9 @@ importers:
       codemirror:
         specifier: ^6.0.2
         version: 6.0.2
+      lib0:
+        specifier: ^0.2.117
+        version: 0.2.117
       lucide-react:
         specifier: ^0.545.0
         version: 0.545.0(react@19.2.5)

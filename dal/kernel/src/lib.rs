@@ -246,3 +246,11 @@ pub struct NewCollabSnapshot {
     pub checksum: String,
     pub taken_at: DateTime<Utc>,
 }
+
+/// In-process event: published by documents service after a title change,
+/// consumed by collab service to broadcast `title_update` to all WS clients.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TitleUpdated {
+    pub doc_id: Uuid,
+    pub title: String,
+}

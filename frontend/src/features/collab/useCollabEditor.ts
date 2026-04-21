@@ -7,6 +7,7 @@ import { EditorState, type Extension } from "@codemirror/state";
 import { issueWsTicket } from "./api";
 import { useCollabStore } from "./store";
 import { useAuthStore } from "#/features/auth/store";
+import { decodeTitleUpdate } from "./titleUpdate";
 
 const WS_BASE = import.meta.env.VITE_WS_URL ?? "ws://localhost:8080";
 
@@ -22,6 +23,8 @@ export interface UseCollabEditorOptions {
   docId: string;
   container: HTMLElement;
   extensions?: Extension[];
+  /** Called when a remote title_update message (type 3) arrives. */
+  onTitleUpdate?: (title: string) => void;
 }
 
 export interface CollabEditorHandle {
@@ -37,7 +40,7 @@ export function useCollabEditor(
 
   useEffect(() => {
     if (!options) return;
-    const { docId, container, extensions = [] } = options;
+    const { docId, container, extensions = [], onTitleUpdate } = options;
 
     let destroyed = false;
     let provider: WebsocketProvider | null = null;
@@ -70,6 +73,26 @@ export function useCollabEditor(
         // Disable y-websocket's own reconnect; we handle it manually
         resyncInterval: -1,
       });
+
+      // Handle custom message type 3 (title_update) from server.
+      // y-websocket calls messageHandlers[type](encoder, decoder, ...) after
+      // reading the type byte, so decoder is positioned at the payload start.
+      if (onTitleUpdate) {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        (provider as any).messageHandlers[3] = (
+          _encoder: unknown,
+          decoder: { arr: Uint8Array; pos: number },
+        ) => {
+          // decoder.pos is past the type byte; remaining = [varint_len, ...utf8]
+          // Reconstruct full buf so decodeTitleUpdate can parse it
+          const remaining = decoder.arr.subarray(decoder.pos);
+          const full = new Uint8Array(1 + remaining.length);
+          full[0] = 3;
+          full.set(remaining, 1);
+          const title = decodeTitleUpdate(full);
+          if (title !== null) onTitleUpdate(title);
+        };
+      }
 
       provider.on("status", ({ status }: { status: string }) => {
         if (status === "connected") {
