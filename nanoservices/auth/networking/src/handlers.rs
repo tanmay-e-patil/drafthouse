@@ -62,8 +62,13 @@ pub async fn login(
     body: web::Json<LoginRequest>,
 ) -> Result<HttpResponse, NanoServiceError> {
     let dal = get_dal(&req)?;
-    let (resp, raw_refresh) =
+    let (mut resp, raw_refresh, user_id, is_first_login) =
         auth_core::login::login_user(dal, &body.email, &body.password).await?;
+
+    if is_first_login {
+        let doc = documents_core::welcome::create_welcome_document(dal, user_id).await?;
+        resp.welcome_doc_id = Some(doc.id);
+    }
 
     let cookie = Cookie::build(REFRESH_COOKIE, raw_refresh)
         .http_only(true)

@@ -1,0 +1,175 @@
+// Drafthouse AWS Architecture — 900K DAU
+// Paste at app.eraser.io/diagram
+
+// ─── External ────────────────────────────────────────────────────────────────
+
+Users [icon: users]
+GitHub [icon: github]
+
+// ─── Edge ─────────────────────────────────────────────────────────────────────
+
+Route53 [icon: aws-route-53, label: "Route 53\ndrafthouse.app"]
+WAF [icon: aws-waf, label: "WAF v2\nrate limits + managed rules"]
+CloudFront [icon: aws-cloudfront, label: "CloudFront\nHTTP/2+3, PriceClass_100"]
+ACM [icon: aws-certificate-manager, label: "ACM\n*.drafthouse.app"]
+
+// ─── VPC ──────────────────────────────────────────────────────────────────────
+
+AWS VPC [icon: aws-vpc, label: "VPC  10.0.0.0/16  us-east-1"] {
+
+  Public Subnets [color: blue, label: "Public Subnets (1a / 1b / 1c)"] {
+    IGW [icon: aws-internet-gateway, label: "Internet Gateway"]
+    ALB [icon: aws-elastic-load-balancing, label: "ALB (internet-facing)\nidle timeout: 4000s\nX-CloudFront-Secret header check"]
+    NAT [icon: aws-nat-gateway, label: "NAT GW ×3\none per AZ"]
+  }
+
+  App Subnets [color: green, label: "App Subnets (1a / 1b / 1c)"] {
+    Auth Service [icon: aws-fargate, label: "Auth Service\n2 vCPU / 4 GB arm64\n3–20 tasks  |  argon2id hashing"]
+    Documents Service [icon: aws-fargate, label: "Documents Service\n0.5 vCPU / 1 GB arm64\n3–30 tasks  |  CRUD + invites"]
+    Collab Service [icon: aws-fargate, label: "Collab Service\n4 vCPU / 16 GB arm64\n10–50 tasks  |  Yrs CRDT + WS"]
+    Export Worker [icon: aws-fargate, label: "Export Worker\n1 vCPU / 4 GB arm64\n0–20 tasks  |  GDPR ZIP"]
+  }
+
+  Data Subnets [color: orange, label: "Data Subnets (1a / 1b / 1c)"] {
+
+    RDS Proxy [icon: aws-rds, label: "RDS Proxy\nMaxConnectionsPercent: 80\nConnectionBorrowTimeout: 120s"]
+
+    RDS Cluster [color: orange] {
+      RDS Primary [icon: aws-rds, label: "PostgreSQL 16  Multi-AZ\ndb.r7g.2xlarge  500 GB gp3\nshared_buffers: 16 GB"]
+      RDS Replica 1 [icon: aws-rds, label: "Read Replica 1\ndb.r7g.xlarge\ndoc list + member queries"]
+      RDS Replica 2 [icon: aws-rds, label: "Read Replica 2\ndb.r7g.large\nexport worker reads"]
+    }
+
+    Redis Cluster [icon: aws-elasticache, label: "ElastiCache Redis 7.2\n3 shards × (1 primary + 1 replica)\ncache.r7g.xlarge  maxmemory: 22 GB\nws_tickets · editor counts · pub/sub"]
+
+    ScyllaDB Cluster [color: orange] {
+      Scylla 1 [icon: aws-ec2, label: "ScyllaDB  us-east-1a\ni4i.4xlarge  NVMe 2×1.875 TB\nops TTL: 48 hr  |  RF=3"]
+      Scylla 2 [icon: aws-ec2, label: "ScyllaDB  us-east-1b\ni4i.4xlarge  NVMe 2×1.875 TB\nWAL + snapshots metadata"]
+      Scylla 3 [icon: aws-ec2, label: "ScyllaDB  us-east-1c\ni4i.4xlarge  NVMe 2×1.875 TB\nSSTCS(ops) + LCS(snapshots)"]
+    }
+  }
+}
+
+// ─── Messaging ────────────────────────────────────────────────────────────────
+
+SNS Title [icon: aws-sns, label: "SNS\ntitle-updated (Standard)"]
+SNS Export [icon: aws-sns, label: "SNS\nexport-requested (Standard)"]
+
+SQS Title Updates [icon: aws-sqs, label: "SQS  collab-title-updates\nStandard  |  visibility: 30s\nretention: 1 hr  |  LP: 20s"]
+SQS Export Jobs [icon: aws-sqs, label: "SQS  export-jobs.fifo\nFIFO  |  visibility: 600s\nretention: 24 hr  |  dedup by user_id"]
+
+SQS Title DLQ [icon: aws-sqs, label: "DLQ  title-updates-dlq\nmax receive: 3  |  4 day retention"]
+SQS Export DLQ [icon: aws-sqs, label: "DLQ  export-jobs-dlq.fifo\nmax receive: 3  |  14 day retention\n⚠ GDPR obligation — alarm on any depth"]
+
+// ─── S3 Buckets ───────────────────────────────────────────────────────────────
+
+S3 Static [icon: aws-simple-storage-service, label: "S3  drafthouse-static-prod\nFrontend assets  |  CloudFront OAC\nCache-Control: immutable"]
+S3 Snapshots [icon: aws-simple-storage-service, label: "S3  drafthouse-snapshots-prod\nYrs doc blobs  |  SSE-S3\n→ IA (30d)  → Glacier (90d)  → del (365d)"]
+S3 Exports [icon: aws-simple-storage-service, label: "S3  drafthouse-exports-prod\nGDPR ZIPs  |  SSE-KMS\ndelete after 7 days  |  pre-signed URL"]
+S3 Backups [icon: aws-simple-storage-service, label: "S3  drafthouse-backups-prod\npg_dump + nodetool snapshots\nObject Lock  |  CRR → us-west-2"]
+
+// ─── CI/CD ────────────────────────────────────────────────────────────────────
+
+CI CD [color: purple, label: "CI / CD"] {
+  CodePipeline [icon: aws-codepipeline, label: "CodePipeline\nSource → Build → Migrate → Deploy → Smoke"]
+  CodeBuild [icon: aws-codebuild, label: "CodeBuild\narm64  BUILD_GENERAL1_LARGE\ncargo fmt + clippy + test + docker build"]
+  ECR [icon: aws-ecr, label: "ECR\n6 repos  |  immutable tags\nInspector v2 scan on push"]
+}
+
+// ─── Supporting ───────────────────────────────────────────────────────────────
+
+Secrets Manager [icon: aws-secrets-manager, label: "Secrets Manager\nper-service env secrets\nRDS creds auto-rotate 30d"]
+
+Observability [color: gray, label: "Observability"] {
+  CloudWatch [icon: aws-cloudwatch, label: "CloudWatch\nlogs + alarms + dashboards\n15 alarms  |  metric filters"]
+  AMP [icon: aws-managed-service-for-prometheus, label: "AMP\nPrometheus remote write\n150d retention"]
+  AMG [icon: aws-managed-grafana, label: "AMG\nGrafana  |  SSO via IAM Identity Center\ndata sources: AMP + CloudWatch + X-Ray"]
+  XRay [icon: aws-xray, label: "X-Ray\n5% baseline  |  100% on 5xx\nservice map across 3 services"]
+}
+
+// ─── Connections ──────────────────────────────────────────────────────────────
+
+// User → edge
+Users > Route53 > CloudFront
+CloudFront < ACM
+CloudFront <> WAF
+CloudFront > ALB
+CloudFront > S3 Static
+
+// ALB → services
+ALB > Auth Service
+ALB > Documents Service
+ALB > Collab Service
+
+// Auth → data
+Auth Service > RDS Proxy
+RDS Proxy > RDS Primary
+RDS Primary > RDS Replica 1
+RDS Primary > RDS Replica 2
+
+// Documents → data + messaging
+Documents Service > RDS Proxy
+Documents Service > Redis Cluster
+Documents Service > SNS Title
+SNS Title > SQS Title Updates
+SQS Title Updates > Collab Service
+SQS Title Updates > SQS Title DLQ
+
+// Auth → GDPR export flow
+Auth Service > SNS Export
+SNS Export > SQS Export Jobs
+SQS Export Jobs > Export Worker
+SQS Export Jobs > SQS Export DLQ
+
+// Collab → data
+Collab Service > Redis Cluster
+Collab Service > Scylla 1, Scylla 2, Scylla 3
+Scylla 1 <> Scylla 2
+Scylla 2 <> Scylla 3
+Scylla 1 <> Scylla 3
+Collab Service > S3 Snapshots
+
+// Export worker → data
+Export Worker > RDS Proxy
+Export Worker > S3 Snapshots
+Export Worker > S3 Exports
+
+// Backup flows
+Scylla 1 > S3 Backups
+Scylla 2 > S3 Backups
+Scylla 3 > S3 Backups
+RDS Primary > S3 Backups
+
+// CI/CD flow
+GitHub > CodePipeline > CodeBuild > ECR
+ECR > Auth Service
+ECR > Documents Service
+ECR > Collab Service
+ECR > Export Worker
+
+// All services → secrets + observability
+Auth Service > Secrets Manager
+Documents Service > Secrets Manager
+Collab Service > Secrets Manager
+Export Worker > Secrets Manager
+
+Auth Service > CloudWatch
+Documents Service > CloudWatch
+Collab Service > CloudWatch
+Export Worker > CloudWatch
+
+Auth Service > XRay
+Documents Service > XRay
+Collab Service > XRay
+
+Collab Service > AMP
+AMP > AMG
+CloudWatch > AMG
+
+// NAT for outbound (Resend API, etc.)
+Auth Service > NAT > IGW
+Documents Service > NAT > IGW
+Export Worker > NAT > IGW
+Scylla 1 > NAT
+Scylla 2 > NAT
+Scylla 3 > NAT

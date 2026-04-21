@@ -139,7 +139,7 @@ async fn verify_email_success() {
 
     let user = sqlx::query_as::<_, kernel::User>(
         "INSERT INTO users (email, password_hash) VALUES ($1, $2)
-         RETURNING id, email, password_hash, email_verified_at, created_at",
+         RETURNING id, email, password_hash, email_verified_at, created_at, welcome_doc_created",
     )
     .bind("toverify@example.com")
     .bind("irrelevant_hash")
@@ -205,7 +205,7 @@ async fn verify_email_expired_token_returns_400() {
 
     let user = sqlx::query_as::<_, kernel::User>(
         "INSERT INTO users (email, password_hash) VALUES ($1, $2)
-         RETURNING id, email, password_hash, email_verified_at, created_at",
+         RETURNING id, email, password_hash, email_verified_at, created_at, welcome_doc_created",
     )
     .bind("expired@example.com")
     .bind("irrelevant_hash")
@@ -328,7 +328,7 @@ async fn resend_success() {
 async fn create_verified_user(pool: &sqlx::PgPool, email: &str, password: &str) {
     let hash = auth_core::password::hash_password(password).unwrap();
     sqlx::query(
-        "INSERT INTO users (email, password_hash, email_verified_at) VALUES ($1, $2, NOW())",
+        "INSERT INTO users (email, password_hash, email_verified_at, welcome_doc_created) VALUES ($1, $2, NOW(), true)",
     )
     .bind(email)
     .bind(&hash)

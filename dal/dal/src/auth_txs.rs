@@ -18,5 +18,6 @@ crate::define_dal_transactions!(
     CreatePasswordResetToken => create_password_reset_token(new_token: NewPasswordResetToken) -> PasswordResetToken,
     GetPasswordResetToken => get_password_reset_token(token_hash: String) -> Option<PasswordResetToken>,
     MarkPasswordResetTokenUsed => mark_password_reset_token_used(token_hash: String) -> (),
-    UpdateUserPassword => update_user_password(user_id: uuid::Uuid, password_hash: String) -> ()
+    UpdateUserPassword => update_user_password(user_id: uuid::Uuid, password_hash: String) -> (),
+    MarkWelcomeDocCreated => mark_welcome_doc_created(user_id: uuid::Uuid) -> ()
 );

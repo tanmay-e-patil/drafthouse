@@ -9,6 +9,7 @@ pub struct User {
     pub password_hash: String,
     pub email_verified_at: Option<DateTime<Utc>>,
     pub created_at: DateTime<Utc>,
+    pub welcome_doc_created: bool,
 }
 
 #[derive(Debug, Clone)]
@@ -97,6 +98,7 @@ pub struct LoginRequest {
 pub struct LoginResponse {
     pub access_token: String,
     pub token_type: String,
+    pub welcome_doc_id: Option<Uuid>,
 }
 
 #[derive(Debug, Clone, Serialize)]

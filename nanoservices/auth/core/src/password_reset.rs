@@ -112,6 +112,7 @@ mod tests {
             password_hash: password::hash_password("oldpassword").unwrap(),
             email_verified_at: Some(Utc::now()),
             created_at: Utc::now(),
+            welcome_doc_created: false,
         }
     }
 

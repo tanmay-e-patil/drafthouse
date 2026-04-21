@@ -3,6 +3,7 @@ const API_BASE = import.meta.env.VITE_API_URL ?? "http://localhost:8080";
 export interface LoginResponse {
   access_token: string;
   token_type: string;
+  welcome_doc_id?: string | null;
 }
 
 export interface ApiError {

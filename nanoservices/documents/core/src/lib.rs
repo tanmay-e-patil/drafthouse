@@ -1,3 +1,5 @@
+pub mod welcome;
+
 use dal::{
     CountDocumentsByOwner, CreateDocument, DeleteDocument, GetDocumentById, GetDocumentContent,
     ListDocumentsByOwner, UpdateDocument, UpdateDocumentContent,
