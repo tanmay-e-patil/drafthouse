@@ -1,4 +1,7 @@
-use kernel::{Document, NewDocument, NewWsTicket, WsTicket};
+use kernel::{
+    Document, DocumentMember, InviteLink, MemberRole, NewDocument, NewInviteLink, NewWsTicket,
+    WsTicket,
+};
 
 crate::define_dal_transactions!(
     CreateDocument => create_document(new_doc: NewDocument) -> Document,
@@ -11,5 +14,14 @@ crate::define_dal_transactions!(
     UpdateDocumentContent => update_document_content(id: uuid::Uuid, content: String) -> (),
     CreateWsTicket => create_ws_ticket(new_ticket: NewWsTicket) -> WsTicket,
     GetWsTicketByHash => get_ws_ticket_by_hash(token_hash: String) -> Option<WsTicket>,
-    DeleteWsTicket => delete_ws_ticket(token_hash: String) -> ()
+    DeleteWsTicket => delete_ws_ticket(token_hash: String) -> (),
+    CreateInviteLink => create_invite_link(new_link: NewInviteLink) -> InviteLink,
+    GetInviteLinkByToken => get_invite_link_by_token(token: String) -> Option<InviteLink>,
+    ListActiveInviteLinks => list_active_invite_links(doc_id: uuid::Uuid) -> Vec<InviteLink>,
+    RevokeInviteLink => revoke_invite_link(token: String) -> (),
+    AcceptInviteLink => accept_invite_link(token: String, user_id: uuid::Uuid) -> DocumentMember,
+    ListDocumentMembers => list_document_members(doc_id: uuid::Uuid) -> Vec<DocumentMember>,
+    GetDocumentMember => get_document_member(doc_id: uuid::Uuid, user_id: uuid::Uuid) -> Option<DocumentMember>,
+    DeleteDocumentMember => delete_document_member(doc_id: uuid::Uuid, user_id: uuid::Uuid) -> (),
+    UpdateDocumentMemberRole => update_document_member_role(doc_id: uuid::Uuid, user_id: uuid::Uuid, role: MemberRole) -> DocumentMember
 );

@@ -2,12 +2,15 @@ pub mod welcome;
 
 use chrono::Utc;
 use dal::{
-    CountDocumentsByOwner, CreateDocument, CreateWsTicket, DeleteDocument, GetDocumentById,
-    GetDocumentContent, ListDocumentsByOwner, UpdateDocument, UpdateDocumentContent,
+    AcceptInviteLink, CountDocumentsByOwner, CreateDocument, CreateInviteLink, CreateWsTicket,
+    DeleteDocument, DeleteDocumentMember, GetDocumentById, GetDocumentContent,
+    GetInviteLinkByToken, ListActiveInviteLinks, ListDocumentMembers, ListDocumentsByOwner,
+    RevokeInviteLink, UpdateDocument, UpdateDocumentContent, UpdateDocumentMemberRole,
 };
 use kernel::{
-    Document, DocumentContentResponse, DocumentListResponse, NewDocument, NewWsTicket,
-    TitleUpdated, UpdateDocumentContentRequest, UpdateDocumentRequest, WsTicketResponse,
+    CreateInviteLinkRequest, Document, DocumentContentResponse, DocumentListResponse,
+    DocumentMember, InviteLink, NewDocument, NewInviteLink, NewWsTicket, TitleUpdated,
+    UpdateDocumentContentRequest, UpdateDocumentRequest, UpdateMemberRoleRequest, WsTicketResponse,
 };
 use nan_serve_publish_event::publish_event;
 use rand::Rng;
@@ -210,12 +213,205 @@ where
     Ok(WsTicketResponse { ticket: raw_token })
 }
 
+const INVITE_TOKEN_LEN: usize = 32;
+
+fn generate_invite_token() -> String {
+    rand::thread_rng()
+        .sample_iter(&rand::distributions::Alphanumeric)
+        .take(INVITE_TOKEN_LEN)
+        .map(char::from)
+        .collect()
+}
+
+pub async fn create_invite_link<D>(
+    dal: &D,
+    doc_id: uuid::Uuid,
+    owner_id: uuid::Uuid,
+    request: &CreateInviteLinkRequest,
+) -> Result<InviteLink, NanoServiceError>
+where
+    D: GetDocumentById + CreateInviteLink,
+{
+    let doc = dal.get_document_by_id(doc_id).await?.ok_or_else(|| {
+        NanoServiceError::new("Document not found", NanoServiceErrorStatus::NotFound)
+    })?;
+
+    if doc.owner_id != owner_id {
+        return Err(NanoServiceError::new(
+            "Only the document owner can create invite links",
+            NanoServiceErrorStatus::Forbidden,
+        ));
+    }
+
+    let token = generate_invite_token();
+    let link = dal
+        .create_invite_link(NewInviteLink {
+            token,
+            doc_id,
+            role: request.role,
+            created_by: owner_id,
+            max_uses: request.max_uses,
+            expires_at: request.expires_at,
+        })
+        .await?;
+
+    Ok(link)
+}
+
+pub async fn list_invite_links<D>(
+    dal: &D,
+    doc_id: uuid::Uuid,
+    owner_id: uuid::Uuid,
+) -> Result<Vec<InviteLink>, NanoServiceError>
+where
+    D: GetDocumentById + ListActiveInviteLinks,
+{
+    let doc = dal.get_document_by_id(doc_id).await?.ok_or_else(|| {
+        NanoServiceError::new("Document not found", NanoServiceErrorStatus::NotFound)
+    })?;
+
+    if doc.owner_id != owner_id {
+        return Err(NanoServiceError::new(
+            "Only the document owner can list invite links",
+            NanoServiceErrorStatus::Forbidden,
+        ));
+    }
+
+    dal.list_active_invite_links(doc_id).await
+}
+
+pub async fn revoke_invite_link<D>(
+    dal: &D,
+    doc_id: uuid::Uuid,
+    owner_id: uuid::Uuid,
+    token: &str,
+) -> Result<(), NanoServiceError>
+where
+    D: GetDocumentById + GetInviteLinkByToken + RevokeInviteLink,
+{
+    let doc = dal.get_document_by_id(doc_id).await?.ok_or_else(|| {
+        NanoServiceError::new("Document not found", NanoServiceErrorStatus::NotFound)
+    })?;
+
+    if doc.owner_id != owner_id {
+        return Err(NanoServiceError::new(
+            "Only the document owner can revoke invite links",
+            NanoServiceErrorStatus::Forbidden,
+        ));
+    }
+
+    let link = dal
+        .get_invite_link_by_token(token.to_string())
+        .await?
+        .ok_or_else(|| {
+            NanoServiceError::new("Invite link not found", NanoServiceErrorStatus::NotFound)
+        })?;
+
+    if link.doc_id != doc_id {
+        return Err(NanoServiceError::new(
+            "Invite link does not belong to this document",
+            NanoServiceErrorStatus::NotFound,
+        ));
+    }
+
+    dal.revoke_invite_link(token.to_string()).await
+}
+
+pub async fn accept_invite<D>(
+    dal: &D,
+    token: &str,
+    user_id: uuid::Uuid,
+) -> Result<DocumentMember, NanoServiceError>
+where
+    D: AcceptInviteLink,
+{
+    dal.accept_invite_link(token.to_string(), user_id).await
+}
+
+pub async fn list_members<D>(
+    dal: &D,
+    doc_id: uuid::Uuid,
+    owner_id: uuid::Uuid,
+) -> Result<Vec<DocumentMember>, NanoServiceError>
+where
+    D: GetDocumentById + ListDocumentMembers,
+{
+    let doc = dal.get_document_by_id(doc_id).await?.ok_or_else(|| {
+        NanoServiceError::new("Document not found", NanoServiceErrorStatus::NotFound)
+    })?;
+
+    if doc.owner_id != owner_id {
+        return Err(NanoServiceError::new(
+            "Only the document owner can list members",
+            NanoServiceErrorStatus::Forbidden,
+        ));
+    }
+
+    dal.list_document_members(doc_id).await
+}
+
+pub async fn remove_member<D>(
+    dal: &D,
+    doc_id: uuid::Uuid,
+    owner_id: uuid::Uuid,
+    user_id: uuid::Uuid,
+) -> Result<(), NanoServiceError>
+where
+    D: GetDocumentById + DeleteDocumentMember,
+{
+    let doc = dal.get_document_by_id(doc_id).await?.ok_or_else(|| {
+        NanoServiceError::new("Document not found", NanoServiceErrorStatus::NotFound)
+    })?;
+
+    if doc.owner_id != owner_id {
+        return Err(NanoServiceError::new(
+            "Only the document owner can remove members",
+            NanoServiceErrorStatus::Forbidden,
+        ));
+    }
+
+    if user_id == owner_id {
+        return Err(NanoServiceError::new(
+            "Owner cannot remove themselves",
+            NanoServiceErrorStatus::BadRequest,
+        ));
+    }
+
+    dal.delete_document_member(doc_id, user_id).await
+}
+
+pub async fn update_member_role<D>(
+    dal: &D,
+    doc_id: uuid::Uuid,
+    owner_id: uuid::Uuid,
+    user_id: uuid::Uuid,
+    request: &UpdateMemberRoleRequest,
+) -> Result<DocumentMember, NanoServiceError>
+where
+    D: GetDocumentById + UpdateDocumentMemberRole,
+{
+    let doc = dal.get_document_by_id(doc_id).await?.ok_or_else(|| {
+        NanoServiceError::new("Document not found", NanoServiceErrorStatus::NotFound)
+    })?;
+
+    if doc.owner_id != owner_id {
+        return Err(NanoServiceError::new(
+            "Only the document owner can update member roles",
+            NanoServiceErrorStatus::Forbidden,
+        ));
+    }
+
+    dal.update_document_member_role(doc_id, user_id, request.role)
+        .await
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use chrono::Utc;
     #[allow(unused_imports)]
     use kernel::TitleUpdated;
+    use kernel::{DocumentMember, InviteLink, MemberRole};
     use std::sync::{Arc, Mutex};
     use uuid::Uuid;
 
@@ -235,6 +431,8 @@ mod tests {
         next_id: Arc<Mutex<Uuid>>,
         content: Arc<Mutex<std::collections::HashMap<Uuid, String>>>,
         tickets: Arc<Mutex<Vec<kernel::WsTicket>>>,
+        invite_links: Arc<Mutex<Vec<InviteLink>>>,
+        members: Arc<Mutex<Vec<DocumentMember>>>,
     }
 
     impl MockDal {
@@ -244,6 +442,8 @@ mod tests {
                 next_id: Arc::new(Mutex::new(Uuid::new_v4())),
                 content: Arc::new(Mutex::new(std::collections::HashMap::new())),
                 tickets: Arc::new(Mutex::new(vec![])),
+                invite_links: Arc::new(Mutex::new(vec![])),
+                members: Arc::new(Mutex::new(vec![])),
             }
         }
 
@@ -253,6 +453,8 @@ mod tests {
                 next_id: Arc::new(Mutex::new(Uuid::new_v4())),
                 content: Arc::new(Mutex::new(std::collections::HashMap::new())),
                 tickets: Arc::new(Mutex::new(vec![])),
+                invite_links: Arc::new(Mutex::new(vec![])),
+                members: Arc::new(Mutex::new(vec![])),
             }
         }
 
@@ -262,6 +464,8 @@ mod tests {
                 next_id: Arc::new(Mutex::new(Uuid::new_v4())),
                 content: Arc::new(Mutex::new(std::collections::HashMap::new())),
                 tickets: Arc::new(Mutex::new(vec![])),
+                invite_links: Arc::new(Mutex::new(vec![])),
+                members: Arc::new(Mutex::new(vec![])),
             }
         }
 
@@ -273,6 +477,240 @@ mod tests {
                 next_id: Arc::new(Mutex::new(Uuid::new_v4())),
                 content: Arc::new(Mutex::new(map)),
                 tickets: Arc::new(Mutex::new(vec![])),
+                invite_links: Arc::new(Mutex::new(vec![])),
+                members: Arc::new(Mutex::new(vec![])),
+            }
+        }
+
+        fn with_document_and_link(doc: Document, link: InviteLink) -> Self {
+            Self {
+                documents: Arc::new(Mutex::new(vec![doc])),
+                next_id: Arc::new(Mutex::new(Uuid::new_v4())),
+                content: Arc::new(Mutex::new(std::collections::HashMap::new())),
+                tickets: Arc::new(Mutex::new(vec![])),
+                invite_links: Arc::new(Mutex::new(vec![link])),
+                members: Arc::new(Mutex::new(vec![])),
+            }
+        }
+
+        fn with_document_and_member(doc: Document, member: DocumentMember) -> Self {
+            Self {
+                documents: Arc::new(Mutex::new(vec![doc])),
+                next_id: Arc::new(Mutex::new(Uuid::new_v4())),
+                content: Arc::new(Mutex::new(std::collections::HashMap::new())),
+                tickets: Arc::new(Mutex::new(vec![])),
+                invite_links: Arc::new(Mutex::new(vec![])),
+                members: Arc::new(Mutex::new(vec![member])),
+            }
+        }
+    }
+
+    fn test_invite_link(
+        token: &str,
+        doc_id: Uuid,
+        created_by: Uuid,
+        role: MemberRole,
+        max_uses: Option<i32>,
+        expires_at: Option<chrono::DateTime<Utc>>,
+    ) -> InviteLink {
+        InviteLink {
+            token: token.to_string(),
+            doc_id,
+            role,
+            created_by,
+            max_uses,
+            use_count: 0,
+            expires_at,
+            revoked_at: None,
+        }
+    }
+
+    impl AcceptInviteLink for MockDal {
+        fn accept_invite_link(
+            &self,
+            token: String,
+            user_id: Uuid,
+        ) -> impl std::future::Future<Output = Result<DocumentMember, NanoServiceError>> + Send
+        {
+            let links = Arc::clone(&self.invite_links);
+            let members = Arc::clone(&self.members);
+            async move {
+                let mut links = links.lock().unwrap();
+                let link = links.iter_mut().find(|l| l.token == token).ok_or_else(|| {
+                    NanoServiceError::new("Invite link not found", NanoServiceErrorStatus::NotFound)
+                })?;
+
+                if link.revoked_at.is_some() {
+                    return Err(NanoServiceError::new(
+                        "Invite link has been revoked",
+                        NanoServiceErrorStatus::Gone,
+                    ));
+                }
+                if link.expires_at.map_or(false, |e| e < Utc::now()) {
+                    return Err(NanoServiceError::new(
+                        "Invite link has expired",
+                        NanoServiceErrorStatus::Gone,
+                    ));
+                }
+                if link.max_uses.map_or(false, |m| link.use_count >= m) {
+                    return Err(NanoServiceError::new(
+                        "Invite link has reached its maximum uses",
+                        NanoServiceErrorStatus::Gone,
+                    ));
+                }
+
+                link.use_count += 1;
+                let member = DocumentMember {
+                    doc_id: link.doc_id,
+                    user_id,
+                    role: link.role,
+                };
+                members.lock().unwrap().push(member.clone());
+                Ok(member)
+            }
+        }
+    }
+
+    impl CreateInviteLink for MockDal {
+        fn create_invite_link(
+            &self,
+            new_link: NewInviteLink,
+        ) -> impl std::future::Future<Output = Result<InviteLink, NanoServiceError>> + Send
+        {
+            let links = Arc::clone(&self.invite_links);
+            async move {
+                let link = InviteLink {
+                    token: new_link.token,
+                    doc_id: new_link.doc_id,
+                    role: new_link.role,
+                    created_by: new_link.created_by,
+                    max_uses: new_link.max_uses,
+                    use_count: 0,
+                    expires_at: new_link.expires_at,
+                    revoked_at: None,
+                };
+                links.lock().unwrap().push(link.clone());
+                Ok(link)
+            }
+        }
+    }
+
+    impl GetInviteLinkByToken for MockDal {
+        fn get_invite_link_by_token(
+            &self,
+            token: String,
+        ) -> impl std::future::Future<Output = Result<Option<InviteLink>, NanoServiceError>> + Send
+        {
+            let links = Arc::clone(&self.invite_links);
+            async move {
+                Ok(links
+                    .lock()
+                    .unwrap()
+                    .iter()
+                    .find(|l| l.token == token)
+                    .cloned())
+            }
+        }
+    }
+
+    impl ListActiveInviteLinks for MockDal {
+        fn list_active_invite_links(
+            &self,
+            doc_id: Uuid,
+        ) -> impl std::future::Future<Output = Result<Vec<InviteLink>, NanoServiceError>> + Send
+        {
+            let links = Arc::clone(&self.invite_links);
+            async move {
+                let now = Utc::now();
+                Ok(links
+                    .lock()
+                    .unwrap()
+                    .iter()
+                    .filter(|l| {
+                        l.doc_id == doc_id
+                            && l.revoked_at.is_none()
+                            && l.expires_at.map_or(true, |e| e > now)
+                    })
+                    .cloned()
+                    .collect())
+            }
+        }
+    }
+
+    impl RevokeInviteLink for MockDal {
+        fn revoke_invite_link(
+            &self,
+            token: String,
+        ) -> impl std::future::Future<Output = Result<(), NanoServiceError>> + Send {
+            let links = Arc::clone(&self.invite_links);
+            async move {
+                let mut links = links.lock().unwrap();
+                if let Some(link) = links.iter_mut().find(|l| l.token == token) {
+                    link.revoked_at = Some(Utc::now());
+                }
+                Ok(())
+            }
+        }
+    }
+
+    impl ListDocumentMembers for MockDal {
+        fn list_document_members(
+            &self,
+            doc_id: Uuid,
+        ) -> impl std::future::Future<Output = Result<Vec<DocumentMember>, NanoServiceError>> + Send
+        {
+            let members = Arc::clone(&self.members);
+            async move {
+                Ok(members
+                    .lock()
+                    .unwrap()
+                    .iter()
+                    .filter(|m| m.doc_id == doc_id)
+                    .cloned()
+                    .collect())
+            }
+        }
+    }
+
+    impl DeleteDocumentMember for MockDal {
+        fn delete_document_member(
+            &self,
+            doc_id: Uuid,
+            user_id: Uuid,
+        ) -> impl std::future::Future<Output = Result<(), NanoServiceError>> + Send {
+            let members = Arc::clone(&self.members);
+            async move {
+                members
+                    .lock()
+                    .unwrap()
+                    .retain(|m| !(m.doc_id == doc_id && m.user_id == user_id));
+                Ok(())
+            }
+        }
+    }
+
+    impl UpdateDocumentMemberRole for MockDal {
+        fn update_document_member_role(
+            &self,
+            doc_id: Uuid,
+            user_id: Uuid,
+            role: MemberRole,
+        ) -> impl std::future::Future<Output = Result<DocumentMember, NanoServiceError>> + Send
+        {
+            let members = Arc::clone(&self.members);
+            async move {
+                let mut members = members.lock().unwrap();
+                if let Some(m) = members
+                    .iter_mut()
+                    .find(|m| m.doc_id == doc_id && m.user_id == user_id)
+                {
+                    m.role = role;
+                    return Ok(m.clone());
+                }
+                Err(NanoServiceError::new(
+                    "Member not found",
+                    NanoServiceErrorStatus::NotFound,
+                ))
             }
         }
     }
@@ -827,5 +1265,338 @@ mod tests {
         let result = issue_ws_ticket(&dal, Uuid::new_v4(), Uuid::new_v4()).await;
         assert!(result.is_err());
         assert_eq!(result.unwrap_err().status, NanoServiceErrorStatus::NotFound);
+    }
+
+    // ── create_invite_link ────────────────────────────────────────────────────
+
+    #[tokio::test]
+    async fn create_invite_link_owner_succeeds() {
+        let owner_id = Uuid::new_v4();
+        let doc = test_document(owner_id);
+        let dal = MockDal::with_document(doc.clone());
+        let result = create_invite_link(
+            &dal,
+            doc.id,
+            owner_id,
+            &CreateInviteLinkRequest {
+                role: MemberRole::Editor,
+                expires_at: None,
+                max_uses: None,
+            },
+        )
+        .await;
+        assert!(result.is_ok());
+        let link = result.unwrap();
+        assert_eq!(link.doc_id, doc.id);
+        assert_eq!(link.role, MemberRole::Editor);
+        assert_eq!(link.use_count, 0);
+        assert_eq!(link.token.len(), 32);
+    }
+
+    #[tokio::test]
+    async fn create_invite_link_non_owner_returns_403() {
+        let owner_id = Uuid::new_v4();
+        let doc = test_document(owner_id);
+        let dal = MockDal::with_document(doc.clone());
+        let result = create_invite_link(
+            &dal,
+            doc.id,
+            Uuid::new_v4(),
+            &CreateInviteLinkRequest {
+                role: MemberRole::Viewer,
+                expires_at: None,
+                max_uses: None,
+            },
+        )
+        .await;
+        assert!(result.is_err());
+        assert_eq!(
+            result.unwrap_err().status,
+            NanoServiceErrorStatus::Forbidden
+        );
+    }
+
+    #[tokio::test]
+    async fn create_invite_link_doc_not_found_returns_404() {
+        let dal = MockDal::new();
+        let result = create_invite_link(
+            &dal,
+            Uuid::new_v4(),
+            Uuid::new_v4(),
+            &CreateInviteLinkRequest {
+                role: MemberRole::Viewer,
+                expires_at: None,
+                max_uses: None,
+            },
+        )
+        .await;
+        assert!(result.is_err());
+        assert_eq!(result.unwrap_err().status, NanoServiceErrorStatus::NotFound);
+    }
+
+    // ── accept_invite ─────────────────────────────────────────────────────────
+
+    #[tokio::test]
+    async fn accept_invite_adds_member_with_correct_role() {
+        let owner_id = Uuid::new_v4();
+        let doc = test_document(owner_id);
+        let user_id = Uuid::new_v4();
+        let link = test_invite_link("tok1", doc.id, owner_id, MemberRole::Editor, None, None);
+        let dal = MockDal::with_document_and_link(doc.clone(), link);
+
+        let result = accept_invite(&dal, "tok1", user_id).await;
+        assert!(result.is_ok());
+        let member = result.unwrap();
+        assert_eq!(member.role, MemberRole::Editor);
+        assert_eq!(member.user_id, user_id);
+        assert_eq!(member.doc_id, doc.id);
+    }
+
+    #[tokio::test]
+    async fn accept_invite_increments_use_count() {
+        let owner_id = Uuid::new_v4();
+        let doc = test_document(owner_id);
+        let link = test_invite_link("tok2", doc.id, owner_id, MemberRole::Viewer, Some(3), None);
+        let dal = MockDal::with_document_and_link(doc, link);
+
+        accept_invite(&dal, "tok2", Uuid::new_v4()).await.unwrap();
+        let count = dal.invite_links.lock().unwrap()[0].use_count;
+        assert_eq!(count, 1);
+    }
+
+    #[tokio::test]
+    async fn accept_invite_revoked_link_returns_gone() {
+        let owner_id = Uuid::new_v4();
+        let doc = test_document(owner_id);
+        let mut link = test_invite_link("tok3", doc.id, owner_id, MemberRole::Editor, None, None);
+        link.revoked_at = Some(Utc::now());
+        let dal = MockDal::with_document_and_link(doc, link);
+
+        let result = accept_invite(&dal, "tok3", Uuid::new_v4()).await;
+        assert!(result.is_err());
+        assert_eq!(result.unwrap_err().status, NanoServiceErrorStatus::Gone);
+    }
+
+    #[tokio::test]
+    async fn accept_invite_expired_link_returns_gone() {
+        let owner_id = Uuid::new_v4();
+        let doc = test_document(owner_id);
+        let mut link = test_invite_link("tok4", doc.id, owner_id, MemberRole::Editor, None, None);
+        link.expires_at = Some(Utc::now() - chrono::Duration::seconds(1));
+        let dal = MockDal::with_document_and_link(doc, link);
+
+        let result = accept_invite(&dal, "tok4", Uuid::new_v4()).await;
+        assert!(result.is_err());
+        assert_eq!(result.unwrap_err().status, NanoServiceErrorStatus::Gone);
+    }
+
+    #[tokio::test]
+    async fn accept_invite_exhausted_link_returns_gone() {
+        let owner_id = Uuid::new_v4();
+        let doc = test_document(owner_id);
+        let mut link =
+            test_invite_link("tok5", doc.id, owner_id, MemberRole::Editor, Some(2), None);
+        link.use_count = 2;
+        let dal = MockDal::with_document_and_link(doc, link);
+
+        let result = accept_invite(&dal, "tok5", Uuid::new_v4()).await;
+        assert!(result.is_err());
+        assert_eq!(result.unwrap_err().status, NanoServiceErrorStatus::Gone);
+    }
+
+    #[tokio::test]
+    async fn accept_invite_not_found_returns_404() {
+        let dal = MockDal::new();
+        let result = accept_invite(&dal, "nonexistent", Uuid::new_v4()).await;
+        assert!(result.is_err());
+        assert_eq!(result.unwrap_err().status, NanoServiceErrorStatus::NotFound);
+    }
+
+    // ── list_invite_links ─────────────────────────────────────────────────────
+
+    #[tokio::test]
+    async fn list_invite_links_returns_active_links_for_owner() {
+        let owner_id = Uuid::new_v4();
+        let doc = test_document(owner_id);
+        let link = test_invite_link("tok6", doc.id, owner_id, MemberRole::Viewer, None, None);
+        let dal = MockDal::with_document_and_link(doc.clone(), link);
+
+        let result = list_invite_links(&dal, doc.id, owner_id).await;
+        assert!(result.is_ok());
+        assert_eq!(result.unwrap().len(), 1);
+    }
+
+    #[tokio::test]
+    async fn list_invite_links_non_owner_returns_403() {
+        let owner_id = Uuid::new_v4();
+        let doc = test_document(owner_id);
+        let dal = MockDal::with_document(doc.clone());
+
+        let result = list_invite_links(&dal, doc.id, Uuid::new_v4()).await;
+        assert!(result.is_err());
+        assert_eq!(
+            result.unwrap_err().status,
+            NanoServiceErrorStatus::Forbidden
+        );
+    }
+
+    // ── revoke_invite_link ────────────────────────────────────────────────────
+
+    #[tokio::test]
+    async fn revoke_invite_link_owner_succeeds() {
+        let owner_id = Uuid::new_v4();
+        let doc = test_document(owner_id);
+        let link = test_invite_link("tok7", doc.id, owner_id, MemberRole::Editor, None, None);
+        let dal = MockDal::with_document_and_link(doc.clone(), link);
+
+        let result = revoke_invite_link(&dal, doc.id, owner_id, "tok7").await;
+        assert!(result.is_ok());
+        let revoked = dal.invite_links.lock().unwrap()[0].revoked_at;
+        assert!(revoked.is_some());
+    }
+
+    #[tokio::test]
+    async fn revoke_invite_link_non_owner_returns_403() {
+        let owner_id = Uuid::new_v4();
+        let doc = test_document(owner_id);
+        let link = test_invite_link("tok8", doc.id, owner_id, MemberRole::Editor, None, None);
+        let dal = MockDal::with_document_and_link(doc.clone(), link);
+
+        let result = revoke_invite_link(&dal, doc.id, Uuid::new_v4(), "tok8").await;
+        assert!(result.is_err());
+        assert_eq!(
+            result.unwrap_err().status,
+            NanoServiceErrorStatus::Forbidden
+        );
+    }
+
+    // ── list_members ──────────────────────────────────────────────────────────
+
+    #[tokio::test]
+    async fn list_members_returns_members_for_owner() {
+        let owner_id = Uuid::new_v4();
+        let doc = test_document(owner_id);
+        let member = DocumentMember {
+            doc_id: doc.id,
+            user_id: Uuid::new_v4(),
+            role: MemberRole::Editor,
+        };
+        let dal = MockDal::with_document_and_member(doc.clone(), member);
+
+        let result = list_members(&dal, doc.id, owner_id).await;
+        assert!(result.is_ok());
+        assert_eq!(result.unwrap().len(), 1);
+    }
+
+    #[tokio::test]
+    async fn list_members_non_owner_returns_403() {
+        let owner_id = Uuid::new_v4();
+        let doc = test_document(owner_id);
+        let dal = MockDal::with_document(doc.clone());
+
+        let result = list_members(&dal, doc.id, Uuid::new_v4()).await;
+        assert!(result.is_err());
+        assert_eq!(
+            result.unwrap_err().status,
+            NanoServiceErrorStatus::Forbidden
+        );
+    }
+
+    // ── remove_member ─────────────────────────────────────────────────────────
+
+    #[tokio::test]
+    async fn remove_member_owner_removes_other_user() {
+        let owner_id = Uuid::new_v4();
+        let user_id = Uuid::new_v4();
+        let doc = test_document(owner_id);
+        let member = DocumentMember {
+            doc_id: doc.id,
+            user_id,
+            role: MemberRole::Editor,
+        };
+        let dal = MockDal::with_document_and_member(doc.clone(), member);
+
+        let result = remove_member(&dal, doc.id, owner_id, user_id).await;
+        assert!(result.is_ok());
+        assert!(dal.members.lock().unwrap().is_empty());
+    }
+
+    #[tokio::test]
+    async fn remove_member_owner_cannot_remove_self() {
+        let owner_id = Uuid::new_v4();
+        let doc = test_document(owner_id);
+        let dal = MockDal::with_document(doc.clone());
+
+        let result = remove_member(&dal, doc.id, owner_id, owner_id).await;
+        assert!(result.is_err());
+        assert_eq!(
+            result.unwrap_err().status,
+            NanoServiceErrorStatus::BadRequest
+        );
+    }
+
+    #[tokio::test]
+    async fn remove_member_non_owner_returns_403() {
+        let owner_id = Uuid::new_v4();
+        let doc = test_document(owner_id);
+        let dal = MockDal::with_document(doc.clone());
+
+        let result = remove_member(&dal, doc.id, Uuid::new_v4(), Uuid::new_v4()).await;
+        assert!(result.is_err());
+        assert_eq!(
+            result.unwrap_err().status,
+            NanoServiceErrorStatus::Forbidden
+        );
+    }
+
+    // ── update_member_role ────────────────────────────────────────────────────
+
+    #[tokio::test]
+    async fn update_member_role_owner_succeeds() {
+        let owner_id = Uuid::new_v4();
+        let user_id = Uuid::new_v4();
+        let doc = test_document(owner_id);
+        let member = DocumentMember {
+            doc_id: doc.id,
+            user_id,
+            role: MemberRole::Editor,
+        };
+        let dal = MockDal::with_document_and_member(doc.clone(), member);
+
+        let result = update_member_role(
+            &dal,
+            doc.id,
+            owner_id,
+            user_id,
+            &UpdateMemberRoleRequest {
+                role: MemberRole::Viewer,
+            },
+        )
+        .await;
+        assert!(result.is_ok());
+        assert_eq!(result.unwrap().role, MemberRole::Viewer);
+    }
+
+    #[tokio::test]
+    async fn update_member_role_non_owner_returns_403() {
+        let owner_id = Uuid::new_v4();
+        let doc = test_document(owner_id);
+        let dal = MockDal::with_document(doc.clone());
+
+        let result = update_member_role(
+            &dal,
+            doc.id,
+            Uuid::new_v4(),
+            Uuid::new_v4(),
+            &UpdateMemberRoleRequest {
+                role: MemberRole::Viewer,
+            },
+        )
+        .await;
+        assert!(result.is_err());
+        assert_eq!(
+            result.unwrap_err().status,
+            NanoServiceErrorStatus::Forbidden
+        );
     }
 }

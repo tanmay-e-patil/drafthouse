@@ -1,11 +1,17 @@
 use super::auth::SqlxPostGresDescriptor;
 use crate::documents_txs::{
-    CountDocumentsByOwner, CreateDocument, CreateWsTicket, DeleteDocument, DeleteWsTicket,
-    GetDocumentById, GetDocumentContent, GetWsTicketByHash, ListDocumentsByOwner, UpdateDocument,
-    UpdateDocumentContent,
+    AcceptInviteLink, CountDocumentsByOwner, CreateDocument, CreateInviteLink, CreateWsTicket,
+    DeleteDocument, DeleteDocumentMember, DeleteWsTicket, GetDocumentById, GetDocumentContent,
+    GetDocumentMember, GetInviteLinkByToken, GetWsTicketByHash, ListActiveInviteLinks,
+    ListDocumentMembers, ListDocumentsByOwner, RevokeInviteLink, UpdateDocument,
+    UpdateDocumentContent, UpdateDocumentMemberRole,
 };
+use chrono::Utc;
 use dal_tx_impl::impl_transaction;
-use kernel::{Document, NewDocument, NewWsTicket, WsTicket};
+use kernel::{
+    Document, DocumentMember, InviteLink, MemberRole, NewDocument, NewInviteLink, NewWsTicket,
+    WsTicket,
+};
 use utils::errors::{NanoServiceError, NanoServiceErrorStatus};
 
 #[impl_transaction(SqlxPostGresDescriptor, CreateDocument, create_document)]
@@ -199,4 +205,272 @@ async fn delete_ws_ticket(&self, token_hash: String) -> Result<(), NanoServiceEr
         "Failed to delete ws ticket"
     )?;
     Ok(())
+}
+
+#[impl_transaction(SqlxPostGresDescriptor, CreateInviteLink, create_invite_link)]
+async fn create_invite_link(
+    &self,
+    new_link: NewInviteLink,
+) -> Result<InviteLink, NanoServiceError> {
+    let row = sqlx::query_as::<_, InviteLink>(
+        "INSERT INTO invite_links (token, doc_id, role, created_by, max_uses, expires_at)
+         VALUES ($1, $2, $3, $4, $5, $6)
+         RETURNING token, doc_id, role, created_by, max_uses, use_count, expires_at, revoked_at",
+    )
+    .bind(&new_link.token)
+    .bind(new_link.doc_id)
+    .bind(new_link.role)
+    .bind(new_link.created_by)
+    .bind(new_link.max_uses)
+    .bind(new_link.expires_at)
+    .fetch_one(&self.pool)
+    .await
+    .map_err(|e| {
+        NanoServiceError::new(
+            format!("Failed to create invite link: {}", e),
+            NanoServiceErrorStatus::InternalServerError,
+        )
+    })?;
+    Ok(row)
+}
+
+#[impl_transaction(SqlxPostGresDescriptor, GetInviteLinkByToken, get_invite_link_by_token)]
+async fn get_invite_link_by_token(
+    &self,
+    token: String,
+) -> Result<Option<InviteLink>, NanoServiceError> {
+    let row = sqlx::query_as::<_, InviteLink>(
+        "SELECT token, doc_id, role, created_by, max_uses, use_count, expires_at, revoked_at
+         FROM invite_links WHERE token = $1",
+    )
+    .bind(&token)
+    .fetch_optional(&self.pool)
+    .await
+    .map_err(|e| {
+        NanoServiceError::new(
+            format!("Failed to get invite link: {}", e),
+            NanoServiceErrorStatus::InternalServerError,
+        )
+    })?;
+    Ok(row)
+}
+
+#[impl_transaction(
+    SqlxPostGresDescriptor,
+    ListActiveInviteLinks,
+    list_active_invite_links
+)]
+async fn list_active_invite_links(
+    &self,
+    doc_id: uuid::Uuid,
+) -> Result<Vec<InviteLink>, NanoServiceError> {
+    let rows = sqlx::query_as::<_, InviteLink>(
+        "SELECT token, doc_id, role, created_by, max_uses, use_count, expires_at, revoked_at
+         FROM invite_links
+         WHERE doc_id = $1
+           AND revoked_at IS NULL
+           AND (expires_at IS NULL OR expires_at > NOW())",
+    )
+    .bind(doc_id)
+    .fetch_all(&self.pool)
+    .await
+    .map_err(|e| {
+        NanoServiceError::new(
+            format!("Failed to list invite links: {}", e),
+            NanoServiceErrorStatus::InternalServerError,
+        )
+    })?;
+    Ok(rows)
+}
+
+#[impl_transaction(SqlxPostGresDescriptor, RevokeInviteLink, revoke_invite_link)]
+async fn revoke_invite_link(&self, token: String) -> Result<(), NanoServiceError> {
+    utils::safe_eject!(
+        sqlx::query("UPDATE invite_links SET revoked_at = NOW() WHERE token = $1")
+            .bind(&token)
+            .execute(&self.pool)
+            .await,
+        NanoServiceErrorStatus::InternalServerError,
+        "Failed to revoke invite link"
+    )?;
+    Ok(())
+}
+
+#[impl_transaction(SqlxPostGresDescriptor, AcceptInviteLink, accept_invite_link)]
+async fn accept_invite_link(
+    &self,
+    token: String,
+    user_id: uuid::Uuid,
+) -> Result<DocumentMember, NanoServiceError> {
+    let mut tx = self.pool.begin().await.map_err(|e| {
+        NanoServiceError::new(
+            format!("Failed to begin transaction: {}", e),
+            NanoServiceErrorStatus::InternalServerError,
+        )
+    })?;
+
+    let link: Option<InviteLink> = sqlx::query_as::<_, InviteLink>(
+        "SELECT token, doc_id, role, created_by, max_uses, use_count, expires_at, revoked_at
+         FROM invite_links WHERE token = $1 FOR UPDATE",
+    )
+    .bind(&token)
+    .fetch_optional(&mut *tx)
+    .await
+    .map_err(|e| {
+        NanoServiceError::new(
+            format!("Failed to fetch invite link: {}", e),
+            NanoServiceErrorStatus::InternalServerError,
+        )
+    })?;
+
+    let link = link.ok_or_else(|| {
+        NanoServiceError::new("Invite link not found", NanoServiceErrorStatus::NotFound)
+    })?;
+
+    if link.revoked_at.is_some() {
+        return Err(NanoServiceError::new(
+            "Invite link has been revoked",
+            NanoServiceErrorStatus::Gone,
+        ));
+    }
+    if link.expires_at.is_some_and(|e| e < Utc::now()) {
+        return Err(NanoServiceError::new(
+            "Invite link has expired",
+            NanoServiceErrorStatus::Gone,
+        ));
+    }
+    if link.max_uses.is_some_and(|m| link.use_count >= m) {
+        return Err(NanoServiceError::new(
+            "Invite link has reached its maximum uses",
+            NanoServiceErrorStatus::Gone,
+        ));
+    }
+
+    sqlx::query("UPDATE invite_links SET use_count = use_count + 1 WHERE token = $1")
+        .bind(&token)
+        .execute(&mut *tx)
+        .await
+        .map_err(|e| {
+            NanoServiceError::new(
+                format!("Failed to increment use count: {}", e),
+                NanoServiceErrorStatus::InternalServerError,
+            )
+        })?;
+
+    let member: DocumentMember = sqlx::query_as::<_, DocumentMember>(
+        "INSERT INTO document_members (doc_id, user_id, role)
+         VALUES ($1, $2, $3)
+         ON CONFLICT (doc_id, user_id) DO UPDATE SET role = EXCLUDED.role
+         RETURNING doc_id, user_id, role",
+    )
+    .bind(link.doc_id)
+    .bind(user_id)
+    .bind(link.role)
+    .fetch_one(&mut *tx)
+    .await
+    .map_err(|e| {
+        NanoServiceError::new(
+            format!("Failed to insert member: {}", e),
+            NanoServiceErrorStatus::InternalServerError,
+        )
+    })?;
+
+    tx.commit().await.map_err(|e| {
+        NanoServiceError::new(
+            format!("Failed to commit transaction: {}", e),
+            NanoServiceErrorStatus::InternalServerError,
+        )
+    })?;
+
+    Ok(member)
+}
+
+#[impl_transaction(SqlxPostGresDescriptor, ListDocumentMembers, list_document_members)]
+async fn list_document_members(
+    &self,
+    doc_id: uuid::Uuid,
+) -> Result<Vec<DocumentMember>, NanoServiceError> {
+    let rows = sqlx::query_as::<_, DocumentMember>(
+        "SELECT doc_id, user_id, role FROM document_members WHERE doc_id = $1",
+    )
+    .bind(doc_id)
+    .fetch_all(&self.pool)
+    .await
+    .map_err(|e| {
+        NanoServiceError::new(
+            format!("Failed to list members: {}", e),
+            NanoServiceErrorStatus::InternalServerError,
+        )
+    })?;
+    Ok(rows)
+}
+
+#[impl_transaction(SqlxPostGresDescriptor, GetDocumentMember, get_document_member)]
+async fn get_document_member(
+    &self,
+    doc_id: uuid::Uuid,
+    user_id: uuid::Uuid,
+) -> Result<Option<DocumentMember>, NanoServiceError> {
+    let row = sqlx::query_as::<_, DocumentMember>(
+        "SELECT doc_id, user_id, role FROM document_members WHERE doc_id = $1 AND user_id = $2",
+    )
+    .bind(doc_id)
+    .bind(user_id)
+    .fetch_optional(&self.pool)
+    .await
+    .map_err(|e| {
+        NanoServiceError::new(
+            format!("Failed to get member: {}", e),
+            NanoServiceErrorStatus::InternalServerError,
+        )
+    })?;
+    Ok(row)
+}
+
+#[impl_transaction(SqlxPostGresDescriptor, DeleteDocumentMember, delete_document_member)]
+async fn delete_document_member(
+    &self,
+    doc_id: uuid::Uuid,
+    user_id: uuid::Uuid,
+) -> Result<(), NanoServiceError> {
+    utils::safe_eject!(
+        sqlx::query("DELETE FROM document_members WHERE doc_id = $1 AND user_id = $2")
+            .bind(doc_id)
+            .bind(user_id)
+            .execute(&self.pool)
+            .await,
+        NanoServiceErrorStatus::InternalServerError,
+        "Failed to delete member"
+    )?;
+    Ok(())
+}
+
+#[impl_transaction(
+    SqlxPostGresDescriptor,
+    UpdateDocumentMemberRole,
+    update_document_member_role
+)]
+async fn update_document_member_role(
+    &self,
+    doc_id: uuid::Uuid,
+    user_id: uuid::Uuid,
+    role: MemberRole,
+) -> Result<DocumentMember, NanoServiceError> {
+    let row = sqlx::query_as::<_, DocumentMember>(
+        "UPDATE document_members SET role = $3 WHERE doc_id = $1 AND user_id = $2
+         RETURNING doc_id, user_id, role",
+    )
+    .bind(doc_id)
+    .bind(user_id)
+    .bind(role)
+    .fetch_optional(&self.pool)
+    .await
+    .map_err(|e| {
+        NanoServiceError::new(
+            format!("Failed to update member role: {}", e),
+            NanoServiceErrorStatus::InternalServerError,
+        )
+    })?
+    .ok_or_else(|| NanoServiceError::new("Member not found", NanoServiceErrorStatus::NotFound))?;
+    Ok(row)
 }

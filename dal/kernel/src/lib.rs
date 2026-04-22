@@ -176,11 +176,52 @@ pub struct DocumentListResponse {
     pub has_more: bool,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, sqlx::Type)]
+#[sqlx(type_name = "member_role", rename_all = "snake_case")]
+#[serde(rename_all = "snake_case")]
+pub enum MemberRole {
+    Editor,
+    Viewer,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, sqlx::FromRow)]
 pub struct DocumentMember {
     pub doc_id: Uuid,
     pub user_id: Uuid,
-    pub role: String,
+    pub role: MemberRole,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, sqlx::FromRow)]
+pub struct InviteLink {
+    pub token: String,
+    pub doc_id: Uuid,
+    pub role: MemberRole,
+    pub created_by: Uuid,
+    pub max_uses: Option<i32>,
+    pub use_count: i32,
+    pub expires_at: Option<DateTime<Utc>>,
+    pub revoked_at: Option<DateTime<Utc>>,
+}
+
+pub struct NewInviteLink {
+    pub token: String,
+    pub doc_id: Uuid,
+    pub role: MemberRole,
+    pub created_by: Uuid,
+    pub max_uses: Option<i32>,
+    pub expires_at: Option<DateTime<Utc>>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CreateInviteLinkRequest {
+    pub role: MemberRole,
+    pub expires_at: Option<DateTime<Utc>>,
+    pub max_uses: Option<i32>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct UpdateMemberRoleRequest {
+    pub role: MemberRole,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

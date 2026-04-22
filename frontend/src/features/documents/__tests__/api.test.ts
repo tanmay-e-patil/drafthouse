@@ -7,6 +7,13 @@ import {
   deleteDocumentApi,
   getDocumentContentApi,
   updateDocumentContentApi,
+  createInviteLinkApi,
+  listInviteLinksApi,
+  revokeInviteLinkApi,
+  acceptInviteApi,
+  listMembersApi,
+  removeMemberApi,
+  updateMemberRoleApi,
 } from "../api";
 import { useAuthStore } from "#/features/auth/store";
 
@@ -301,5 +308,146 @@ describe("updateDocumentContentApi", () => {
     );
 
     await expect(updateDocumentContentApi("bad-id", "content")).rejects.toThrow("Document not found");
+  });
+});
+
+const mockDocId = "123e4567-e89b-12d3-a456-426614174000";
+const mockUserId = "223e4567-e89b-12d3-a456-426614174001";
+const mockToken = "abc123def456abc123def456abc12345";
+
+const mockInviteLink = {
+  token: mockToken,
+  doc_id: mockDocId,
+  role: "editor" as const,
+  created_by: mockUserId,
+  max_uses: null,
+  use_count: 0,
+  expires_at: null,
+  revoked_at: null,
+};
+
+const mockMember = {
+  doc_id: mockDocId,
+  user_id: mockUserId,
+  role: "editor" as const,
+};
+
+describe("createInviteLinkApi", () => {
+  it("returns invite link on success", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue({ ok: true, json: async () => mockInviteLink }));
+    const result = await createInviteLinkApi(mockDocId, { role: "editor" });
+    expect(result.token).toBe(mockToken);
+    expect(result.role).toBe("editor");
+  });
+
+  it("sends POST to /documents/:id/invites with role", async () => {
+    const mockFetch = vi.fn().mockResolvedValue({ ok: true, json: async () => mockInviteLink });
+    vi.stubGlobal("fetch", mockFetch);
+    await createInviteLinkApi(mockDocId, { role: "viewer", max_uses: 5 });
+    expect(mockFetch).toHaveBeenCalledWith(
+      expect.stringContaining(`/documents/${mockDocId}/invites`),
+      expect.objectContaining({ method: "POST" })
+    );
+    const body = JSON.parse(mockFetch.mock.calls[0][1].body);
+    expect(body.role).toBe("viewer");
+    expect(body.max_uses).toBe(5);
+  });
+
+  it("throws on 403 forbidden", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue({ ok: false, json: async () => ({ detail: "Forbidden" }) }));
+    await expect(createInviteLinkApi(mockDocId, { role: "editor" })).rejects.toThrow("Forbidden");
+  });
+});
+
+describe("listInviteLinksApi", () => {
+  it("returns array of links", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue({ ok: true, json: async () => [mockInviteLink] }));
+    const result = await listInviteLinksApi(mockDocId);
+    expect(result).toHaveLength(1);
+    expect(result[0].token).toBe(mockToken);
+  });
+
+  it("sends GET to /documents/:id/invites", async () => {
+    const mockFetch = vi.fn().mockResolvedValue({ ok: true, json: async () => [] });
+    vi.stubGlobal("fetch", mockFetch);
+    await listInviteLinksApi(mockDocId);
+    expect(mockFetch).toHaveBeenCalledWith(
+      expect.stringContaining(`/documents/${mockDocId}/invites`),
+      expect.objectContaining({ method: "GET" })
+    );
+  });
+});
+
+describe("revokeInviteLinkApi", () => {
+  it("resolves void on 204", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue({ ok: true }));
+    await expect(revokeInviteLinkApi(mockDocId, mockToken)).resolves.toBeUndefined();
+  });
+
+  it("throws on error", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue({ ok: false, json: async () => ({ detail: "Not found" }) }));
+    await expect(revokeInviteLinkApi(mockDocId, mockToken)).rejects.toThrow("Not found");
+  });
+});
+
+describe("acceptInviteApi", () => {
+  it("returns member on success", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue({ ok: true, json: async () => mockMember }));
+    const result = await acceptInviteApi(mockToken);
+    expect(result.role).toBe("editor");
+    expect(result.user_id).toBe(mockUserId);
+  });
+
+  it("sends POST to /invites/:token/accept", async () => {
+    const mockFetch = vi.fn().mockResolvedValue({ ok: true, json: async () => mockMember });
+    vi.stubGlobal("fetch", mockFetch);
+    await acceptInviteApi(mockToken);
+    expect(mockFetch).toHaveBeenCalledWith(
+      expect.stringContaining(`/invites/${mockToken}/accept`),
+      expect.objectContaining({ method: "POST" })
+    );
+  });
+
+  it("throws 410 gone for expired link", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue({ ok: false, json: async () => ({ detail: "Invite link has expired" }) }));
+    await expect(acceptInviteApi(mockToken)).rejects.toThrow("Invite link has expired");
+  });
+});
+
+describe("listMembersApi", () => {
+  it("returns array of members", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue({ ok: true, json: async () => [mockMember] }));
+    const result = await listMembersApi(mockDocId);
+    expect(result).toHaveLength(1);
+    expect(result[0].role).toBe("editor");
+  });
+});
+
+describe("removeMemberApi", () => {
+  it("resolves void on success", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue({ ok: true }));
+    await expect(removeMemberApi(mockDocId, mockUserId)).resolves.toBeUndefined();
+  });
+
+  it("throws on error", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue({ ok: false, json: async () => ({ detail: "Owner cannot remove themselves" }) }));
+    await expect(removeMemberApi(mockDocId, mockUserId)).rejects.toThrow("Owner cannot remove themselves");
+  });
+});
+
+describe("updateMemberRoleApi", () => {
+  it("returns updated member", async () => {
+    const updated = { ...mockMember, role: "viewer" as const };
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue({ ok: true, json: async () => updated }));
+    const result = await updateMemberRoleApi(mockDocId, mockUserId, "viewer");
+    expect(result.role).toBe("viewer");
+  });
+
+  it("sends PATCH with role body", async () => {
+    const mockFetch = vi.fn().mockResolvedValue({ ok: true, json: async () => mockMember });
+    vi.stubGlobal("fetch", mockFetch);
+    await updateMemberRoleApi(mockDocId, mockUserId, "viewer");
+    const body = JSON.parse(mockFetch.mock.calls[0][1].body);
+    expect(body.role).toBe("viewer");
   });
 });

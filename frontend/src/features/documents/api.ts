@@ -2,6 +2,8 @@ import { useAuthStore } from "#/features/auth/store";
 
 const API_BASE = import.meta.env.VITE_API_URL ?? "http://localhost:8080";
 
+export type MemberRole = "editor" | "viewer";
+
 export interface Document {
   id: string;
   owner_id: string;
@@ -136,4 +138,111 @@ export async function updateDocumentContentApi(
     const err = data as ApiError;
     throw new Error(err.detail ?? "Failed to save document content");
   }
+}
+
+export interface InviteLink {
+  token: string;
+  doc_id: string;
+  role: MemberRole;
+  created_by: string;
+  max_uses: number | null;
+  use_count: number;
+  expires_at: string | null;
+  revoked_at: string | null;
+}
+
+export interface DocumentMember {
+  doc_id: string;
+  user_id: string;
+  role: MemberRole;
+}
+
+export interface CreateInviteLinkRequest {
+  role: MemberRole;
+  expires_at?: string | null;
+  max_uses?: number | null;
+}
+
+export async function createInviteLinkApi(
+  docId: string,
+  req: CreateInviteLinkRequest
+): Promise<InviteLink> {
+  const res = await fetch(`${API_BASE}/documents/${docId}/invites`, {
+    method: "POST",
+    headers: getAuthHeaders(),
+    body: JSON.stringify(req),
+    credentials: "include",
+  });
+  return handleResponse<InviteLink>(res, "Failed to create invite link");
+}
+
+export async function listInviteLinksApi(docId: string): Promise<InviteLink[]> {
+  const res = await fetch(`${API_BASE}/documents/${docId}/invites`, {
+    method: "GET",
+    headers: getAuthHeaders(),
+    credentials: "include",
+  });
+  return handleResponse<InviteLink[]>(res, "Failed to list invite links");
+}
+
+export async function revokeInviteLinkApi(
+  docId: string,
+  token: string
+): Promise<void> {
+  const res = await fetch(`${API_BASE}/documents/${docId}/invites/${token}`, {
+    method: "DELETE",
+    headers: getAuthHeaders(),
+    credentials: "include",
+  });
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({}));
+    throw new Error((data as ApiError).detail ?? "Failed to revoke invite link");
+  }
+}
+
+export async function acceptInviteApi(token: string): Promise<DocumentMember> {
+  const res = await fetch(`${API_BASE}/invites/${token}/accept`, {
+    method: "POST",
+    headers: getAuthHeaders(),
+    credentials: "include",
+  });
+  return handleResponse<DocumentMember>(res, "Failed to accept invite");
+}
+
+export async function listMembersApi(docId: string): Promise<DocumentMember[]> {
+  const res = await fetch(`${API_BASE}/documents/${docId}/members`, {
+    method: "GET",
+    headers: getAuthHeaders(),
+    credentials: "include",
+  });
+  return handleResponse<DocumentMember[]>(res, "Failed to list members");
+}
+
+export async function removeMemberApi(
+  docId: string,
+  userId: string
+): Promise<void> {
+  const res = await fetch(`${API_BASE}/documents/${docId}/members/${userId}`, {
+    method: "DELETE",
+    headers: getAuthHeaders(),
+    credentials: "include",
+  });
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({}));
+    throw new Error((data as ApiError).detail ?? "Failed to remove member");
+  }
+}
+
+export async function updateMemberRoleApi(
+  docId: string,
+  userId: string,
+  role: MemberRole
+): Promise<DocumentMember> {
+  const res = await fetch(`${API_BASE}/documents/${docId}/members/${userId}`, {
+    method: "PATCH",
+    headers: getAuthHeaders(),
+    body: JSON.stringify({ role }),
+    credentials: "include",
+  });
+  return handleResponse<DocumentMember>(res, "Failed to update member role");
 }
