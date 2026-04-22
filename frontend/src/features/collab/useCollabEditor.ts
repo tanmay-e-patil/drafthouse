@@ -65,18 +65,25 @@ export function useCollabEditor(
 
     function syncPeers(awareness: WebsocketProvider["awareness"]) {
       const states = awareness.getStates();
-      const peers: AwarenessPeer[] = [];
+      // De-duplicate by name: same user refreshing gets a new clientID but same name.
+      // Keep the entry with the highest lastActive (most recent session).
+      const byName = new Map<string, AwarenessPeer>();
       states.forEach((state, clientId) => {
         const u = state["user"] as { name?: string; color?: string; lastActive?: number } | undefined;
         if (u?.name && u?.color) {
-          peers.push({
+          const candidate: AwarenessPeer = {
             clientId,
             name: u.name,
             color: u.color,
             lastActive: u.lastActive ?? Date.now(),
-          });
+          };
+          const existing = byName.get(u.name);
+          if (!existing || candidate.lastActive > existing.lastActive) {
+            byName.set(u.name, candidate);
+          }
         }
       });
+      const peers = Array.from(byName.values());
       setPeers(peers);
     }
 
