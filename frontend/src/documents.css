@@ -171,7 +171,14 @@
   overflow: hidden;
 }
 
+.editor-header {
+  display: flex;
+  align-items: center;
+  padding-right: 2rem;
+}
+
 .editor-title {
+  flex: 1;
   border: none;
   font-size: 2rem;
   font-weight: 700;
@@ -179,6 +186,21 @@
   padding: 1.5rem 2rem 0.5rem;
   outline: none;
   background: transparent;
+}
+
+.share-btn {
+  flex-shrink: 0;
+  padding: 0.4rem 1rem;
+  border-radius: 6px;
+  border: 1px solid var(--ink-soft, #888);
+  background: transparent;
+  color: var(--ink);
+  font-size: 0.875rem;
+  cursor: pointer;
+}
+
+.share-btn:hover {
+  background: var(--surface-hover, rgba(0,0,0,0.05));
 }
 
 .editor-content {
