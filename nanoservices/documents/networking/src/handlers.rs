@@ -1,6 +1,9 @@
 use actix_web::{HttpRequest, HttpResponse, web};
 use dal::postgres_txs::SqlxPostGresDescriptor;
-use kernel::{CreateDocumentRequest, UpdateDocumentContentRequest, UpdateDocumentRequest};
+use kernel::{
+    CreateDocumentRequest, CreateInviteLinkRequest, UpdateDocumentContentRequest,
+    UpdateDocumentRequest, UpdateMemberRoleRequest,
+};
 use utils::errors::{NanoServiceError, NanoServiceErrorStatus};
 use uuid::Uuid;
 
@@ -114,4 +117,80 @@ pub async fn issue_ws_ticket(
     let claims = crate::middleware::extract_verified_jwt(&req).await?;
     let resp = documents_core::issue_ws_ticket(dal, *path, claims.sub).await?;
     Ok(HttpResponse::Created().json(resp))
+}
+
+pub async fn create_invite_link(
+    req: HttpRequest,
+    path: web::Path<Uuid>,
+    body: web::Json<CreateInviteLinkRequest>,
+) -> Result<HttpResponse, NanoServiceError> {
+    let dal = get_dal(&req)?;
+    let claims = crate::middleware::extract_verified_jwt(&req).await?;
+    let link = documents_core::create_invite_link(dal, *path, claims.sub, &body).await?;
+    Ok(HttpResponse::Created().json(link))
+}
+
+pub async fn list_invite_links(
+    req: HttpRequest,
+    path: web::Path<Uuid>,
+) -> Result<HttpResponse, NanoServiceError> {
+    let dal = get_dal(&req)?;
+    let claims = crate::middleware::extract_verified_jwt(&req).await?;
+    let links = documents_core::list_invite_links(dal, *path, claims.sub).await?;
+    Ok(HttpResponse::Ok().json(links))
+}
+
+pub async fn revoke_invite_link(
+    req: HttpRequest,
+    path: web::Path<(Uuid, String)>,
+) -> Result<HttpResponse, NanoServiceError> {
+    let dal = get_dal(&req)?;
+    let claims = crate::middleware::extract_verified_jwt(&req).await?;
+    let (doc_id, token) = path.into_inner();
+    documents_core::revoke_invite_link(dal, doc_id, claims.sub, &token).await?;
+    Ok(HttpResponse::NoContent().finish())
+}
+
+pub async fn accept_invite(
+    req: HttpRequest,
+    path: web::Path<String>,
+) -> Result<HttpResponse, NanoServiceError> {
+    let dal = get_dal(&req)?;
+    let claims = crate::middleware::extract_verified_jwt(&req).await?;
+    let member = documents_core::accept_invite(dal, &path, claims.sub).await?;
+    Ok(HttpResponse::Ok().json(member))
+}
+
+pub async fn list_members(
+    req: HttpRequest,
+    path: web::Path<Uuid>,
+) -> Result<HttpResponse, NanoServiceError> {
+    let dal = get_dal(&req)?;
+    let claims = crate::middleware::extract_verified_jwt(&req).await?;
+    let members = documents_core::list_members(dal, *path, claims.sub).await?;
+    Ok(HttpResponse::Ok().json(members))
+}
+
+pub async fn remove_member(
+    req: HttpRequest,
+    path: web::Path<(Uuid, Uuid)>,
+) -> Result<HttpResponse, NanoServiceError> {
+    let dal = get_dal(&req)?;
+    let claims = crate::middleware::extract_verified_jwt(&req).await?;
+    let (doc_id, user_id) = path.into_inner();
+    documents_core::remove_member(dal, doc_id, claims.sub, user_id).await?;
+    Ok(HttpResponse::NoContent().finish())
+}
+
+pub async fn update_member_role(
+    req: HttpRequest,
+    path: web::Path<(Uuid, Uuid)>,
+    body: web::Json<UpdateMemberRoleRequest>,
+) -> Result<HttpResponse, NanoServiceError> {
+    let dal = get_dal(&req)?;
+    let claims = crate::middleware::extract_verified_jwt(&req).await?;
+    let (doc_id, user_id) = path.into_inner();
+    let member =
+        documents_core::update_member_role(dal, doc_id, claims.sub, user_id, &body).await?;
+    Ok(HttpResponse::Ok().json(member))
 }

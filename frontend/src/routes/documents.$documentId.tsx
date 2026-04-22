@@ -11,6 +11,7 @@ import { useDocumentStore } from "#/features/documents/store";
 import { useAuthStore } from "#/features/auth/store";
 import Sidebar from "#/components/Sidebar";
 import Editor from "#/widgets/editor/Editor";
+import { ShareModal } from "#/features/documents/ShareModal";
 import type { Document } from "#/features/documents/api";
 
 export const Route = createFileRoute("/documents/$documentId")({
@@ -27,6 +28,7 @@ function DocumentEditor() {
   const [title, setTitle] = useState("");
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [shareOpen, setShareOpen] = useState(false);
   const [content, setContent] = useState("");
   const [contentLoading, setContentLoading] = useState(true);
   const titleRef = useRef<HTMLInputElement>(null);
@@ -134,15 +136,31 @@ function DocumentEditor() {
     <div className="editor-layout">
       <Sidebar />
       <main className="editor-area">
-        <input
-          ref={titleRef}
-          className="editor-title"
-          value={title}
-          onChange={(e) => setTitle(e.target.value)}
-          onBlur={handleTitleBlur}
-          disabled={saving}
-          placeholder="Untitled"
-        />
+        <div className="editor-header">
+          <input
+            ref={titleRef}
+            className="editor-title"
+            value={title}
+            onChange={(e) => setTitle(e.target.value)}
+            onBlur={handleTitleBlur}
+            disabled={saving}
+            placeholder="Untitled"
+          />
+          <button className="share-btn" onClick={() => setShareOpen(true)}>
+            Share
+          </button>
+        </div>
+        {shareOpen && (
+          <ShareModal
+            docId={document.id}
+            docTitle={title}
+            isPublic={document.is_public}
+            onClose={() => setShareOpen(false)}
+            onPublicToggle={(isPublic) => {
+              setDocument({ ...document, is_public: isPublic });
+            }}
+          />
+        )}
         {contentLoading ? (
           <div className="editor-content">
             <p style={{ color: "var(--ink-soft)" }}>Loading editor...</p>

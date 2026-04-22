@@ -8,6 +8,7 @@ pub enum NanoServiceErrorStatus {
     Forbidden,
     NotFound,
     Conflict,
+    Gone,
     InternalServerError,
 }
 
@@ -19,6 +20,7 @@ impl From<NanoServiceErrorStatus> for u16 {
             NanoServiceErrorStatus::Forbidden => 403,
             NanoServiceErrorStatus::NotFound => 404,
             NanoServiceErrorStatus::Conflict => 409,
+            NanoServiceErrorStatus::Gone => 410,
             NanoServiceErrorStatus::InternalServerError => 500,
         }
     }
@@ -62,6 +64,7 @@ impl ResponseError for NanoServiceError {
             NanoServiceErrorStatus::Forbidden => "Forbidden",
             NanoServiceErrorStatus::NotFound => "Not Found",
             NanoServiceErrorStatus::Conflict => "Conflict",
+            NanoServiceErrorStatus::Gone => "Gone",
             NanoServiceErrorStatus::InternalServerError => "Internal Server Error",
         };
 
@@ -84,6 +87,7 @@ impl NanoServiceError {
             NanoServiceErrorStatus::Forbidden => "forbidden",
             NanoServiceErrorStatus::NotFound => "not-found",
             NanoServiceErrorStatus::Conflict => "conflict",
+            NanoServiceErrorStatus::Gone => "gone",
             NanoServiceErrorStatus::InternalServerError => "internal-server-error",
         }
     }

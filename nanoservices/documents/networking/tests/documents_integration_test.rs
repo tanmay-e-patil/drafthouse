@@ -2,7 +2,8 @@ use actix_web::{App, http::StatusCode, test, web};
 use auth_networking::routes as auth_routes;
 use dal::postgres_txs::SqlxPostGresDescriptor;
 use kernel::{
-    CreateDocumentRequest, LoginRequest, UpdateDocumentContentRequest, UpdateDocumentRequest,
+    CreateDocumentRequest, CreateInviteLinkRequest, LoginRequest, MemberRole,
+    UpdateDocumentContentRequest, UpdateDocumentRequest, UpdateMemberRoleRequest,
 };
 use sqlx::PgPool;
 use testcontainers_modules::{
@@ -718,4 +719,406 @@ async fn update_document_content_multiple_times() {
     .await;
     let get_body: serde_json::Value = test::read_body_json(get_resp).await;
     assert_eq!(get_body["content"], "Version 4");
+}
+
+// ── invite links ──────────────────────────────────────────────────────────
+
+macro_rules! create_doc {
+    ($app:expr, $token:expr) => {{
+        let resp = test::call_service(
+            $app,
+            test::TestRequest::post()
+                .uri("/documents")
+                .insert_header(("Authorization", format!("Bearer {}", $token)))
+                .set_json(CreateDocumentRequest {
+                    title: Some("Test Doc".into()),
+                })
+                .to_request(),
+        )
+        .await;
+        let body: serde_json::Value = test::read_body_json(resp).await;
+        body["id"].as_str().unwrap().to_string()
+    }};
+}
+
+#[tokio::test]
+async fn create_invite_link_returns_201_with_token() {
+    let env = TestEnv::new().await;
+    create_verified_user!(&env.pool, "invowner@example.com", "password123");
+    let app = make_app!(env);
+    let token = login_token!(&app, "invowner@example.com", "password123");
+    let doc_id = create_doc!(&app, &token);
+
+    let resp = test::call_service(
+        &app,
+        test::TestRequest::post()
+            .uri(&format!("/documents/{}/invites", doc_id))
+            .insert_header(("Authorization", format!("Bearer {}", token)))
+            .set_json(CreateInviteLinkRequest {
+                role: MemberRole::Editor,
+                expires_at: None,
+                max_uses: None,
+            })
+            .to_request(),
+    )
+    .await;
+    assert_eq!(resp.status(), StatusCode::CREATED);
+    let body: serde_json::Value = test::read_body_json(resp).await;
+    assert!(body["token"].as_str().is_some());
+    assert_eq!(body["role"], "editor");
+}
+
+#[tokio::test]
+async fn create_invite_link_non_owner_returns_403() {
+    let env = TestEnv::new().await;
+    create_verified_user!(&env.pool, "invown2@example.com", "password123");
+    create_verified_user!(&env.pool, "invother@example.com", "password123");
+    let app = make_app!(env);
+    let owner_token = login_token!(&app, "invown2@example.com", "password123");
+    let other_token = login_token!(&app, "invother@example.com", "password123");
+    let doc_id = create_doc!(&app, &owner_token);
+
+    let resp = test::call_service(
+        &app,
+        test::TestRequest::post()
+            .uri(&format!("/documents/{}/invites", doc_id))
+            .insert_header(("Authorization", format!("Bearer {}", other_token)))
+            .set_json(CreateInviteLinkRequest {
+                role: MemberRole::Viewer,
+                expires_at: None,
+                max_uses: None,
+            })
+            .to_request(),
+    )
+    .await;
+    assert_eq!(resp.status(), StatusCode::FORBIDDEN);
+}
+
+#[tokio::test]
+async fn list_invite_links_returns_active_links() {
+    let env = TestEnv::new().await;
+    create_verified_user!(&env.pool, "listinv@example.com", "password123");
+    let app = make_app!(env);
+    let token = login_token!(&app, "listinv@example.com", "password123");
+    let doc_id = create_doc!(&app, &token);
+
+    test::call_service(
+        &app,
+        test::TestRequest::post()
+            .uri(&format!("/documents/{}/invites", doc_id))
+            .insert_header(("Authorization", format!("Bearer {}", token)))
+            .set_json(CreateInviteLinkRequest {
+                role: MemberRole::Viewer,
+                expires_at: None,
+                max_uses: Some(5),
+            })
+            .to_request(),
+    )
+    .await;
+
+    let list_resp = test::call_service(
+        &app,
+        test::TestRequest::get()
+            .uri(&format!("/documents/{}/invites", doc_id))
+            .insert_header(("Authorization", format!("Bearer {}", token)))
+            .to_request(),
+    )
+    .await;
+    assert_eq!(list_resp.status(), StatusCode::OK);
+    let body: serde_json::Value = test::read_body_json(list_resp).await;
+    assert_eq!(body.as_array().unwrap().len(), 1);
+    assert_eq!(body[0]["max_uses"], 5);
+}
+
+#[tokio::test]
+async fn revoke_invite_link_returns_204() {
+    let env = TestEnv::new().await;
+    create_verified_user!(&env.pool, "revokeinv@example.com", "password123");
+    let app = make_app!(env);
+    let token = login_token!(&app, "revokeinv@example.com", "password123");
+    let doc_id = create_doc!(&app, &token);
+
+    let create_resp = test::call_service(
+        &app,
+        test::TestRequest::post()
+            .uri(&format!("/documents/{}/invites", doc_id))
+            .insert_header(("Authorization", format!("Bearer {}", token)))
+            .set_json(CreateInviteLinkRequest {
+                role: MemberRole::Editor,
+                expires_at: None,
+                max_uses: None,
+            })
+            .to_request(),
+    )
+    .await;
+    let create_body: serde_json::Value = test::read_body_json(create_resp).await;
+    let inv_token = create_body["token"].as_str().unwrap().to_string();
+
+    let revoke_resp = test::call_service(
+        &app,
+        test::TestRequest::delete()
+            .uri(&format!("/documents/{}/invites/{}", doc_id, inv_token))
+            .insert_header(("Authorization", format!("Bearer {}", token)))
+            .to_request(),
+    )
+    .await;
+    assert_eq!(revoke_resp.status(), StatusCode::NO_CONTENT);
+
+    let list_resp = test::call_service(
+        &app,
+        test::TestRequest::get()
+            .uri(&format!("/documents/{}/invites", doc_id))
+            .insert_header(("Authorization", format!("Bearer {}", token)))
+            .to_request(),
+    )
+    .await;
+    let list_body: serde_json::Value = test::read_body_json(list_resp).await;
+    assert_eq!(list_body.as_array().unwrap().len(), 0);
+}
+
+// ── accept invite + members ───────────────────────────────────────────────
+
+#[tokio::test]
+async fn full_invite_accept_remove_cycle() {
+    let env = TestEnv::new().await;
+    create_verified_user!(&env.pool, "cycleowner@example.com", "password123");
+    create_verified_user!(&env.pool, "cycleinvitee@example.com", "password123");
+    let app = make_app!(env);
+    let owner_token = login_token!(&app, "cycleowner@example.com", "password123");
+    let invitee_token = login_token!(&app, "cycleinvitee@example.com", "password123");
+    let doc_id = create_doc!(&app, &owner_token);
+
+    let create_resp = test::call_service(
+        &app,
+        test::TestRequest::post()
+            .uri(&format!("/documents/{}/invites", doc_id))
+            .insert_header(("Authorization", format!("Bearer {}", owner_token)))
+            .set_json(CreateInviteLinkRequest {
+                role: MemberRole::Editor,
+                expires_at: None,
+                max_uses: None,
+            })
+            .to_request(),
+    )
+    .await;
+    let create_body: serde_json::Value = test::read_body_json(create_resp).await;
+    let inv_token = create_body["token"].as_str().unwrap().to_string();
+
+    let accept_resp = test::call_service(
+        &app,
+        test::TestRequest::post()
+            .uri(&format!("/invites/{}/accept", inv_token))
+            .insert_header(("Authorization", format!("Bearer {}", invitee_token)))
+            .to_request(),
+    )
+    .await;
+    assert_eq!(accept_resp.status(), StatusCode::OK);
+    let accept_body: serde_json::Value = test::read_body_json(accept_resp).await;
+    assert_eq!(accept_body["role"], "editor");
+
+    let members_resp = test::call_service(
+        &app,
+        test::TestRequest::get()
+            .uri(&format!("/documents/{}/members", doc_id))
+            .insert_header(("Authorization", format!("Bearer {}", owner_token)))
+            .to_request(),
+    )
+    .await;
+    assert_eq!(members_resp.status(), StatusCode::OK);
+    let members_body: serde_json::Value = test::read_body_json(members_resp).await;
+    assert_eq!(members_body.as_array().unwrap().len(), 1);
+    let member_user_id = members_body[0]["user_id"].as_str().unwrap();
+
+    let remove_resp = test::call_service(
+        &app,
+        test::TestRequest::delete()
+            .uri(&format!("/documents/{}/members/{}", doc_id, member_user_id))
+            .insert_header(("Authorization", format!("Bearer {}", owner_token)))
+            .to_request(),
+    )
+    .await;
+    assert_eq!(remove_resp.status(), StatusCode::NO_CONTENT);
+
+    let members_after_resp = test::call_service(
+        &app,
+        test::TestRequest::get()
+            .uri(&format!("/documents/{}/members", doc_id))
+            .insert_header(("Authorization", format!("Bearer {}", owner_token)))
+            .to_request(),
+    )
+    .await;
+    let members_after_body: serde_json::Value = test::read_body_json(members_after_resp).await;
+    assert_eq!(members_after_body.as_array().unwrap().len(), 0);
+}
+
+#[tokio::test]
+async fn accept_invite_revoked_returns_410() {
+    let env = TestEnv::new().await;
+    create_verified_user!(&env.pool, "revokeown@example.com", "password123");
+    create_verified_user!(&env.pool, "revokeinvitee@example.com", "password123");
+    let app = make_app!(env);
+    let owner_token = login_token!(&app, "revokeown@example.com", "password123");
+    let invitee_token = login_token!(&app, "revokeinvitee@example.com", "password123");
+    let doc_id = create_doc!(&app, &owner_token);
+
+    let create_resp = test::call_service(
+        &app,
+        test::TestRequest::post()
+            .uri(&format!("/documents/{}/invites", doc_id))
+            .insert_header(("Authorization", format!("Bearer {}", owner_token)))
+            .set_json(CreateInviteLinkRequest {
+                role: MemberRole::Viewer,
+                expires_at: None,
+                max_uses: None,
+            })
+            .to_request(),
+    )
+    .await;
+    let body: serde_json::Value = test::read_body_json(create_resp).await;
+    let inv_token = body["token"].as_str().unwrap().to_string();
+
+    test::call_service(
+        &app,
+        test::TestRequest::delete()
+            .uri(&format!("/documents/{}/invites/{}", doc_id, inv_token))
+            .insert_header(("Authorization", format!("Bearer {}", owner_token)))
+            .to_request(),
+    )
+    .await;
+
+    let accept_resp = test::call_service(
+        &app,
+        test::TestRequest::post()
+            .uri(&format!("/invites/{}/accept", inv_token))
+            .insert_header(("Authorization", format!("Bearer {}", invitee_token)))
+            .to_request(),
+    )
+    .await;
+    assert_eq!(accept_resp.status(), StatusCode::GONE);
+}
+
+#[tokio::test]
+async fn accept_invite_max_uses_exhausted_returns_410() {
+    let env = TestEnv::new().await;
+    create_verified_user!(&env.pool, "maxown@example.com", "password123");
+    create_verified_user!(&env.pool, "maxuser1@example.com", "password123");
+    create_verified_user!(&env.pool, "maxuser2@example.com", "password123");
+    let app = make_app!(env);
+    let owner_token = login_token!(&app, "maxown@example.com", "password123");
+    let user1_token = login_token!(&app, "maxuser1@example.com", "password123");
+    let user2_token = login_token!(&app, "maxuser2@example.com", "password123");
+    let doc_id = create_doc!(&app, &owner_token);
+
+    let create_resp = test::call_service(
+        &app,
+        test::TestRequest::post()
+            .uri(&format!("/documents/{}/invites", doc_id))
+            .insert_header(("Authorization", format!("Bearer {}", owner_token)))
+            .set_json(CreateInviteLinkRequest {
+                role: MemberRole::Editor,
+                expires_at: None,
+                max_uses: Some(1),
+            })
+            .to_request(),
+    )
+    .await;
+    let body: serde_json::Value = test::read_body_json(create_resp).await;
+    let inv_token = body["token"].as_str().unwrap().to_string();
+
+    let first = test::call_service(
+        &app,
+        test::TestRequest::post()
+            .uri(&format!("/invites/{}/accept", inv_token))
+            .insert_header(("Authorization", format!("Bearer {}", user1_token)))
+            .to_request(),
+    )
+    .await;
+    assert_eq!(first.status(), StatusCode::OK);
+
+    let second = test::call_service(
+        &app,
+        test::TestRequest::post()
+            .uri(&format!("/invites/{}/accept", inv_token))
+            .insert_header(("Authorization", format!("Bearer {}", user2_token)))
+            .to_request(),
+    )
+    .await;
+    assert_eq!(second.status(), StatusCode::GONE);
+}
+
+#[tokio::test]
+async fn owner_cannot_remove_self() {
+    let env = TestEnv::new().await;
+    create_verified_user!(&env.pool, "selfremove@example.com", "password123");
+    let owner_id: (uuid::Uuid,) = sqlx::query_as("SELECT id FROM users WHERE email = $1")
+        .bind("selfremove@example.com")
+        .fetch_one(&env.pool)
+        .await
+        .unwrap();
+    let app = make_app!(env);
+    let token = login_token!(&app, "selfremove@example.com", "password123");
+    let doc_id = create_doc!(&app, &token);
+
+    let resp = test::call_service(
+        &app,
+        test::TestRequest::delete()
+            .uri(&format!("/documents/{}/members/{}", doc_id, owner_id.0))
+            .insert_header(("Authorization", format!("Bearer {}", token)))
+            .to_request(),
+    )
+    .await;
+    assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
+}
+
+#[tokio::test]
+async fn update_member_role_changes_role() {
+    let env = TestEnv::new().await;
+    create_verified_user!(&env.pool, "roleown@example.com", "password123");
+    create_verified_user!(&env.pool, "roleinvitee@example.com", "password123");
+    let app = make_app!(env);
+    let owner_token = login_token!(&app, "roleown@example.com", "password123");
+    let invitee_token = login_token!(&app, "roleinvitee@example.com", "password123");
+    let doc_id = create_doc!(&app, &owner_token);
+
+    let create_resp = test::call_service(
+        &app,
+        test::TestRequest::post()
+            .uri(&format!("/documents/{}/invites", doc_id))
+            .insert_header(("Authorization", format!("Bearer {}", owner_token)))
+            .set_json(CreateInviteLinkRequest {
+                role: MemberRole::Editor,
+                expires_at: None,
+                max_uses: None,
+            })
+            .to_request(),
+    )
+    .await;
+    let body: serde_json::Value = test::read_body_json(create_resp).await;
+    let inv_token = body["token"].as_str().unwrap().to_string();
+
+    let accept_resp = test::call_service(
+        &app,
+        test::TestRequest::post()
+            .uri(&format!("/invites/{}/accept", inv_token))
+            .insert_header(("Authorization", format!("Bearer {}", invitee_token)))
+            .to_request(),
+    )
+    .await;
+    let accept_body: serde_json::Value = test::read_body_json(accept_resp).await;
+    let member_user_id = accept_body["user_id"].as_str().unwrap().to_string();
+
+    let patch_resp = test::call_service(
+        &app,
+        test::TestRequest::patch()
+            .uri(&format!("/documents/{}/members/{}", doc_id, member_user_id))
+            .insert_header(("Authorization", format!("Bearer {}", owner_token)))
+            .set_json(UpdateMemberRoleRequest {
+                role: MemberRole::Viewer,
+            })
+            .to_request(),
+    )
+    .await;
+    assert_eq!(patch_resp.status(), StatusCode::OK);
+    let patch_body: serde_json::Value = test::read_body_json(patch_resp).await;
+    assert_eq!(patch_body["role"], "viewer");
 }

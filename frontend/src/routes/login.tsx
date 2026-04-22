@@ -1,4 +1,4 @@
-import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
+import { createFileRoute, Link, useNavigate, useSearch } from "@tanstack/react-router";
 import { useState, type FormEvent } from "react";
 import { loginApi } from "#/features/auth/api";
 import { useAuthStore } from "#/features/auth/store";
@@ -12,6 +12,11 @@ function Login() {
   const [loading, setLoading] = useState(false);
   const setAccessToken = useAuthStore((s) => s.setAccessToken);
   const navigate = useNavigate();
+  const search = useSearch({ strict: false });
+  const redirectTo =
+    typeof search === "object" && search !== null && "redirect" in search
+      ? (search as Record<string, string>).redirect
+      : null;
 
   async function handleSubmit(e: FormEvent) {
     e.preventDefault();
@@ -21,7 +26,9 @@ function Login() {
     try {
       const data = await loginApi(email, password);
       setAccessToken(data.access_token);
-      if (data.welcome_doc_id) {
+      if (redirectTo) {
+        navigate({ to: redirectTo });
+      } else if (data.welcome_doc_id) {
         navigate({
           to: "/documents/$documentId",
           params: { documentId: data.welcome_doc_id },
