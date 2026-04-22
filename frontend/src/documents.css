@@ -278,6 +278,39 @@
   50% { opacity: 0.5; }
 }
 
+.avatar-strip {
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+  margin-left: auto;
+}
+
+.avatar {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.75rem;
+  height: 1.75rem;
+  border-radius: 50%;
+  font-size: 0.6875rem;
+  font-weight: 700;
+  color: #fff;
+  cursor: default;
+  user-select: none;
+  transition: opacity 150ms;
+}
+
+.avatar.idle {
+  opacity: 0.35;
+}
+
+.avatar-overflow {
+  background: var(--surface-muted);
+  color: var(--ink-soft);
+  border: 1px solid var(--border);
+  font-size: 0.625rem;
+}
+
 .cm-editor-container {
   flex: 1;
   overflow: hidden;

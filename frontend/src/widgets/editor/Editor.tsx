@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useCollabStore, type ConnectionStatus } from "#/features/collab/store";
 import { useCollabEditor } from "#/features/collab/useCollabEditor";
+import AvatarStrip from "#/features/collab/ui/AvatarStrip";
 import { EditorView, keymap, lineNumbers, highlightActiveLineGutter, highlightSpecialChars, drawSelection, highlightActiveLine } from "@codemirror/view";
 import { defaultKeymap, history, historyKeymap } from "@codemirror/commands";
 import { syntaxHighlighting, defaultHighlightStyle, bracketMatching } from "@codemirror/language";
@@ -154,6 +155,7 @@ export default function Editor({ docId, initialContent, onSave, onTitleUpdate }:
         </button>
         {saving && <span className="save-indicator saving">Saving...</span>}
         {!saving && hasUnsavedChanges && <span className="save-indicator unsaved">Unsaved</span>}
+        <AvatarStrip />
         <span className="connection-status" title={STATUS_LABEL[collabStatus]}>
           <span
             style={{

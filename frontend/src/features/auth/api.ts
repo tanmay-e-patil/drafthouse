@@ -44,6 +44,22 @@ export async function refreshApi(): Promise<LoginResponse> {
   return res.json() as Promise<LoginResponse>;
 }
 
+export interface MeResponse {
+  id: string;
+  email: string;
+  email_verified_at: string | null;
+  created_at: string;
+}
+
+export async function getMeApi(accessToken: string): Promise<MeResponse> {
+  const res = await fetch(`${API_BASE}/auth/me`, {
+    headers: { Authorization: `Bearer ${accessToken}` },
+    credentials: "include",
+  });
+  if (!res.ok) throw new Error("Failed to fetch profile");
+  return res.json() as Promise<MeResponse>;
+}
+
 export async function logoutApi(): Promise<void> {
   await fetch(`${API_BASE}/auth/logout`, {
     method: "POST",
