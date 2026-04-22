@@ -101,7 +101,7 @@ export default function Editor({ docId, initialContent, onSave, onTitleUpdate }:
 
   useCollabEditor(
     container && mode === "edit"
-      ? { docId, container, extensions, onTitleUpdate }
+      ? { docId, container, extensions, initialContent, onTitleUpdate }
       : null
   );
 

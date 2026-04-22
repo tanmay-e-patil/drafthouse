@@ -23,6 +23,7 @@ export interface UseCollabEditorOptions {
   docId: string;
   container: HTMLElement;
   extensions?: Extension[];
+  initialContent?: string;
   /** Called when a remote title_update message (type 3) arrives. */
   onTitleUpdate?: (title: string) => void;
 }
@@ -40,7 +41,7 @@ export function useCollabEditor(
 
   useEffect(() => {
     if (!options) return;
-    const { docId, container, extensions = [], onTitleUpdate } = options;
+    const { docId, container, extensions = [], initialContent, onTitleUpdate } = options;
 
     let destroyed = false;
     let provider: WebsocketProvider | null = null;
@@ -105,7 +106,12 @@ export function useCollabEditor(
       });
 
       provider.on("sync", (synced: boolean) => {
-        if (synced) setStatus("connected");
+        if (synced) {
+          if (initialContent && ytext.toString() === "") {
+            ydoc.transact(() => { ytext.insert(0, initialContent); });
+          }
+          setStatus("connected");
+        }
       });
 
       // Build editor if not yet created
