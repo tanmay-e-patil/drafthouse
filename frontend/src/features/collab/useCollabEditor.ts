@@ -8,6 +8,8 @@ import { issueWsTicket } from "./api";
 import { useCollabStore } from "./store";
 import { useAuthStore } from "#/features/auth/store";
 import { decodeTitleUpdate } from "./titleUpdate";
+import { assignColor } from "./awarenessColors";
+import { useAwarenessStore, type AwarenessPeer } from "./awarenessStore";
 
 const WS_BASE = import.meta.env.VITE_WS_URL ?? "ws://localhost:8080";
 
@@ -17,6 +19,10 @@ const MAX_RECONNECT_MS = 30_000;
 function backoffDelay(attempt: number): number {
   const base = Math.min(MAX_RECONNECT_MS, 1000 * 2 ** attempt);
   return base * (0.75 + Math.random() * 0.5); // ±25% jitter
+}
+
+function emailToName(email: string): string {
+  return email.split("@")[0] ?? email;
 }
 
 export interface UseCollabEditorOptions {
@@ -38,6 +44,9 @@ export function useCollabEditor(
   const handleRef = useRef<CollabEditorHandle | null>(null);
   const setStatus = useCollabStore((s) => s.setStatus);
   const accessToken = useAuthStore((s) => s.accessToken);
+  const storedEmail = useAuthStore((s) => s.email);
+  const setPeers = useAwarenessStore((s) => s.setPeers);
+  const setLocalClientId = useAwarenessStore((s) => s.setLocalClientId);
 
   useEffect(() => {
     if (!options) return;
@@ -48,9 +57,35 @@ export function useCollabEditor(
     let view: EditorView | null = null;
     let reconnectAttempt = 0;
     let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
+    let userColor = "#3182CE";
+    let userName = storedEmail ? emailToName(storedEmail) : "Anonymous";
 
     const ydoc = new Y.Doc();
     const ytext = ydoc.getText("content");
+
+    function syncPeers(awareness: WebsocketProvider["awareness"]) {
+      const states = awareness.getStates();
+      // De-duplicate by name: same user refreshing gets a new clientID but same name.
+      // Keep the entry with the highest lastActive (most recent session).
+      const byName = new Map<string, AwarenessPeer>();
+      states.forEach((state, clientId) => {
+        const u = state["user"] as { name?: string; color?: string; lastActive?: number } | undefined;
+        if (u?.name && u?.color) {
+          const candidate: AwarenessPeer = {
+            clientId,
+            name: u.name,
+            color: u.color,
+            lastActive: u.lastActive ?? Date.now(),
+          };
+          const existing = byName.get(u.name);
+          if (!existing || candidate.lastActive > existing.lastActive) {
+            byName.set(u.name, candidate);
+          }
+        }
+      });
+      const peers = Array.from(byName.values());
+      setPeers(peers);
+    }
 
     async function connect() {
       if (destroyed) return;
@@ -65,27 +100,47 @@ export function useCollabEditor(
         } catch {
           // unauthenticated viewer — connect without ticket
         }
+
       }
 
-      // serverUrl + '/' + roomname is how y-websocket builds the final URL
       provider = new WebsocketProvider(`${WS_BASE}/collab`, docId, ydoc, {
         connect: true,
         params: ticketParam,
-        // Disable y-websocket's own reconnect; we handle it manually
         resyncInterval: -1,
       });
 
+      const awareness = provider.awareness;
+
+      // Assign color not already used by others in this room
+      const usedColors = Array.from(awareness.getStates().values())
+        .map((s) => {
+          const u = s["user"] as { color?: string } | undefined;
+          return u?.color ?? "";
+        })
+        .filter(Boolean);
+      userColor = assignColor(usedColors);
+
+      // Register local client ID so AvatarStrip can exclude self
+      setLocalClientId(awareness.clientID);
+
+      // Set local awareness state
+      awareness.setLocalStateField("user", {
+        name: userName,
+        color: userColor,
+        lastActive: Date.now(),
+      });
+
+      // Listen for awareness changes and sync to store
+      const onAwarenessChange = () => syncPeers(awareness);
+      awareness.on("change", onAwarenessChange);
+
       // Handle custom message type 3 (title_update) from server.
-      // y-websocket calls messageHandlers[type](encoder, decoder, ...) after
-      // reading the type byte, so decoder is positioned at the payload start.
       if (onTitleUpdate) {
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         (provider as any).messageHandlers[3] = (
           _encoder: unknown,
           decoder: { arr: Uint8Array; pos: number },
         ) => {
-          // decoder.pos is past the type byte; remaining = [varint_len, ...utf8]
-          // Reconstruct full buf so decodeTitleUpdate can parse it
           const remaining = decoder.arr.subarray(decoder.pos);
           const full = new Uint8Array(1 + remaining.length);
           full[0] = 3;
@@ -116,11 +171,23 @@ export function useCollabEditor(
 
       // Build editor if not yet created
       if (!view) {
+        // Update lastActive in awareness on any doc change (cursor/edit)
+        const activityTracker = EditorView.updateListener.of((update) => {
+          if (update.selectionSet || update.docChanged) {
+            awareness.setLocalStateField("user", {
+              name: userName,
+              color: userColor,
+              lastActive: Date.now(),
+            });
+          }
+        });
+
         const state = EditorState.create({
           doc: ytext.toString(),
           extensions: [
             ...extensions,
-            yCollab(ytext, provider.awareness),
+            activityTracker,
+            yCollab(ytext, awareness),
           ],
         });
         view = new EditorView({ state, parent: container });
@@ -147,6 +214,7 @@ export function useCollabEditor(
         if (reconnectTimer) clearTimeout(reconnectTimer);
         provider?.destroy();
         view?.destroy();
+        setPeers([]);
       },
     };
 
@@ -154,7 +222,7 @@ export function useCollabEditor(
       handleRef.current?.destroy();
       handleRef.current = null;
     };
-  }, [options?.docId, accessToken]);
+  }, [options?.docId, accessToken, storedEmail]);
 
   return handleRef;
 }
