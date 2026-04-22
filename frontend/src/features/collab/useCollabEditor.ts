@@ -7,7 +7,6 @@ import { EditorState, type Extension } from "@codemirror/state";
 import { issueWsTicket } from "./api";
 import { useCollabStore } from "./store";
 import { useAuthStore } from "#/features/auth/store";
-import { getMeApi } from "#/features/auth/api";
 import { decodeTitleUpdate } from "./titleUpdate";
 import { assignColor } from "./awarenessColors";
 import { useAwarenessStore, type AwarenessPeer } from "./awarenessStore";
@@ -45,6 +44,7 @@ export function useCollabEditor(
   const handleRef = useRef<CollabEditorHandle | null>(null);
   const setStatus = useCollabStore((s) => s.setStatus);
   const accessToken = useAuthStore((s) => s.accessToken);
+  const storedEmail = useAuthStore((s) => s.email);
   const setPeers = useAwarenessStore((s) => s.setPeers);
   const setLocalClientId = useAwarenessStore((s) => s.setLocalClientId);
 
@@ -58,7 +58,7 @@ export function useCollabEditor(
     let reconnectAttempt = 0;
     let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
     let userColor = "#3182CE";
-    let userName = "Anonymous";
+    let userName = storedEmail ? emailToName(storedEmail) : "Anonymous";
 
     const ydoc = new Y.Doc();
     const ytext = ydoc.getText("content");
@@ -101,12 +101,6 @@ export function useCollabEditor(
           // unauthenticated viewer — connect without ticket
         }
 
-        try {
-          const me = await getMeApi(accessToken);
-          userName = emailToName(me.email);
-        } catch {
-          // fall back to Anonymous
-        }
       }
 
       provider = new WebsocketProvider(`${WS_BASE}/collab`, docId, ydoc, {
@@ -228,7 +222,7 @@ export function useCollabEditor(
       handleRef.current?.destroy();
       handleRef.current = null;
     };
-  }, [options?.docId, accessToken]);
+  }, [options?.docId, accessToken, storedEmail]);
 
   return handleRef;
 }

@@ -7,7 +7,7 @@ vi.mock("../api", () => ({
 
 describe("useAuthStore", () => {
   beforeEach(() => {
-    useAuthStore.setState({ accessToken: null, hydrated: false });
+    useAuthStore.setState({ accessToken: null, email: null, hydrated: false });
     vi.clearAllMocks();
   });
 

@@ -11,6 +11,7 @@ function Login() {
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const setAccessToken = useAuthStore((s) => s.setAccessToken);
+  const storeEmail = useAuthStore((s) => s.setEmail);
   const navigate = useNavigate();
   const search = useSearch({ strict: false });
   const redirectTo =
@@ -26,6 +27,7 @@ function Login() {
     try {
       const data = await loginApi(email, password);
       setAccessToken(data.access_token);
+      storeEmail(email);
       if (redirectTo) {
         navigate({ to: redirectTo });
       } else if (data.welcome_doc_id) {
