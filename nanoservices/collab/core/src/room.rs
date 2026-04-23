@@ -1,4 +1,5 @@
 use bytes::Bytes;
+use chrono::{DateTime, Utc};
 use dashmap::DashMap;
 use std::sync::{
     Arc, Mutex,
@@ -20,6 +21,13 @@ pub const SNAPSHOT_RING_SIZE: i32 = 5;
 
 const BROADCAST_CAPACITY: usize = 256;
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct AwarenessPeer {
+    pub name: String,
+    pub color: String,
+    pub last_active_ms: i64,
+}
+
 pub struct DocRoom {
     pub doc: Arc<std::sync::RwLock<Doc>>,
     pub connections: AtomicUsize,
@@ -27,6 +35,8 @@ pub struct DocRoom {
     pub last_empty_at: Mutex<Option<Instant>>,
     pub last_snapshot_at: Mutex<Instant>,
     pub next_snapshot_version: Mutex<i32>,
+    pub awareness: DashMap<u64, AwarenessPeer>,
+    pub connection_awareness: DashMap<u64, Vec<u64>>,
     /// Broadcast channel: all WS sessions in this room subscribe.
     pub tx: broadcast::Sender<Bytes>,
 }
@@ -47,6 +57,8 @@ impl DocRoom {
             last_empty_at: Mutex::new(Some(Instant::now())),
             last_snapshot_at: Mutex::new(Instant::now()),
             next_snapshot_version: Mutex::new(1),
+            awareness: DashMap::new(),
+            connection_awareness: DashMap::new(),
             tx,
         }
     }
@@ -113,6 +125,62 @@ impl DocRoom {
             false
         }
     }
+
+    pub fn upsert_awareness(&self, client_id: u64, peer: AwarenessPeer) {
+        self.awareness.insert(client_id, peer);
+    }
+
+    pub fn remove_awareness(&self, client_id: u64) {
+        self.awareness.remove(&client_id);
+    }
+
+    pub fn awareness_peers(&self) -> Vec<AwarenessPeer> {
+        self.awareness
+            .iter()
+            .map(|entry| entry.value().clone())
+            .collect()
+    }
+
+    pub fn apply_awareness_update(
+        &self,
+        connection_id: u64,
+        updates: Vec<(u64, Option<AwarenessPeer>)>,
+    ) {
+        let mut tracked = self
+            .connection_awareness
+            .get(&connection_id)
+            .map(|entry| entry.value().clone())
+            .unwrap_or_default();
+
+        for (client_id, peer) in updates {
+            if !tracked.contains(&client_id) {
+                tracked.push(client_id);
+            }
+
+            match peer {
+                Some(peer) => {
+                    self.awareness.insert(client_id, peer);
+                }
+                None => {
+                    self.awareness.remove(&client_id);
+                }
+            }
+        }
+
+        self.connection_awareness.insert(connection_id, tracked);
+    }
+
+    pub fn remove_connection_awareness(&self, connection_id: u64) {
+        if let Some((_, client_ids)) = self.connection_awareness.remove(&connection_id) {
+            for client_id in client_ids {
+                self.awareness.remove(&client_id);
+            }
+        }
+    }
+}
+
+pub fn awareness_last_active_to_datetime(last_active_ms: i64) -> Option<DateTime<Utc>> {
+    DateTime::<Utc>::from_timestamp_millis(last_active_ms)
 }
 
 pub type DocStore = DashMap<Uuid, Arc<DocRoom>>;
@@ -249,5 +317,52 @@ mod tests {
         let r1 = get_or_create_room(&store, Uuid::new_v4());
         let r2 = get_or_create_room(&store, Uuid::new_v4());
         assert!(!Arc::ptr_eq(&r1, &r2));
+    }
+
+    #[test]
+    fn awareness_peers_can_be_added_and_removed() {
+        let room = make_room();
+        room.upsert_awareness(
+            7,
+            AwarenessPeer {
+                name: "alice".into(),
+                color: "#E53E3E".into(),
+                last_active_ms: 1_700_000_000_000,
+            },
+        );
+
+        let peers = room.awareness_peers();
+        assert_eq!(peers.len(), 1);
+        assert_eq!(peers[0].name, "alice");
+
+        room.remove_awareness(7);
+        assert!(room.awareness_peers().is_empty());
+    }
+
+    #[test]
+    fn awareness_last_active_converts_to_datetime() {
+        let dt = awareness_last_active_to_datetime(1_700_000_000_000).unwrap();
+        assert_eq!(dt.timestamp_millis(), 1_700_000_000_000);
+    }
+
+    #[test]
+    fn apply_awareness_update_tracks_and_removes_connection_clients() {
+        let room = make_room();
+        room.apply_awareness_update(
+            11,
+            vec![(
+                7,
+                Some(AwarenessPeer {
+                    name: "alice".into(),
+                    color: "#E53E3E".into(),
+                    last_active_ms: 1_700_000_000_000,
+                }),
+            )],
+        );
+
+        assert_eq!(room.awareness_peers().len(), 1);
+
+        room.remove_connection_awareness(11);
+        assert!(room.awareness_peers().is_empty());
     }
 }

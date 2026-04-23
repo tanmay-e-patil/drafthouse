@@ -686,6 +686,7 @@ dependencies = [
  "tracing",
  "utils",
  "uuid",
+ "yrs",
 ]
 
 [[package]]
@@ -1094,7 +1095,9 @@ dependencies = [
  "auth-core",
  "auth-networking",
  "chrono",
+ "collab-core",
  "dal",
+ "dashmap 6.1.0",
  "documents-core",
  "kernel",
  "serde",

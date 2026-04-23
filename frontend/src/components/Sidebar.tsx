@@ -4,11 +4,13 @@ import {
   listDocumentsApi,
   deleteDocumentApi,
   createDocumentApi,
+  getDocumentPresenceApi,
 } from "#/features/documents/api";
 import { useDocumentStore } from "#/features/documents/store";
 import { useAuthStore } from "#/features/auth/store";
 import { logoutApi } from "#/features/auth/api";
 import type { Document } from "#/features/documents/api";
+import SidebarPresence from "#/features/documents/SidebarPresence";
 import { Button } from "#/components/ui/button";
 import { ScrollArea } from "#/components/ui/scroll-area";
 import { Separator } from "#/components/ui/separator";
@@ -64,7 +66,9 @@ export default function Sidebar({ collapsed, onToggleCollapse }: SidebarProps) {
     hasMore,
     nextCursor,
     isLoading,
+    presenceByDocumentId,
     setDocuments,
+    replacePresence,
     prependDocument,
     removeDocumentFromList,
     setLoading,
@@ -104,6 +108,48 @@ export default function Sidebar({ collapsed, onToggleCollapse }: SidebarProps) {
       fetchDocuments();
     }
   }, [hydrated, accessToken]);
+
+  useEffect(() => {
+    if (!hydrated || !accessToken || documents.length === 0) {
+      replacePresence({});
+      return;
+    }
+
+    let cancelled = false;
+
+    async function pollPresence() {
+      const results = await Promise.allSettled(
+        documents.map(async (doc) => ({
+          id: doc.id,
+          peers: (await getDocumentPresenceApi(doc.id)).data,
+        }))
+      );
+
+      if (cancelled) return;
+
+      const nextPresence = results.reduce<Record<string, typeof presenceByDocumentId[string]>>(
+        (acc, result) => {
+          if (result.status === "fulfilled") {
+            acc[result.value.id] = result.value.peers;
+          }
+          return acc;
+        },
+        {}
+      );
+
+      replacePresence(nextPresence);
+    }
+
+    void pollPresence();
+    const intervalId = window.setInterval(() => {
+      void pollPresence();
+    }, 3000);
+
+    return () => {
+      cancelled = true;
+      window.clearInterval(intervalId);
+    };
+  }, [hydrated, accessToken, documents, replacePresence]);
 
   async function handleCreate() {
     try {
@@ -245,9 +291,9 @@ export default function Sidebar({ collapsed, onToggleCollapse }: SidebarProps) {
           </div>
         )}
         {documents.map((doc) => (
-          <div key={doc.id} className="group flex items-center">
+          <div key={doc.id} className="group flex items-center gap-1">
             <button
-              className={`flex-1 truncate rounded-md px-2 py-1.5 text-left text-sm transition-colors ${
+              className={`min-w-0 flex-1 truncate rounded-md px-2 py-1.5 text-left text-sm transition-colors ${
                 params.documentId === doc.id
                   ? "bg-accent text-accent-foreground font-medium"
                   : "text-sidebar-foreground hover:bg-accent/50"
@@ -264,6 +310,10 @@ export default function Sidebar({ collapsed, onToggleCollapse }: SidebarProps) {
                 {formatRelativeTime(doc.updated_at)}
               </span>
             </button>
+            <SidebarPresence
+              peers={presenceByDocumentId[doc.id] ?? []}
+              currentUserEmail={email}
+            />
             <DropdownMenu>
               <DropdownMenuTrigger
                 render={

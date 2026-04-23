@@ -1,19 +1,32 @@
 use actix_web::{HttpRequest, HttpResponse, web};
+use collab_core::{DocStore, awareness_last_active_to_datetime};
 use dal::postgres_txs::SqlxPostGresDescriptor;
 use kernel::{
-    CreateDocumentRequest, CreateInviteLinkRequest, UpdateDocumentContentRequest,
-    UpdateDocumentRequest, UpdateMemberRoleRequest,
+    CreateDocumentRequest, CreateInviteLinkRequest, DocumentPresencePeer, DocumentPresenceResponse,
+    UpdateDocumentContentRequest, UpdateDocumentRequest, UpdateMemberRoleRequest,
 };
 use utils::errors::{NanoServiceError, NanoServiceErrorStatus};
 use uuid::Uuid;
 
 type DalData = web::Data<SqlxPostGresDescriptor>;
+type DocStoreData = web::Data<DocStore>;
 
 fn get_dal(req: &HttpRequest) -> Result<&SqlxPostGresDescriptor, NanoServiceError> {
     req.app_data::<DalData>()
         .ok_or_else(|| {
             NanoServiceError::new(
                 "Server misconfigured: DAL not available",
+                NanoServiceErrorStatus::InternalServerError,
+            )
+        })
+        .map(|d| d.get_ref())
+}
+
+fn get_doc_store(req: &HttpRequest) -> Result<&DocStore, NanoServiceError> {
+    req.app_data::<DocStoreData>()
+        .ok_or_else(|| {
+            NanoServiceError::new(
+                "Server misconfigured: DocStore not available",
                 NanoServiceErrorStatus::InternalServerError,
             )
         })
@@ -82,6 +95,41 @@ pub async fn delete_document(
     let claims = crate::middleware::extract_verified_jwt(&req).await?;
     documents_core::delete_document(dal, *path, claims.sub).await?;
     Ok(HttpResponse::NoContent().finish())
+}
+
+pub async fn get_document_presence(
+    req: HttpRequest,
+    path: web::Path<Uuid>,
+) -> Result<HttpResponse, NanoServiceError> {
+    let dal = get_dal(&req)?;
+    let doc_store = get_doc_store(&req)?;
+    let claims = crate::middleware::extract_verified_jwt(&req).await?;
+    let doc_id = *path;
+
+    documents_core::ensure_document_access(dal, doc_id, claims.sub).await?;
+
+    let cutoff_ms = chrono::Utc::now().timestamp_millis() - 5 * 60_000;
+    let data = doc_store
+        .get(&doc_id)
+        .map(|entry| {
+            entry
+                .awareness_peers()
+                .into_iter()
+                .filter(|peer| peer.last_active_ms > cutoff_ms)
+                .filter_map(|peer| {
+                    awareness_last_active_to_datetime(peer.last_active_ms).map(|last_active| {
+                        DocumentPresencePeer {
+                            name: peer.name,
+                            color: peer.color,
+                            last_active,
+                        }
+                    })
+                })
+                .collect::<Vec<_>>()
+        })
+        .unwrap_or_default();
+
+    Ok(HttpResponse::Ok().json(DocumentPresenceResponse { data }))
 }
 
 #[derive(serde::Deserialize)]

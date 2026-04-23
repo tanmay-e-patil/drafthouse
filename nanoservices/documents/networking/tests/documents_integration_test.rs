@@ -1,11 +1,14 @@
 use actix_web::{App, http::StatusCode, test, web};
 use auth_networking::routes as auth_routes;
+use collab_core::{AwarenessPeer, DocRoom, DocStore};
 use dal::postgres_txs::SqlxPostGresDescriptor;
+use dashmap::DashMap;
 use kernel::{
     CreateDocumentRequest, CreateInviteLinkRequest, LoginRequest, MemberRole,
     UpdateDocumentContentRequest, UpdateDocumentRequest, UpdateMemberRoleRequest,
 };
 use sqlx::PgPool;
+use std::sync::Arc;
 use testcontainers_modules::{
     postgres::Postgres,
     testcontainers::{ContainerAsync, runners::AsyncRunner},
@@ -37,10 +40,11 @@ impl TestEnv {
 macro_rules! make_app {
     ($env:expr) => {{
         let pool = $env.pool.clone();
+        let doc_store: web::Data<DocStore> = web::Data::new(DashMap::new());
         test::init_service(App::new().configure(move |cfg| {
             let dal = web::Data::new(SqlxPostGresDescriptor { pool: pool.clone() });
             auth_routes::configure(cfg, dal.clone());
-            documents_networking::routes::configure(cfg, dal);
+            documents_networking::routes::configure(cfg, dal, doc_store.clone());
         }))
         .await
     }};
@@ -179,6 +183,72 @@ async fn list_documents_returns_owned() {
 }
 
 #[tokio::test]
+async fn list_documents_includes_member_documents() {
+    let env = TestEnv::new().await;
+    create_verified_user!(&env.pool, "ownerlist@example.com", "password123");
+    create_verified_user!(&env.pool, "memberlist@example.com", "password123");
+    let app = make_app!(env);
+
+    let owner_token = login_token!(&app, "ownerlist@example.com", "password123");
+    let member_token = login_token!(&app, "memberlist@example.com", "password123");
+
+    let create_resp = test::call_service(
+        &app,
+        test::TestRequest::post()
+            .uri("/documents")
+            .insert_header(("Authorization", format!("Bearer {}", owner_token)))
+            .set_json(CreateDocumentRequest {
+                title: Some("Shared Doc".into()),
+            })
+            .to_request(),
+    )
+    .await;
+    let create_body: serde_json::Value = test::read_body_json(create_resp).await;
+    let doc_id = create_body["id"].as_str().unwrap().to_string();
+
+    let invite_resp = test::call_service(
+        &app,
+        test::TestRequest::post()
+            .uri(&format!("/documents/{doc_id}/invites"))
+            .insert_header(("Authorization", format!("Bearer {}", owner_token)))
+            .set_json(CreateInviteLinkRequest {
+                role: MemberRole::Editor,
+                expires_at: None,
+                max_uses: None,
+            })
+            .to_request(),
+    )
+    .await;
+    let invite_body: serde_json::Value = test::read_body_json(invite_resp).await;
+    let token = invite_body["token"].as_str().unwrap().to_string();
+
+    let accept_resp = test::call_service(
+        &app,
+        test::TestRequest::post()
+            .uri(&format!("/invites/{token}/accept"))
+            .insert_header(("Authorization", format!("Bearer {}", member_token)))
+            .to_request(),
+    )
+    .await;
+    assert_eq!(accept_resp.status(), StatusCode::OK);
+
+    let list_resp = test::call_service(
+        &app,
+        test::TestRequest::get()
+            .uri("/documents")
+            .insert_header(("Authorization", format!("Bearer {}", member_token)))
+            .to_request(),
+    )
+    .await;
+
+    assert_eq!(list_resp.status(), StatusCode::OK);
+    let body: serde_json::Value = test::read_body_json(list_resp).await;
+    assert_eq!(body["data"].as_array().unwrap().len(), 1);
+    assert_eq!(body["data"][0]["id"], doc_id);
+    assert_eq!(body["data"][0]["title"], "Shared Doc");
+}
+
+#[tokio::test]
 async fn list_documents_empty() {
     let env = TestEnv::new().await;
     create_verified_user!(&env.pool, "emptylist@example.com", "password123");
@@ -228,6 +298,154 @@ async fn get_document_by_id() {
 
     let get_body: serde_json::Value = test::read_body_json(get_resp).await;
     assert_eq!(get_body["title"], "Get Me");
+}
+
+#[tokio::test]
+async fn get_document_presence_returns_empty_when_room_missing() {
+    let env = TestEnv::new().await;
+    create_verified_user!(&env.pool, "presenceempty@example.com", "password123");
+    let app = make_app!(env);
+    let token = login_token!(&app, "presenceempty@example.com", "password123");
+
+    let create_resp = test::call_service(
+        &app,
+        test::TestRequest::post()
+            .uri("/documents")
+            .insert_header(("Authorization", format!("Bearer {}", token)))
+            .set_json(CreateDocumentRequest {
+                title: Some("Presence".into()),
+            })
+            .to_request(),
+    )
+    .await;
+    let create_body: serde_json::Value = test::read_body_json(create_resp).await;
+    let doc_id = create_body["id"].as_str().unwrap();
+
+    let resp = test::call_service(
+        &app,
+        test::TestRequest::get()
+            .uri(&format!("/documents/{doc_id}/presence"))
+            .insert_header(("Authorization", format!("Bearer {}", token)))
+            .to_request(),
+    )
+    .await;
+
+    assert_eq!(resp.status(), StatusCode::OK);
+    let body: serde_json::Value = test::read_body_json(resp).await;
+    assert_eq!(body["data"].as_array().unwrap().len(), 0);
+}
+
+#[tokio::test]
+async fn get_document_presence_returns_active_peers() {
+    let env = TestEnv::new().await;
+    create_verified_user!(&env.pool, "presenceactive@example.com", "password123");
+    let pool = env.pool.clone();
+    let doc_store: web::Data<DocStore> = web::Data::new(DashMap::new());
+    let app = test::init_service(App::new().configure({
+        let doc_store = doc_store.clone();
+        move |cfg| {
+            let dal = web::Data::new(SqlxPostGresDescriptor { pool: pool.clone() });
+            auth_routes::configure(cfg, dal.clone());
+            documents_networking::routes::configure(cfg, dal, doc_store.clone());
+        }
+    }))
+    .await;
+    let token = login_token!(&app, "presenceactive@example.com", "password123");
+
+    let create_resp = test::call_service(
+        &app,
+        test::TestRequest::post()
+            .uri("/documents")
+            .insert_header(("Authorization", format!("Bearer {}", token)))
+            .set_json(CreateDocumentRequest {
+                title: Some("Presence".into()),
+            })
+            .to_request(),
+    )
+    .await;
+    let create_body: serde_json::Value = test::read_body_json(create_resp).await;
+    let doc_id = Uuid::parse_str(create_body["id"].as_str().unwrap()).unwrap();
+
+    let room = Arc::new(DocRoom::new());
+    room.upsert_awareness(
+        1,
+        AwarenessPeer {
+            name: "alice".into(),
+            color: "#E53E3E".into(),
+            last_active_ms: chrono::Utc::now().timestamp_millis(),
+        },
+    );
+    doc_store.insert(doc_id, room);
+
+    let resp = test::call_service(
+        &app,
+        test::TestRequest::get()
+            .uri(&format!("/documents/{doc_id}/presence"))
+            .insert_header(("Authorization", format!("Bearer {}", token)))
+            .to_request(),
+    )
+    .await;
+
+    assert_eq!(resp.status(), StatusCode::OK);
+    let body: serde_json::Value = test::read_body_json(resp).await;
+    assert_eq!(body["data"].as_array().unwrap().len(), 1);
+    assert_eq!(body["data"][0]["name"], "alice");
+}
+
+#[tokio::test]
+async fn get_document_presence_excludes_expired_peers() {
+    let env = TestEnv::new().await;
+    create_verified_user!(&env.pool, "presenceexpired@example.com", "password123");
+    let pool = env.pool.clone();
+    let doc_store: web::Data<DocStore> = web::Data::new(DashMap::new());
+    let app = test::init_service(App::new().configure({
+        let doc_store = doc_store.clone();
+        move |cfg| {
+            let dal = web::Data::new(SqlxPostGresDescriptor { pool: pool.clone() });
+            auth_routes::configure(cfg, dal.clone());
+            documents_networking::routes::configure(cfg, dal, doc_store.clone());
+        }
+    }))
+    .await;
+    let token = login_token!(&app, "presenceexpired@example.com", "password123");
+
+    let create_resp = test::call_service(
+        &app,
+        test::TestRequest::post()
+            .uri("/documents")
+            .insert_header(("Authorization", format!("Bearer {}", token)))
+            .set_json(CreateDocumentRequest {
+                title: Some("Presence".into()),
+            })
+            .to_request(),
+    )
+    .await;
+    let create_body: serde_json::Value = test::read_body_json(create_resp).await;
+    let doc_id = Uuid::parse_str(create_body["id"].as_str().unwrap()).unwrap();
+
+    let room = Arc::new(DocRoom::new());
+    room.upsert_awareness(
+        1,
+        AwarenessPeer {
+            name: "ghost".into(),
+            color: "#718096".into(),
+            last_active_ms: chrono::Utc::now().timestamp_millis() - 6 * 60_000,
+        },
+    );
+    doc_store.insert(doc_id, room);
+
+    let resp = test::call_service(
+        &app,
+        test::TestRequest::get()
+            .uri(&format!("/documents/{doc_id}/presence"))
+            .insert_header(("Authorization", format!("Bearer {}", token)))
+            .to_request(),
+    )
+    .await;
+
+    assert_eq!(resp.status(), StatusCode::OK);
+    let body: serde_json::Value = test::read_body_json(resp).await;
+    assert_eq!(body["data"].as_array().unwrap().len(), 0);
 }
 
 #[tokio::test]

@@ -83,7 +83,18 @@ async fn list_documents_by_owner(
 ) -> Result<Vec<Document>, NanoServiceError> {
     let rows = if let Some(cursor_id) = cursor {
         sqlx::query_as::<_, Document>(
-            "SELECT id, owner_id, title, is_public, created_at, updated_at FROM documents WHERE owner_id = $1 AND updated_at < (SELECT updated_at FROM documents WHERE id = $2) ORDER BY updated_at DESC LIMIT $3",
+            "SELECT d.id, d.owner_id, d.title, d.is_public, d.created_at, d.updated_at
+             FROM documents d
+             WHERE (
+               d.owner_id = $1
+               OR EXISTS (
+                 SELECT 1 FROM document_members dm
+                 WHERE dm.doc_id = d.id AND dm.user_id = $1
+               )
+             )
+             AND d.updated_at < (SELECT updated_at FROM documents WHERE id = $2)
+             ORDER BY d.updated_at DESC
+             LIMIT $3",
         )
         .bind(owner_id)
         .bind(cursor_id)
@@ -92,14 +103,27 @@ async fn list_documents_by_owner(
         .await
     } else {
         sqlx::query_as::<_, Document>(
-            "SELECT id, owner_id, title, is_public, created_at, updated_at FROM documents WHERE owner_id = $1 ORDER BY updated_at DESC LIMIT $2",
+            "SELECT d.id, d.owner_id, d.title, d.is_public, d.created_at, d.updated_at
+             FROM documents d
+             WHERE d.owner_id = $1
+             OR EXISTS (
+               SELECT 1 FROM document_members dm
+               WHERE dm.doc_id = d.id AND dm.user_id = $1
+             )
+             ORDER BY d.updated_at DESC
+             LIMIT $2",
         )
         .bind(owner_id)
         .bind(limit)
         .fetch_all(&self.pool)
         .await
     }
-    .map_err(|e| NanoServiceError::new(format!("Failed to list documents: {}", e), NanoServiceErrorStatus::InternalServerError))?;
+    .map_err(|e| {
+        NanoServiceError::new(
+            format!("Failed to list documents: {}", e),
+            NanoServiceErrorStatus::InternalServerError,
+        )
+    })?;
 
     Ok(rows)
 }
@@ -110,16 +134,24 @@ async fn list_documents_by_owner(
     count_documents_by_owner
 )]
 async fn count_documents_by_owner(&self, owner_id: uuid::Uuid) -> Result<i64, NanoServiceError> {
-    let row: (i64,) = sqlx::query_as("SELECT COUNT(*) FROM documents WHERE owner_id = $1")
-        .bind(owner_id)
-        .fetch_one(&self.pool)
-        .await
-        .map_err(|e| {
-            NanoServiceError::new(
-                format!("Failed to count documents: {}", e),
-                NanoServiceErrorStatus::InternalServerError,
-            )
-        })?;
+    let row: (i64,) = sqlx::query_as(
+        "SELECT COUNT(*)
+         FROM documents d
+         WHERE d.owner_id = $1
+         OR EXISTS (
+           SELECT 1 FROM document_members dm
+           WHERE dm.doc_id = d.id AND dm.user_id = $1
+         )",
+    )
+    .bind(owner_id)
+    .fetch_one(&self.pool)
+    .await
+    .map_err(|e| {
+        NanoServiceError::new(
+            format!("Failed to count documents: {}", e),
+            NanoServiceErrorStatus::InternalServerError,
+        )
+    })?;
 
     Ok(row.0)
 }

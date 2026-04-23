@@ -9,15 +9,18 @@ utils = { path = "../../../crates/utils" }
 dal = { path = "../../../dal/dal" }
 documents-core = { path = "../core" }
 auth-core = { path = "../../auth/core" }
+collab-core = { path = "../../collab/core" }
 actix-web = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
 tracing = { workspace = true }
 uuid = { workspace = true }
+chrono = { workspace = true }
 
 [dev-dependencies]
 tokio = { workspace = true }
 chrono = { workspace = true }
+dashmap = { workspace = true }
 testcontainers-modules = { version = "0.11", features = ["postgres"] }
 serial_test = "3"
 sqlx = { workspace = true }
