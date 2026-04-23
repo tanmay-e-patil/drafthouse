@@ -21,6 +21,14 @@ use uuid::Uuid;
 use yrs::sync::AwarenessUpdate;
 use yrs::updates::decoder::Decode;
 
+#[derive(Clone, Copy)]
+struct ConnectionMeta {
+    doc_id: Uuid,
+    client_id: Uuid,
+    connection_id: u64,
+    is_readonly: bool,
+}
+
 pub async fn ws_handler(
     req: HttpRequest,
     stream: web::Payload,
@@ -92,6 +100,12 @@ pub async fn ws_handler(
 
     actix_web::rt::spawn(async move {
         let client_id = user_id.unwrap_or_else(Uuid::new_v4);
+        let meta = ConnectionMeta {
+            doc_id,
+            client_id,
+            connection_id,
+            is_readonly,
+        };
 
         // Send SyncStep1 to new client so it replies with its state vector
         {
@@ -116,10 +130,7 @@ pub async fn ws_handler(
                             }
                             handle_binary(
                                 &data,
-                                doc_id,
-                                client_id,
-                                connection_id,
-                                is_readonly,
+                                meta,
                                 &room_clone,
                                 &mut session,
                                 &scylla_dal,
@@ -151,10 +162,7 @@ pub async fn ws_handler(
 
 async fn handle_binary<D>(
     data: &[u8],
-    doc_id: Uuid,
-    client_id: Uuid,
-    connection_id: u64,
-    is_readonly: bool,
+    meta: ConnectionMeta,
     room: &DocRoom,
     session: &mut actix_ws::Session,
     dal: &D,
@@ -170,7 +178,7 @@ async fn handle_binary<D>(
             let _ = session.binary(Bytes::from(step2)).await;
         }
         CollabMessage::Update(update_bytes) | CollabMessage::SyncStep2(update_bytes) => {
-            if is_readonly {
+            if meta.is_readonly {
                 return;
             }
             let applied = {
@@ -181,9 +189,9 @@ async fn handle_binary<D>(
                 // Write to WAL async (fire and forget)
                 let op_id = Uuid::new_v4();
                 let new_op = NewCollabOp {
-                    doc_id,
+                    doc_id: meta.doc_id,
                     op_id,
-                    client_id,
+                    client_id: meta.client_id,
                     data: update_bytes.clone(),
                     created_at: Utc::now(),
                 };
@@ -196,16 +204,16 @@ async fn handle_binary<D>(
                 // Snapshot trigger
                 room.increment_ops();
                 if room.should_snapshot() {
-                    persist_snapshot(dal, doc_id, room).await;
+                    persist_snapshot(dal, meta.doc_id, room).await;
                 }
             } else {
-                warn!(doc_id = %doc_id, "malformed update bytes, dropping client");
+                warn!(doc_id = %meta.doc_id, "malformed update bytes, dropping client");
             }
         }
         CollabMessage::Awareness(aw_bytes) => {
             let updates = awareness_updates_from_bytes(&aw_bytes);
             if !updates.is_empty() {
-                room.apply_awareness_update(connection_id, updates);
+                room.apply_awareness_update(meta.connection_id, updates);
             }
             // Forward awareness to all other clients
             let mut buf = vec![1u8];
@@ -240,12 +248,12 @@ fn awareness_updates_from_bytes(data: &[u8]) -> Vec<(u64, Option<AwarenessPeer>)
         .into_iter()
         .filter_map(|(client_id, entry)| {
             if entry.json.as_ref() == "null" {
-                return Some((client_id as u64, None));
+                return Some((client_id, None));
             }
 
             let payload: AwarenessUserEnvelope = serde_json::from_str(&entry.json).ok()?;
             Some((
-                client_id as u64,
+                client_id,
                 Some(AwarenessPeer {
                     name: payload.user.name,
                     color: payload.user.color,
