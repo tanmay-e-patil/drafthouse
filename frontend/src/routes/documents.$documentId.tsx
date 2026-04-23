@@ -36,6 +36,7 @@ function DocumentEditor() {
   const [contentLoading, setContentLoading] = useState(true);
   const titleRef = useRef<HTMLInputElement>(null);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  const upsertDocument = useDocumentStore((s) => s.upsertDocument);
 
   useEffect(() => {
     hydrate();
@@ -52,13 +53,14 @@ function DocumentEditor() {
       setDocument(doc);
       setTitle(doc.title);
       setContent(contentResp.content);
+      upsertDocument(doc);
     } catch {
       navigate({ to: "/" });
     } finally {
       setLoading(false);
       setContentLoading(false);
     }
-  }, [documentId, navigate]);
+  }, [documentId, navigate, upsertDocument]);
 
   useEffect(() => {
     if (hydrated && accessToken) {

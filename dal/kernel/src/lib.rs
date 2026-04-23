@@ -176,6 +176,18 @@ pub struct DocumentListResponse {
     pub has_more: bool,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct DocumentPresencePeer {
+    pub name: String,
+    pub color: String,
+    pub last_active: DateTime<Utc>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct DocumentPresenceResponse {
+    pub data: Vec<DocumentPresencePeer>,
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, sqlx::Type)]
 #[sqlx(type_name = "member_role", rename_all = "snake_case")]
 #[serde(rename_all = "snake_case")]

@@ -41,23 +41,31 @@ describe("Sidebar", () => {
   it("renders document list when documents exist", async () => {
     vi.stubGlobal(
       "fetch",
-      vi.fn().mockResolvedValue({
-        ok: true,
-        json: async () => ({
-          data: [
-            {
-              id: "1",
-              owner_id: "owner",
-              title: "Test Document",
-              is_public: false,
-              created_at: "2024-01-01T00:00:00Z",
-              updated_at: "2024-01-01T00:00:00Z",
-            },
-          ],
-          next_cursor: null,
-          has_more: false,
-        }),
-      })
+      vi
+        .fn()
+        .mockResolvedValueOnce({
+          ok: true,
+          json: async () => ({
+            data: [
+              {
+                id: "1",
+                owner_id: "owner",
+                title: "Test Document",
+                is_public: false,
+                created_at: "2024-01-01T00:00:00Z",
+                updated_at: "2024-01-01T00:00:00Z",
+              },
+            ],
+            next_cursor: null,
+            has_more: false,
+          }),
+        })
+        .mockResolvedValueOnce({
+          ok: true,
+          json: async () => ({
+            data: [],
+          }),
+        })
     );
 
     render(<Sidebar collapsed={false} onToggleCollapse={noop} />);
@@ -153,6 +161,49 @@ describe("Sidebar", () => {
     await waitFor(() => {
       expect(screen.getByText("Drafthouse")).toBeDefined();
       expect(screen.getByText("New document")).toBeDefined();
+    });
+  });
+
+  it("renders sidebar presence avatars returned by the presence poll", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi
+        .fn()
+        .mockResolvedValueOnce({
+          ok: true,
+          json: async () => ({
+            data: [
+              {
+                id: "1",
+                owner_id: "owner",
+                title: "Doc",
+                is_public: false,
+                created_at: "2024-01-01T00:00:00Z",
+                updated_at: "2024-01-01T00:00:00Z",
+              },
+            ],
+            next_cursor: null,
+            has_more: false,
+          }),
+        })
+        .mockResolvedValueOnce({
+          ok: true,
+          json: async () => ({
+            data: [
+              {
+                name: "alice",
+                color: "#E53E3E",
+                last_active: new Date().toISOString(),
+              },
+            ],
+          }),
+        })
+    );
+
+    render(<Sidebar collapsed={false} onToggleCollapse={noop} />);
+
+    await waitFor(() => {
+      expect(screen.getByTitle("alice")).toBeDefined();
     });
   });
 });

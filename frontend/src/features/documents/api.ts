@@ -19,6 +19,16 @@ export interface DocumentListResponse {
   has_more: boolean;
 }
 
+export interface DocumentPresencePeer {
+  name: string;
+  color: string;
+  last_active: string;
+}
+
+export interface DocumentPresenceResponse {
+  data: DocumentPresencePeer[];
+}
+
 export interface ApiError {
   detail: string;
 }
@@ -82,6 +92,20 @@ export async function getDocumentApi(id: string): Promise<Document> {
     credentials: "include",
   });
   return handleResponse<Document>(res, "Document not found");
+}
+
+export async function getDocumentPresenceApi(
+  id: string
+): Promise<DocumentPresenceResponse> {
+  const res = await fetch(`${API_BASE}/documents/${id}/presence`, {
+    method: "GET",
+    headers: getAuthHeaders(),
+    credentials: "include",
+  });
+  return handleResponse<DocumentPresenceResponse>(
+    res,
+    "Failed to get document presence"
+  );
 }
 
 export async function updateDocumentApi(

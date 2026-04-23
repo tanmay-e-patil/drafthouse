@@ -1,10 +1,16 @@
 use actix_web::web;
+use collab_core::DocStore;
 use dal::postgres_txs::SqlxPostGresDescriptor;
 
 use crate::handlers;
 
-pub fn configure(cfg: &mut web::ServiceConfig, dal: web::Data<SqlxPostGresDescriptor>) {
+pub fn configure(
+    cfg: &mut web::ServiceConfig,
+    dal: web::Data<SqlxPostGresDescriptor>,
+    doc_store: web::Data<DocStore>,
+) {
     cfg.app_data(dal)
+        .app_data(doc_store)
         .service(
             web::scope("/documents")
                 .route("", web::post().to(handlers::create_document))
@@ -12,6 +18,10 @@ pub fn configure(cfg: &mut web::ServiceConfig, dal: web::Data<SqlxPostGresDescri
                 .route("/{id}", web::get().to(handlers::get_document))
                 .route("/{id}", web::patch().to(handlers::update_document))
                 .route("/{id}", web::delete().to(handlers::delete_document))
+                .route(
+                    "/{id}/presence",
+                    web::get().to(handlers::get_document_presence),
+                )
                 .route(
                     "/{id}/content",
                     web::get().to(handlers::get_document_content),

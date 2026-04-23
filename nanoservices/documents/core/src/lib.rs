@@ -3,7 +3,7 @@ pub mod welcome;
 use chrono::Utc;
 use dal::{
     AcceptInviteLink, CountDocumentsByOwner, CreateDocument, CreateInviteLink, CreateWsTicket,
-    DeleteDocument, DeleteDocumentMember, GetDocumentById, GetDocumentContent,
+    DeleteDocument, DeleteDocumentMember, GetDocumentById, GetDocumentContent, GetDocumentMember,
     GetInviteLinkByToken, ListActiveInviteLinks, ListDocumentMembers, ListDocumentsByOwner,
     RevokeInviteLink, UpdateDocument, UpdateDocumentContent, UpdateDocumentMemberRole,
 };
@@ -23,6 +23,33 @@ pub mod tokio_event_adapter_runtime {
 }
 
 const DEFAULT_PAGE_LIMIT: i64 = 20;
+
+pub async fn ensure_document_access<D>(
+    dal: &D,
+    doc_id: uuid::Uuid,
+    user_id: uuid::Uuid,
+) -> Result<Document, NanoServiceError>
+where
+    D: GetDocumentById + GetDocumentMember,
+{
+    let doc = dal.get_document_by_id(doc_id).await?.ok_or_else(|| {
+        NanoServiceError::new("Document not found", NanoServiceErrorStatus::NotFound)
+    })?;
+
+    if doc.owner_id == user_id {
+        return Ok(doc);
+    }
+
+    let member = dal.get_document_member(doc_id, user_id).await?;
+    if member.is_some() {
+        Ok(doc)
+    } else {
+        Err(NanoServiceError::new(
+            "You do not have access to this document",
+            NanoServiceErrorStatus::Forbidden,
+        ))
+    }
+}
 
 pub async fn create_document<D>(
     dal: &D,

@@ -63,7 +63,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             .wrap(actix_middleware::Logger::default())
             .wrap(cors)
             .configure(|cfg| auth_networking::routes::configure(cfg, pg_dal.clone()))
-            .configure(|cfg| documents_networking::routes::configure(cfg, pg_dal.clone()))
+            .configure(|cfg| {
+                documents_networking::routes::configure(cfg, pg_dal.clone(), doc_store.clone())
+            })
             .configure(|cfg| {
                 collab_networking::routes::configure(
                     cfg,

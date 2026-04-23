@@ -60,6 +60,21 @@ describe("useDocumentStore", () => {
     expect(state.documents[1].title).toBe("Another Doc");
   });
 
+  it("upsertDocument inserts when missing and replaces when present", () => {
+    useDocumentStore.getState().upsertDocument(mockDoc);
+    let state = useDocumentStore.getState();
+    expect(state.documents).toHaveLength(1);
+    expect(state.documents[0].id).toBe(mockDoc.id);
+
+    useDocumentStore.getState().upsertDocument({
+      ...mockDoc,
+      title: "Updated via upsert",
+    });
+    state = useDocumentStore.getState();
+    expect(state.documents).toHaveLength(1);
+    expect(state.documents[0].title).toBe("Updated via upsert");
+  });
+
   it("removeDocumentFromList removes matching document", () => {
     useDocumentStore.getState().setDocuments([mockDoc, mockDoc2], null, false);
     useDocumentStore.getState().removeDocumentFromList(mockDoc.id);
