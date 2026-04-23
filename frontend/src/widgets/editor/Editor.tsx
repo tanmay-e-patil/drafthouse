@@ -10,12 +10,18 @@ import { languages } from "@codemirror/language-data";
 import type { ViewUpdate } from "@codemirror/view";
 import type { Extension } from "@codemirror/state";
 import { useDebounce } from "./useDebounce";
+import { Toggle } from "#/components/ui/toggle";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "#/components/ui/tooltip";
+import { Eye, Code2 } from "lucide-react";
 
 interface EditorProps {
   docId: string;
   initialContent: string;
   onSave: (content: string) => Promise<void>;
-  /** Called when another editor remotely updates the document title. */
   onTitleUpdate?: (title: string) => void;
 }
 
@@ -25,14 +31,14 @@ const STATUS_LABEL: Record<ConnectionStatus, string> = {
   connecting: "Connecting...",
   connected: "Synced",
   syncing: "Syncing...",
-  disconnected: "Working offline",
+  disconnected: "Offline",
 };
 
-const STATUS_COLOR: Record<ConnectionStatus, string> = {
-  connecting: "var(--color-yellow-500, #eab308)",
-  connected: "var(--color-green-500, #22c55e)",
-  syncing: "var(--color-yellow-500, #eab308)",
-  disconnected: "var(--color-red-500, #ef4444)",
+const STATUS_DOT: Record<ConnectionStatus, string> = {
+  connecting: "bg-yellow-500",
+  connected: "bg-green-500",
+  syncing: "bg-yellow-500",
+  disconnected: "bg-red-500",
 };
 
 export default function Editor({ docId, initialContent, onSave, onTitleUpdate }: EditorProps) {
@@ -53,7 +59,6 @@ export default function Editor({ docId, initialContent, onSave, onTitleUpdate }:
       await onSave(value);
       setHasUnsavedChanges(false);
     } catch {
-      // keep unsaved state
     } finally {
       setSaving(false);
       saveLockRef.current = false;
@@ -67,7 +72,7 @@ export default function Editor({ docId, initialContent, onSave, onTitleUpdate }:
       setHasUnsavedChanges(true);
       debouncedSave(newContent);
     },
-    [debouncedSave]
+    [debouncedSave],
   );
 
   const updateListener = useMemo(
@@ -75,7 +80,7 @@ export default function Editor({ docId, initialContent, onSave, onTitleUpdate }:
       EditorView.updateListener.of((update: ViewUpdate) => {
         if (update.docChanged) handleChange(update.view);
       }),
-    [handleChange]
+    [handleChange],
   );
 
   const extensions = useMemo<Extension[]>(
@@ -97,13 +102,13 @@ export default function Editor({ docId, initialContent, onSave, onTitleUpdate }:
         "&.cm-focused": { outline: "none" },
       }),
     ],
-    [updateListener]
+    [updateListener],
   );
 
   useCollabEditor(
     container && mode === "edit"
       ? { docId, container, extensions, initialContent, onTitleUpdate }
-      : null
+      : null,
   );
 
   useEffect(() => {
@@ -119,58 +124,80 @@ export default function Editor({ docId, initialContent, onSave, onTitleUpdate }:
     }
   }, [mode, content]);
 
-  if (mode === "preview") {
-    return (
-      <div className="editor-container">
-        <div className="editor-toolbar">
-          <button
-            className="toolbar-btn"
-            onClick={() => setMode("edit")}
+  return (
+    <div className="flex flex-1 flex-col overflow-hidden">
+      <div className="flex h-10 items-center gap-1 border-b border-border px-2">
+        <Tooltip>
+          <TooltipTrigger
+            render={
+              <Toggle
+                pressed={mode === "edit"}
+                onPressedChange={() => setMode("edit")}
+                size="sm"
+                className="gap-1.5 text-xs"
+              />
+            }
           >
+            <Code2 className="size-3.5" />
             Edit
-          </button>
-          <button className="toolbar-btn active" disabled>
+          </TooltipTrigger>
+          <TooltipContent>Edit mode</TooltipContent>
+        </Tooltip>
+        <Tooltip>
+          <TooltipTrigger
+            render={
+              <Toggle
+                pressed={mode === "preview"}
+                onPressedChange={() => setMode("preview")}
+                size="sm"
+                className="gap-1.5 text-xs"
+              />
+            }
+          >
+            <Eye className="size-3.5" />
             Preview
-          </button>
+          </TooltipTrigger>
+          <TooltipContent>Preview mode</TooltipContent>
+        </Tooltip>
+
+        <div className="ml-auto flex items-center gap-2">
+          {saving && (
+            <span className="text-[11px] text-muted-foreground animate-pulse">
+              Saving...
+            </span>
+          )}
+          {!saving && hasUnsavedChanges && (
+            <span className="text-[11px] text-muted-foreground">Unsaved</span>
+          )}
+          <AvatarStrip />
+          <Tooltip>
+            <TooltipTrigger
+              render={
+                <div className="flex items-center gap-1.5 rounded-md px-1.5 py-0.5 text-[11px] text-muted-foreground">
+                  <span className={`inline-block size-1.5 rounded-full ${STATUS_DOT[collabStatus]}`} />
+                  {STATUS_LABEL[collabStatus]}
+                </div>
+              }
+            />
+            <TooltipContent>
+              {collabStatus === "connected"
+                ? "Connected to server"
+                : collabStatus === "disconnected"
+                  ? "Changes saved locally — will sync when reconnected"
+                  : STATUS_LABEL[collabStatus]}
+            </TooltipContent>
+          </Tooltip>
         </div>
+      </div>
+
+      {mode === "preview" ? (
         <div
-          className="markdown-preview"
+          className="prose prose-sm dark:prose-invert max-w-none flex-1 overflow-y-auto p-6"
           dangerouslySetInnerHTML={{ __html: previewHtml }}
         />
-      </div>
-    );
-  }
-
-  return (
-    <div className="editor-container">
-      <div className="editor-toolbar">
-        <button className="toolbar-btn active" disabled>
-          Edit
-        </button>
-        <button
-          className="toolbar-btn"
-          onClick={() => setMode("preview")}
-        >
-          Preview
-        </button>
-        {saving && <span className="save-indicator saving">Saving...</span>}
-        {!saving && hasUnsavedChanges && <span className="save-indicator unsaved">Unsaved</span>}
-        <AvatarStrip />
-        <span className="connection-status" title={STATUS_LABEL[collabStatus]}>
-          <span
-            style={{
-              display: "inline-block",
-              width: 8,
-              height: 8,
-              borderRadius: "50%",
-              backgroundColor: STATUS_COLOR[collabStatus],
-              marginRight: 4,
-            }}
-          />
-          {STATUS_LABEL[collabStatus]}
-        </span>
-      </div>
-      <div ref={setContainer} className="cm-editor-container" />
+      ) : (
+        <div ref={setContainer} className="flex-1 overflow-hidden" />
+      )}
     </div>
   );
 }

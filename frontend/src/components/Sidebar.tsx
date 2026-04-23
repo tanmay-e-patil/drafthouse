@@ -7,7 +7,33 @@ import {
 } from "#/features/documents/api";
 import { useDocumentStore } from "#/features/documents/store";
 import { useAuthStore } from "#/features/auth/store";
+import { logoutApi } from "#/features/auth/api";
 import type { Document } from "#/features/documents/api";
+import { Button } from "#/components/ui/button";
+import { ScrollArea } from "#/components/ui/scroll-area";
+import { Separator } from "#/components/ui/separator";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "#/components/ui/dropdown-menu";
+import { Avatar, AvatarFallback } from "#/components/ui/avatar";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "#/components/ui/tooltip";
+import ThemeToggle from "#/components/ThemeToggle";
+import {
+  FileText,
+  Plus,
+  Trash2,
+  MoreHorizontal,
+  LogOut,
+  PanelLeftClose,
+  PanelLeft,
+} from "lucide-react";
 
 function formatRelativeTime(dateStr: string): string {
   const date = new Date(dateStr);
@@ -25,7 +51,12 @@ function formatRelativeTime(dateStr: string): string {
   return date.toLocaleDateString();
 }
 
-export default function Sidebar() {
+interface SidebarProps {
+  collapsed: boolean;
+  onToggleCollapse: () => void;
+}
+
+export default function Sidebar({ collapsed, onToggleCollapse }: SidebarProps) {
   const navigate = useNavigate();
   const params = useParams({ strict: false }) as { documentId?: string };
   const {
@@ -41,6 +72,8 @@ export default function Sidebar() {
 
   const hydrated = useAuthStore((s) => s.hydrated);
   const accessToken = useAuthStore((s) => s.accessToken);
+  const email = useAuthStore((s) => s.email);
+  const clearAuth = useAuthStore((s) => s.clearAuth);
   const hasFetched = useRef(false);
 
   const fetchDocuments = useCallback(
@@ -54,17 +87,15 @@ export default function Sidebar() {
           setDocuments(
             [...documents, ...resp.data],
             resp.next_cursor,
-            resp.has_more
+            resp.has_more,
           );
         }
       } catch {
-        // silently fail - empty list shown
       } finally {
         setLoading(false);
       }
     },
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [setDocuments, setLoading, documents]
+    [setDocuments, setLoading, documents],
   );
 
   useEffect(() => {
@@ -72,23 +103,21 @@ export default function Sidebar() {
       hasFetched.current = true;
       fetchDocuments();
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [hydrated, accessToken]);
 
   async function handleCreate() {
     try {
       const doc = await createDocumentApi();
       prependDocument(doc);
-      navigate({ to: "/documents/$documentId", params: { documentId: doc.id } });
+      navigate({
+        to: "/documents/$documentId",
+        params: { documentId: doc.id },
+      });
     } catch {
-      // silently fail
     }
   }
 
-  async function handleDelete(e: React.MouseEvent, doc: Document) {
-    e.preventDefault();
-    e.stopPropagation();
-    if (!confirm(`Delete "${doc.title}"?`)) return;
+  async function handleDelete(doc: Document) {
     try {
       await deleteDocumentApi(doc.id);
       removeDocumentFromList(doc.id);
@@ -96,7 +125,6 @@ export default function Sidebar() {
         navigate({ to: "/" });
       }
     } catch {
-      // silently fail
     }
   }
 
@@ -106,94 +134,198 @@ export default function Sidebar() {
     }
   }
 
-  function handleKeyDown(e: Event) {
-    const ke = e as KeyboardEvent;
-    if ((ke.metaKey || ke.ctrlKey) && ke.key === "n") {
-      e.preventDefault();
-      handleCreate();
+  async function handleLogout() {
+    try {
+      await logoutApi();
+    } catch {
     }
+    clearAuth();
+    navigate({ to: "/" });
   }
 
-  useEffect(() => {
-    const handler = (e: Event) => handleKeyDown(e);
-    window.addEventListener("keydown", handler);
-    return () => window.removeEventListener("keydown", handler);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  const initials = email
+    ? email
+        .split("@")[0]
+        .slice(0, 2)
+        .toUpperCase()
+    : "??";
 
-  if (documents.length === 0 && !isLoading) {
+  if (collapsed) {
     return (
-      <aside className="sidebar">
-        <div className="sidebar-header">
-          <h2>Documents</h2>
-          <button className="new-doc-btn" onClick={handleCreate}>
-            + New
-          </button>
+      <aside className="flex h-screen w-14 flex-col border-r border-border bg-sidebar">
+        <div className="flex h-12 items-center justify-center">
+          <Tooltip>
+            <TooltipTrigger
+              render={
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  onClick={onToggleCollapse}
+                  className="size-8"
+                />
+              }
+            >
+              <PanelLeft className="size-4" />
+            </TooltipTrigger>
+            <TooltipContent side="right">Expand sidebar</TooltipContent>
+          </Tooltip>
         </div>
-        <div className="empty-state">
-          <p>No documents yet</p>
-          <button onClick={handleCreate}>Create your first document</button>
-        </div>
+        <Separator />
+        <ScrollArea className="flex-1 px-2 pt-1">
+          <div className="flex flex-col items-center gap-1">
+            {documents.slice(0, 10).map((doc) => (
+              <Tooltip key={doc.id}>
+                <TooltipTrigger
+                  render={
+                    <button
+                      className={`rounded-md p-2 transition-colors ${
+                        params.documentId === doc.id
+                          ? "bg-accent text-accent-foreground"
+                          : "text-sidebar-foreground hover:bg-accent/50"
+                      }`}
+                      onClick={() =>
+                        navigate({
+                          to: "/documents/$documentId",
+                          params: { documentId: doc.id },
+                        })
+                      }
+                    />
+                  }
+                >
+                  <FileText className="size-4" />
+                </TooltipTrigger>
+                <TooltipContent side="right">{doc.title}</TooltipContent>
+              </Tooltip>
+            ))}
+          </div>
+        </ScrollArea>
       </aside>
     );
   }
 
   return (
-    <aside className="sidebar">
-      <div className="sidebar-header">
-        <h2>Documents</h2>
-        <button className="new-doc-btn" onClick={handleCreate}>
-          + New
-        </button>
-      </div>
-      <div className="doc-list">
-        {documents.map((doc) => (
-          <a
-            key={doc.id}
-            href={`/documents/${doc.id}`}
-            className={`doc-list-item ${params.documentId === doc.id ? "active" : ""}`}
-            onClick={(e) => {
-              e.preventDefault();
-              navigate({
-                to: "/documents/$documentId",
-                params: { documentId: doc.id },
-              });
-            }}
+    <aside className="flex h-screen w-60 flex-col border-r border-border bg-sidebar">
+      <div className="flex h-12 items-center justify-between px-3">
+        <span className="text-sm font-semibold tracking-tight text-sidebar-foreground">
+          Drafthouse
+        </span>
+        <Tooltip>
+          <TooltipTrigger
+            render={
+              <Button
+                variant="ghost"
+                size="icon"
+                onClick={onToggleCollapse}
+                className="size-7"
+              />
+            }
           >
-            <div className="doc-list-item-info">
-              <div className="doc-list-item-title">{doc.title}</div>
-              <div className="doc-list-item-time">
-                {formatRelativeTime(doc.updated_at)}
-              </div>
-            </div>
-            <button
-              className="doc-list-item-delete"
-              onClick={(e) => handleDelete(e, doc)}
-              title="Delete document"
-            >
-              <svg
-                width="16"
-                height="16"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="2"
-              >
-                <path d="M3 6h18M8 6V4a2 2 0 012-2h4a2 2 0 012 2v2m3 0v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6h14" />
-              </svg>
-            </button>
-          </a>
-        ))}
+            <PanelLeftClose className="size-3.5" />
+          </TooltipTrigger>
+          <TooltipContent side="right">Collapse sidebar</TooltipContent>
+        </Tooltip>
       </div>
-      {hasMore && (
-        <button
-          className="load-more-btn"
-          onClick={handleLoadMore}
-          disabled={isLoading}
+      <Separator />
+      <div className="px-3 pt-2 pb-1">
+        <Button
+          variant="ghost"
+          size="sm"
+          className="w-full justify-start gap-2 text-muted-foreground"
+          onClick={handleCreate}
         >
-          {isLoading ? "Loading..." : "Load more"}
-        </button>
-      )}
+          <Plus className="size-4" />
+          New document
+        </Button>
+      </div>
+      <ScrollArea className="flex-1 px-2">
+        {documents.length === 0 && !isLoading && (
+          <div className="flex flex-col items-center justify-center py-12 text-center text-muted-foreground">
+            <FileText className="mb-2 size-8 opacity-40" />
+            <p className="text-xs">No documents yet</p>
+          </div>
+        )}
+        {documents.map((doc) => (
+          <div key={doc.id} className="group flex items-center">
+            <button
+              className={`flex-1 truncate rounded-md px-2 py-1.5 text-left text-sm transition-colors ${
+                params.documentId === doc.id
+                  ? "bg-accent text-accent-foreground font-medium"
+                  : "text-sidebar-foreground hover:bg-accent/50"
+              }`}
+              onClick={() =>
+                navigate({
+                  to: "/documents/$documentId",
+                  params: { documentId: doc.id },
+                })
+              }
+            >
+              <span className="block truncate">{doc.title}</span>
+              <span className="block text-[11px] text-muted-foreground">
+                {formatRelativeTime(doc.updated_at)}
+              </span>
+            </button>
+            <DropdownMenu>
+              <DropdownMenuTrigger
+                render={
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="mr-1 size-7 opacity-0 group-hover:opacity-100"
+                  />
+                }
+              >
+                <MoreHorizontal className="size-3.5" />
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" className="w-36">
+                <DropdownMenuItem
+                  className="text-destructive focus:text-destructive"
+                  onClick={() => handleDelete(doc)}
+                >
+                  <Trash2 className="size-3.5" />
+                  Delete
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+          </div>
+        ))}
+        {hasMore && (
+          <Button
+            variant="ghost"
+            size="sm"
+            className="mt-1 w-full text-xs text-muted-foreground"
+            onClick={handleLoadMore}
+            disabled={isLoading}
+          >
+            {isLoading ? "Loading..." : "Load more"}
+          </Button>
+        )}
+      </ScrollArea>
+      <Separator />
+      <div className="flex items-center justify-between px-3 py-2">
+        <DropdownMenu>
+          <DropdownMenuTrigger
+            render={
+              <Button variant="ghost" size="sm" className="gap-2 px-2">
+                <Avatar className="size-6">
+                  <AvatarFallback className="text-[10px]">
+                    {initials}
+                  </AvatarFallback>
+                </Avatar>
+                <span className="max-w-24 truncate text-xs">
+                  {email?.split("@")[0]}
+                </span>
+              </Button>
+            }
+          />
+          <DropdownMenuContent align="start" className="w-48">
+            <DropdownMenuItem onClick={handleLogout}>
+              <LogOut className="size-4" />
+              Sign out
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
+        <ThemeToggle />
+      </div>
     </aside>
   );
 }

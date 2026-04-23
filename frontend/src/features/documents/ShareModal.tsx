@@ -11,6 +11,25 @@ import {
   updateMemberRoleApi,
   updateDocumentApi,
 } from "./api";
+import { Button } from "#/components/ui/button";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from "#/components/ui/dialog";
+import { Switch } from "#/components/ui/switch";
+import { Separator } from "#/components/ui/separator";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "#/components/ui/select";
+import { Copy, Check, Trash2, Link as LinkIcon, Globe } from "lucide-react";
+import { toast } from "sonner";
 
 interface ShareModalProps {
   docId: string;
@@ -32,7 +51,6 @@ export function ShareModal({
   const [newRole, setNewRole] = useState<MemberRole>("editor");
   const [loading, setLoading] = useState(false);
   const [copiedToken, setCopiedToken] = useState<string | null>(null);
-  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     loadData();
@@ -47,18 +65,17 @@ export function ShareModal({
       setMembers(m);
       setLinks(l);
     } catch {
-      setError("Failed to load sharing data");
+      toast.error("Failed to load sharing data");
     }
   }
 
   async function handleGenerateLink() {
     setLoading(true);
-    setError(null);
     try {
       const link = await createInviteLinkApi(docId, { role: newRole });
       setLinks((prev) => [link, ...prev]);
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Failed to create link");
+      toast.error(e instanceof Error ? e.message : "Failed to create link");
     } finally {
       setLoading(false);
     }
@@ -68,8 +85,9 @@ export function ShareModal({
     try {
       await revokeInviteLinkApi(docId, token);
       setLinks((prev) => prev.filter((l) => l.token !== token));
+      toast.success("Invite link revoked");
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Failed to revoke link");
+      toast.error(e instanceof Error ? e.message : "Failed to revoke link");
     }
   }
 
@@ -77,8 +95,9 @@ export function ShareModal({
     try {
       await removeMemberApi(docId, userId);
       setMembers((prev) => prev.filter((m) => m.user_id !== userId));
+      toast.success("Member removed");
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Failed to remove member");
+      toast.error(e instanceof Error ? e.message : "Failed to remove member");
     }
   }
 
@@ -86,10 +105,10 @@ export function ShareModal({
     try {
       const updated = await updateMemberRoleApi(docId, userId, role);
       setMembers((prev) =>
-        prev.map((m) => (m.user_id === userId ? updated : m))
+        prev.map((m) => (m.user_id === userId ? updated : m)),
       );
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Failed to update role");
+      toast.error(e instanceof Error ? e.message : "Failed to update role");
     }
   }
 
@@ -99,7 +118,9 @@ export function ShareModal({
       await updateDocumentApi(docId, { is_public: next });
       onPublicToggle(next);
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Failed to update public access");
+      toast.error(
+        e instanceof Error ? e.message : "Failed to update public access",
+      );
     }
   }
 
@@ -107,167 +128,155 @@ export function ShareModal({
     const url = `${window.location.origin}/invite/${token}`;
     navigator.clipboard.writeText(url);
     setCopiedToken(token);
+    toast.success("Link copied");
     setTimeout(() => setCopiedToken(null), 2000);
   }
 
-  const APP_ORIGIN = import.meta.env.VITE_APP_ORIGIN ?? window.location.origin;
+  const APP_ORIGIN =
+    import.meta.env.VITE_APP_ORIGIN ?? window.location.origin;
 
   return (
-    <div
-      style={{
-        position: "fixed",
-        inset: 0,
-        background: "rgba(0,0,0,0.5)",
-        display: "flex",
-        alignItems: "center",
-        justifyContent: "center",
-        zIndex: 1000,
-      }}
-      onClick={(e) => e.target === e.currentTarget && onClose()}
-    >
-      <div
-        style={{
-          background: "var(--bg, #fff)",
-          borderRadius: 8,
-          padding: 24,
-          width: 420,
-          maxWidth: "90vw",
-          maxHeight: "80vh",
-          overflowY: "auto",
-        }}
-      >
-        <div
-          style={{
-            display: "flex",
-            justifyContent: "space-between",
-            alignItems: "center",
-            marginBottom: 16,
-          }}
-        >
-          <h2 style={{ margin: 0, fontSize: 18 }}>Share "{docTitle}"</h2>
-          <button onClick={onClose} aria-label="Close">✕</button>
+    <Dialog open onOpenChange={(open) => !open && onClose()}>
+      <DialogContent className="sm:max-w-md">
+        <DialogHeader>
+          <DialogTitle className="text-sm">Share &quot;{docTitle}&quot;</DialogTitle>
+          <DialogDescription className="text-xs">
+            Manage who has access to this document
+          </DialogDescription>
+        </DialogHeader>
+
+        <div className="max-h-[60vh] space-y-4 overflow-y-auto">
+          <section className="space-y-2">
+            <h3 className="text-xs font-medium text-muted-foreground">
+              People with access
+            </h3>
+            {members.length === 0 ? (
+              <p className="text-xs text-muted-foreground">No members yet</p>
+            ) : (
+              <div className="space-y-1">
+                {members.map((m) => (
+                  <div
+                    key={m.user_id}
+                    className="flex items-center justify-between rounded-md px-2 py-1.5"
+                  >
+                    <span className="truncate text-xs text-muted-foreground">
+                      {m.user_id}
+                    </span>
+                    <div className="flex items-center gap-1">
+                      <Select
+                        value={m.role}
+                        onValueChange={(v) =>
+                          handleRoleChange(m.user_id, v as MemberRole)
+                        }
+                      >
+                        <SelectTrigger className="h-6 w-20 text-[11px]">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="editor">Editor</SelectItem>
+                          <SelectItem value="viewer">Viewer</SelectItem>
+                        </SelectContent>
+                      </Select>
+                      <Button
+                        variant="ghost"
+                        size="icon-xs"
+                        onClick={() => handleRemoveMember(m.user_id)}
+                        className="text-muted-foreground hover:text-destructive"
+                      >
+                        <Trash2 className="size-3" />
+                      </Button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </section>
+
+          <Separator />
+
+          <section className="space-y-2">
+            <h3 className="text-xs font-medium text-muted-foreground">
+              Invite link
+            </h3>
+            <div className="flex items-center gap-2">
+              <Select
+                value={newRole}
+                onValueChange={(v) => setNewRole(v as MemberRole)}
+              >
+                <SelectTrigger className="h-7 w-24 text-xs">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="editor">Editor</SelectItem>
+                  <SelectItem value="viewer">Viewer</SelectItem>
+                </SelectContent>
+              </Select>
+              <Button
+                size="sm"
+                className="h-7 text-xs"
+                onClick={handleGenerateLink}
+                disabled={loading}
+              >
+                <LinkIcon className="size-3" />
+                Generate
+              </Button>
+            </div>
+            {links.length > 0 && (
+              <div className="space-y-1">
+                {links.map((link) => {
+                  const url = `${APP_ORIGIN}/invite/${link.token}`;
+                  return (
+                    <div
+                      key={link.token}
+                      className="flex items-center justify-between rounded-md bg-muted/50 px-2 py-1.5"
+                    >
+                      <span className="truncate font-mono text-[11px] text-muted-foreground">
+                        {url}
+                      </span>
+                      <div className="flex items-center gap-0.5 ml-2 shrink-0">
+                        <Button
+                          variant="ghost"
+                          size="icon-xs"
+                          onClick={() => copyToClipboard(link.token)}
+                        >
+                          {copiedToken === link.token ? (
+                            <Check className="size-3 text-green-500" />
+                          ) : (
+                            <Copy className="size-3" />
+                          )}
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="icon-xs"
+                          onClick={() => handleRevokeLink(link.token)}
+                          className="text-muted-foreground hover:text-destructive"
+                        >
+                          <Trash2 className="size-3" />
+                        </Button>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </section>
+
+          <Separator />
+
+          <section className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <Globe className="size-3.5 text-muted-foreground" />
+              <span className="text-xs">Public access</span>
+            </div>
+            <div className="flex items-center gap-2">
+              <span className="text-[11px] text-muted-foreground">
+                {isPublic ? "Anyone with link" : "Off"}
+              </span>
+              <Switch checked={isPublic} onCheckedChange={handlePublicToggle} />
+            </div>
+          </section>
         </div>
-
-        {error && (
-          <p style={{ color: "red", marginBottom: 12, fontSize: 13 }}>{error}</p>
-        )}
-
-        <section style={{ marginBottom: 20 }}>
-          <h3 style={{ fontSize: 13, fontWeight: 600, marginBottom: 8 }}>
-            People with access
-          </h3>
-          {members.length === 0 ? (
-            <p style={{ color: "#888", fontSize: 13 }}>No members yet</p>
-          ) : (
-            members.map((m) => (
-              <div
-                key={m.user_id}
-                style={{
-                  display: "flex",
-                  justifyContent: "space-between",
-                  alignItems: "center",
-                  marginBottom: 6,
-                }}
-              >
-                <span style={{ fontSize: 13, fontFamily: "monospace" }}>
-                  {m.user_id.slice(0, 8)}…
-                </span>
-                <div style={{ display: "flex", gap: 6 }}>
-                  <select
-                    value={m.role}
-                    onChange={(e) =>
-                      handleRoleChange(m.user_id, e.target.value as MemberRole)
-                    }
-                    style={{ fontSize: 12 }}
-                  >
-                    <option value="editor">Editor</option>
-                    <option value="viewer">Viewer</option>
-                  </select>
-                  <button
-                    onClick={() => handleRemoveMember(m.user_id)}
-                    aria-label="Remove member"
-                    style={{ fontSize: 12 }}
-                  >
-                    ✕
-                  </button>
-                </div>
-              </div>
-            ))
-          )}
-        </section>
-
-        <section style={{ marginBottom: 20 }}>
-          <h3 style={{ fontSize: 13, fontWeight: 600, marginBottom: 8 }}>
-            Invite link
-          </h3>
-          <div style={{ display: "flex", gap: 8, marginBottom: 8 }}>
-            <select
-              value={newRole}
-              onChange={(e) => setNewRole(e.target.value as MemberRole)}
-              style={{ fontSize: 13 }}
-            >
-              <option value="editor">Editor</option>
-              <option value="viewer">Viewer</option>
-            </select>
-            <button
-              onClick={handleGenerateLink}
-              disabled={loading}
-              style={{ fontSize: 13 }}
-            >
-              {loading ? "Generating…" : "Generate Link"}
-            </button>
-          </div>
-          {links.map((link) => {
-            const url = `${APP_ORIGIN}/invite/${link.token}`;
-            return (
-              <div
-                key={link.token}
-                style={{
-                  display: "flex",
-                  justifyContent: "space-between",
-                  alignItems: "center",
-                  marginBottom: 6,
-                  fontSize: 12,
-                }}
-              >
-                <span style={{ fontFamily: "monospace", flex: 1, overflow: "hidden", textOverflow: "ellipsis" }}>
-                  {url}
-                </span>
-                <div style={{ display: "flex", gap: 4, marginLeft: 8 }}>
-                  <button
-                    onClick={() => copyToClipboard(link.token)}
-                    aria-label="Copy link"
-                    style={{ fontSize: 11 }}
-                  >
-                    {copiedToken === link.token ? "✓" : "📋"}
-                  </button>
-                  <button
-                    onClick={() => handleRevokeLink(link.token)}
-                    aria-label="Revoke link"
-                    style={{ fontSize: 11 }}
-                  >
-                    ✕
-                  </button>
-                </div>
-              </div>
-            );
-          })}
-        </section>
-
-        <section>
-          <h3 style={{ fontSize: 13, fontWeight: 600, marginBottom: 8 }}>
-            Public access
-          </h3>
-          <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13, cursor: "pointer" }}>
-            <input
-              type="checkbox"
-              checked={isPublic}
-              onChange={handlePublicToggle}
-            />
-            Anyone with link can view
-          </label>
-        </section>
-      </div>
-    </div>
+      </DialogContent>
+    </Dialog>
   );
 }

@@ -2,6 +2,12 @@ import { createFileRoute, useNavigate, useParams } from "@tanstack/react-router"
 import { useEffect, useState } from "react";
 import { useAuthStore } from "#/features/auth/store";
 import { acceptInviteApi } from "#/features/documents/api";
+import {
+  Card,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "#/components/ui/card";
 
 export const Route = createFileRoute("/invite/$token")({ component: AcceptInvite });
 
@@ -26,7 +32,10 @@ function AcceptInvite() {
 
     acceptInviteApi(token)
       .then((member) => {
-        navigate({ to: "/documents/$documentId", params: { documentId: member.doc_id } });
+        navigate({
+          to: "/documents/$documentId",
+          params: { documentId: member.doc_id },
+        });
       })
       .catch((e: Error) => {
         setError(e.message ?? "Failed to accept invite");
@@ -35,21 +44,25 @@ function AcceptInvite() {
 
   if (error) {
     return (
-      <main className="auth-page">
-        <div className="auth-card">
-          <h1>Invite failed</h1>
-          <div className="error-msg">{error}</div>
-        </div>
+      <main className="flex h-screen items-center justify-center p-4">
+        <Card className="w-full max-w-sm">
+          <CardHeader>
+            <CardTitle className="text-lg">Invite failed</CardTitle>
+            <CardDescription>{error}</CardDescription>
+          </CardHeader>
+        </Card>
       </main>
     );
   }
 
   return (
-    <main className="auth-page">
-      <div className="auth-card">
-        <h1>Accepting invite...</h1>
-        <p>Please wait.</p>
-      </div>
+    <main className="flex h-screen items-center justify-center p-4">
+      <Card className="w-full max-w-sm">
+        <CardHeader>
+          <CardTitle className="text-lg">Accepting invite...</CardTitle>
+          <CardDescription>Please wait.</CardDescription>
+        </CardHeader>
+      </Card>
     </main>
   );
 }

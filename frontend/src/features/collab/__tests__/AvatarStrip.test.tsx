@@ -70,6 +70,6 @@ describe("AvatarStrip", () => {
     });
     render(<AvatarStrip />);
     const avatar = screen.getByTitle(/alice/i);
-    expect(avatar.className).toMatch(/idle/);
+    expect(avatar.style.opacity).toBe("0.35");
   });
 });

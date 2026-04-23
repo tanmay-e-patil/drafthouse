@@ -1,46 +1,25 @@
-import { HeadContent, Scripts, createRootRoute } from '@tanstack/react-router'
-import Footer from '../components/Footer'
-import Header from '../components/Header'
+import { HeadContent, Outlet, Scripts, createRootRoute } from '@tanstack/react-router'
+import { Toaster } from '#/components/ui/sonner'
+import { TooltipProvider } from '#/components/ui/tooltip'
+import { ThemeProvider } from 'next-themes'
 
 import appCss from '../styles.css?url'
-import authCss from '../auth.css?url'
-import documentsCss from '../documents.css?url'
 
-const THEME_INIT_SCRIPT = `(function(){try{var stored=window.localStorage.getItem('theme');var mode=(stored==='light'||stored==='dark'||stored==='auto')?stored:'auto';var prefersDark=window.matchMedia('(prefers-color-scheme: dark)').matches;var resolved=mode==='auto'?(prefersDark?'dark':'light'):mode;var root=document.documentElement;root.classList.remove('light','dark');root.classList.add(resolved);if(mode==='auto'){root.removeAttribute('data-theme')}else{root.setAttribute('data-theme',mode)}root.style.colorScheme=resolved;}catch(e){}})();`
+const THEME_INIT_SCRIPT = `(function(){try{var s=window.localStorage.getItem('theme');if(s==='light'||s==='dark'){document.documentElement.classList.add(s);document.documentElement.style.colorScheme=s}else{document.documentElement.style.colorScheme='light'}}catch(e){}})();`
 
 export const Route = createRootRoute({
   head: () => ({
     meta: [
-      {
-        charSet: 'utf-8',
-      },
-      {
-        name: 'viewport',
-        content: 'width=device-width, initial-scale=1',
-      },
-      {
-        title: 'Drafthouse',
-      },
+      { charSet: 'utf-8' },
+      { name: 'viewport', content: 'width=device-width, initial-scale=1' },
+      { title: 'Drafthouse' },
     ],
-    links: [
-      {
-        rel: 'stylesheet',
-        href: appCss,
-      },
-      {
-        rel: 'stylesheet',
-        href: authCss,
-      },
-      {
-        rel: 'stylesheet',
-        href: documentsCss,
-      },
-    ],
+    links: [{ rel: 'stylesheet', href: appCss }],
   }),
-  shellComponent: RootDocument,
+  component: RootLayout,
 })
 
-function RootDocument({ children }: { children: React.ReactNode }) {
+function RootLayout() {
   return (
     <html lang="en" suppressHydrationWarning>
       <head>
@@ -48,9 +27,12 @@ function RootDocument({ children }: { children: React.ReactNode }) {
         <HeadContent />
       </head>
       <body className="font-sans antialiased">
-        <Header />
-        {children}
-        <Footer />
+        <ThemeProvider attribute="class" defaultTheme="system" enableSystem disableTransitionOnChange>
+          <TooltipProvider delay={300}>
+            <Outlet />
+          </TooltipProvider>
+        </ThemeProvider>
+        <Toaster richColors position="bottom-right" />
         <Scripts />
       </body>
     </html>

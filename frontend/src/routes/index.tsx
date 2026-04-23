@@ -1,9 +1,12 @@
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
-import { useEffect } from "react";
+import { useEffect, useState, useCallback } from "react";
 import { createDocumentApi } from "#/features/documents/api";
 import { useDocumentStore } from "#/features/documents/store";
 import { useAuthStore } from "#/features/auth/store";
 import Sidebar from "#/components/Sidebar";
+import { Button } from "#/components/ui/button";
+import { FileText, Plus } from "lucide-react";
+import { Link } from "@tanstack/react-router";
 
 export const Route = createFileRoute("/")({ component: Dashboard });
 
@@ -13,51 +16,70 @@ function Dashboard() {
   const hydrated = useAuthStore((s) => s.hydrated);
   const hydrate = useAuthStore((s) => s.hydrate);
   const { prependDocument } = useDocumentStore();
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
 
   useEffect(() => {
     hydrate();
   }, [hydrate]);
 
-  useEffect(() => {
-    async function handleKeyDown(e: KeyboardEvent) {
-      if ((e.metaKey || e.ctrlKey) && e.key === "n") {
-        e.preventDefault();
-        try {
-          const doc = await createDocumentApi();
-          prependDocument(doc);
-          navigate({ to: "/documents/$documentId", params: { documentId: doc.id } });
-        } catch {
-        }
-      }
-    }
+  const toggleSidebar = useCallback(() => setSidebarCollapsed((v) => !v), []);
 
-    window.addEventListener("keydown", handleKeyDown);
-    return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [navigate, prependDocument]);
-
-  if (!hydrated) {
-    return null;
-  }
+  if (!hydrated) return null;
 
   if (!accessToken) {
     return (
-      <main className="landing-page">
-        <h1>Drafthouse</h1>
-        <p>Collaborative Markdown Editor</p>
-        <div className="landing-actions">
-          <a href="/login">Sign in</a>
-          <a href="/register">Sign up</a>
+      <main className="flex h-screen flex-col items-center justify-center gap-6">
+        <h1 className="text-2xl font-bold tracking-tight">Drafthouse</h1>
+        <p className="text-sm text-muted-foreground">
+          Collaborative Markdown Editor
+        </p>
+        <div className="flex gap-3">
+          <Button variant="outline" size="sm" render={<Link to="/login" />}>
+            Sign in
+          </Button>
+          <Button size="sm" render={<Link to="/register" />}>
+            Sign up
+          </Button>
         </div>
       </main>
     );
   }
 
   return (
-    <div className="dashboard-layout">
-      <Sidebar />
-      <main className="editor-area">
-        <div className="dashboard-placeholder">
-          <p>Select a document or create a new one</p>
+    <div className="flex h-screen overflow-hidden">
+      <Sidebar collapsed={sidebarCollapsed} onToggleCollapse={toggleSidebar} />
+      <main className="flex flex-1 flex-col overflow-hidden">
+        <div className="flex h-12 items-center justify-between border-b border-border px-4">
+          <div className="flex items-center gap-2 text-sm text-muted-foreground">
+            <FileText className="size-4" />
+            <span>Documents</span>
+          </div>
+          <Button
+            variant="ghost"
+            size="sm"
+            className="gap-1.5 text-muted-foreground"
+            onClick={() => {
+              createDocumentApi().then((doc) => {
+                prependDocument(doc);
+                navigate({
+                  to: "/documents/$documentId",
+                  params: { documentId: doc.id },
+                });
+              }).catch(() => {});
+            }}
+          >
+            <Plus className="size-3.5" />
+            New
+          </Button>
+        </div>
+        <div className="flex flex-1 items-center justify-center p-8">
+          <div className="text-center text-muted-foreground">
+            <FileText className="mx-auto mb-3 size-10 opacity-30" />
+            <p className="text-sm">Select a document or create a new one</p>
+            <p className="mt-1 text-xs text-muted-foreground/60">
+              Press <kbd className="rounded border border-border bg-muted px-1 py-0.5 text-[10px] font-mono">⌘ Shift N</kbd> to create
+            </p>
+          </div>
         </div>
       </main>
     </div>

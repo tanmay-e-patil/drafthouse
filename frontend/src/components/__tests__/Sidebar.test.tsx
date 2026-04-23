@@ -9,9 +9,15 @@ vi.mock("@tanstack/react-router", () => ({
   useParams: () => ({}),
 }));
 
+vi.mock("next-themes", () => ({
+  useTheme: () => ({ theme: "light", setTheme: vi.fn(), resolvedTheme: "light" }),
+}));
+
+const noop = () => {};
+
 beforeEach(() => {
   useDocumentStore.getState().reset();
-  useAuthStore.setState({ accessToken: "test_token", hydrated: true });
+  useAuthStore.setState({ accessToken: "test_token", hydrated: true, email: "test@example.com" });
   vi.restoreAllMocks();
 });
 
@@ -25,14 +31,11 @@ describe("Sidebar", () => {
       })
     );
 
-    render(<Sidebar />);
+    render(<Sidebar collapsed={false} onToggleCollapse={noop} />);
 
     await waitFor(() => {
       expect(screen.getByText("No documents yet")).toBeDefined();
     });
-    expect(
-      screen.getByText("Create your first document")
-    ).toBeDefined();
   });
 
   it("renders document list when documents exist", async () => {
@@ -57,7 +60,7 @@ describe("Sidebar", () => {
       })
     );
 
-    render(<Sidebar />);
+    render(<Sidebar collapsed={false} onToggleCollapse={noop} />);
 
     await waitFor(() => {
       expect(screen.getByText("Test Document")).toBeDefined();
@@ -86,7 +89,7 @@ describe("Sidebar", () => {
       })
     );
 
-    render(<Sidebar />);
+    render(<Sidebar collapsed={false} onToggleCollapse={noop} />);
 
     await waitFor(() => {
       expect(screen.getByText("Load more")).toBeDefined();
@@ -115,7 +118,7 @@ describe("Sidebar", () => {
       })
     );
 
-    render(<Sidebar />);
+    render(<Sidebar collapsed={false} onToggleCollapse={noop} />);
 
     await waitFor(() => {
       expect(screen.getByText("Doc 1")).toBeDefined();
@@ -123,7 +126,7 @@ describe("Sidebar", () => {
     expect(screen.queryByText("Load more")).toBeNull();
   });
 
-  it("renders sidebar header with title and new button", async () => {
+  it("renders sidebar header with title", async () => {
     vi.stubGlobal(
       "fetch",
       vi.fn().mockResolvedValue({
@@ -145,11 +148,11 @@ describe("Sidebar", () => {
       })
     );
 
-    render(<Sidebar />);
+    render(<Sidebar collapsed={false} onToggleCollapse={noop} />);
 
     await waitFor(() => {
-      expect(screen.getByText("Documents")).toBeDefined();
-      expect(screen.getByText("+ New")).toBeDefined();
+      expect(screen.getByText("Drafthouse")).toBeDefined();
+      expect(screen.getByText("New document")).toBeDefined();
     });
   });
 });

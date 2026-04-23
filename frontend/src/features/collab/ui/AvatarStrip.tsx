@@ -1,4 +1,5 @@
 import { useAwarenessStore } from "../awarenessStore";
+import { Avatar, AvatarFallback } from "#/components/ui/avatar";
 
 const MAX_VISIBLE = 5;
 const IDLE_MS = 30_000;
@@ -19,9 +20,7 @@ export default function AvatarStrip() {
   const now = Date.now();
 
   const visible = peers.filter(
-    (p) =>
-      p.clientId !== localClientId &&
-      now - p.lastActive < EXPIRED_MS
+    (p) => p.clientId !== localClientId && now - p.lastActive < EXPIRED_MS,
   );
 
   if (visible.length === 0) return null;
@@ -30,25 +29,35 @@ export default function AvatarStrip() {
   const overflow = visible.length - shown.length;
 
   return (
-    <div className="avatar-strip" role="group" aria-label="Active collaborators">
+    <div
+      className="flex items-center -space-x-1.5"
+      role="group"
+      aria-label="Active collaborators"
+    >
       {shown.map((peer) => {
         const idle = now - peer.lastActive >= IDLE_MS;
         return (
-          <span
+          <Avatar
             key={peer.clientId}
-            className={`avatar${idle ? " idle" : ""}`}
+            className="size-6 border-2 border-background text-[9px] font-semibold"
+            style={{
+              backgroundColor: peer.color,
+              opacity: idle ? 0.35 : 1,
+            }}
             title={peer.name}
-            style={{ backgroundColor: peer.color }}
-            aria-label={peer.name}
           >
-            {initials(peer.name)}
-          </span>
+            <AvatarFallback className="bg-transparent text-white">
+              {initials(peer.name)}
+            </AvatarFallback>
+          </Avatar>
         );
       })}
       {overflow > 0 && (
-        <span className="avatar avatar-overflow" aria-label={`${overflow} more`}>
-          +{overflow}
-        </span>
+        <Avatar className="size-6 border-2 border-background bg-muted text-[9px]">
+          <AvatarFallback className="bg-muted text-muted-foreground">
+            +{overflow}
+          </AvatarFallback>
+        </Avatar>
       )}
     </div>
   );

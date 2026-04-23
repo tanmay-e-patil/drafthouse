@@ -1,5 +1,16 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useState, type FormEvent } from "react";
+import { Button } from "#/components/ui/button";
+import { Input } from "#/components/ui/input";
+import { Label } from "#/components/ui/label";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardFooter,
+  CardHeader,
+  CardTitle,
+} from "#/components/ui/card";
 
 export const Route = createFileRoute("/register")({ component: Register });
 
@@ -46,71 +57,96 @@ function Register() {
 
   if (success) {
     return (
-      <main className="auth-page">
-        <div className="auth-card">
-          <h1>Check your email</h1>
-          <p>
-            We sent a verification link to <strong>{email}</strong>. Please
-            click the link to verify your account before logging in.
-          </p>
-          <div className="success-msg">
-            Registration successful! Check your inbox.
-          </div>
-          <Link
-            to="/"
-            className="auth-link"
-            style={{ display: "block", marginTop: "1rem" }}
-          >
-            Back to home
-          </Link>
-        </div>
+      <main className="flex h-screen items-center justify-center p-4">
+        <Card className="w-full max-w-sm">
+          <CardHeader>
+            <CardTitle className="text-lg">Check your email</CardTitle>
+            <CardDescription>
+              We sent a verification link to{" "}
+              <strong className="text-foreground">{email}</strong>. Please
+              click the link to verify your account before logging in.
+            </CardDescription>
+          </CardHeader>
+          <CardFooter>
+            <Link
+              to="/"
+              className="text-xs font-medium text-foreground underline-offset-4 hover:underline"
+            >
+              Back to home
+            </Link>
+          </CardFooter>
+        </Card>
       </main>
     );
   }
 
   return (
-    <main className="auth-page">
-      <div className="auth-card">
-        <h1>Create your account</h1>
-        <p>Sign up to start writing with Drafthouse.</p>
-
-        {error && <div className="error-msg">{error}</div>}
-
+    <main className="flex h-screen items-center justify-center p-4">
+      <Card className="w-full max-w-sm">
+        <CardHeader>
+          <CardTitle className="text-lg">Create your account</CardTitle>
+          <CardDescription>
+            Sign up to start writing with Drafthouse
+          </CardDescription>
+        </CardHeader>
         <form onSubmit={handleSubmit}>
-          <div className="field">
-            <label htmlFor="email">Email</label>
-            <input
-              id="email"
-              type="email"
-              required
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              placeholder="you@example.com"
-            />
-          </div>
-
-          <div className="field">
-            <label htmlFor="password">Password</label>
-            <input
-              id="password"
-              type="password"
-              required
-              minLength={8}
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              placeholder="At least 8 characters"
-            />
-          </div>
-
-          <button type="submit" className="submit-btn" disabled={loading}>
-            {loading ? "Creating account..." : "Create account"}
-          </button>
+          <CardContent className="space-y-3">
+            {error && (
+              <p className="rounded-md bg-destructive/10 px-3 py-2 text-xs text-destructive">
+                {error}
+              </p>
+            )}
+            <div className="space-y-1.5">
+              <Label htmlFor="email" className="text-xs">
+                Email
+              </Label>
+              <Input
+                id="email"
+                type="email"
+                required
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                placeholder="you@example.com"
+                className="h-8 text-sm"
+              />
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="password" className="text-xs">
+                Password
+              </Label>
+              <Input
+                id="password"
+                type="password"
+                required
+                minLength={8}
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                placeholder="At least 8 characters"
+                className="h-8 text-sm"
+              />
+            </div>
+          </CardContent>
+          <CardFooter className="flex-col gap-3">
+            <Button
+              type="submit"
+              className="w-full"
+              size="sm"
+              disabled={loading}
+            >
+              {loading ? "Creating account..." : "Create account"}
+            </Button>
+            <p className="text-xs text-muted-foreground">
+              Already have an account?{" "}
+              <Link
+                to="/login"
+                className="font-medium text-foreground underline-offset-4 hover:underline"
+              >
+                Sign in
+              </Link>
+            </p>
+          </CardFooter>
         </form>
-
-        <Link to="/login" className="auth-link">
-          Already have an account? Sign in
-        </Link>
-      </div>
+      </Card>
     </main>
   );
 }

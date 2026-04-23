@@ -1,6 +1,17 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useState, type FormEvent } from "react";
 import { forgotPasswordApi } from "#/features/auth/api";
+import { Button } from "#/components/ui/button";
+import { Input } from "#/components/ui/input";
+import { Label } from "#/components/ui/label";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardFooter,
+  CardHeader,
+  CardTitle,
+} from "#/components/ui/card";
 
 export const Route = createFileRoute("/forgot-password")({
   component: ForgotPassword,
@@ -30,50 +41,77 @@ function ForgotPassword() {
 
   if (success) {
     return (
-      <main className="auth-page">
-        <div className="auth-card">
-          <h1>Check your email</h1>
-          <p>
-            If an account with that email exists, we have sent a password reset
-            link.
-          </p>
-          <Link to="/login" className="auth-link">
-            Back to sign in
-          </Link>
-        </div>
+      <main className="flex h-screen items-center justify-center p-4">
+        <Card className="w-full max-w-sm">
+          <CardHeader>
+            <CardTitle className="text-lg">Check your email</CardTitle>
+            <CardDescription>
+              If an account with that email exists, we have sent a password reset
+              link.
+            </CardDescription>
+          </CardHeader>
+          <CardFooter>
+            <Link
+              to="/login"
+              className="text-xs font-medium text-foreground underline-offset-4 hover:underline"
+            >
+              Back to sign in
+            </Link>
+          </CardFooter>
+        </Card>
       </main>
     );
   }
 
   return (
-    <main className="auth-page">
-      <div className="auth-card">
-        <h1>Forgot password</h1>
-
-        {error && <div className="error-msg">{error}</div>}
-
+    <main className="flex h-screen items-center justify-center p-4">
+      <Card className="w-full max-w-sm">
+        <CardHeader>
+          <CardTitle className="text-lg">Forgot password</CardTitle>
+          <CardDescription>
+            Enter your email and we&apos;ll send you a reset link
+          </CardDescription>
+        </CardHeader>
         <form onSubmit={handleSubmit}>
-          <div className="field">
-            <label htmlFor="email">Email</label>
-            <input
-              id="email"
-              type="email"
-              required
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              placeholder="you@example.com"
-            />
-          </div>
-
-          <button type="submit" className="submit-btn" disabled={loading}>
-            {loading ? "Sending..." : "Send reset link"}
-          </button>
+          <CardContent className="space-y-3">
+            {error && (
+              <p className="rounded-md bg-destructive/10 px-3 py-2 text-xs text-destructive">
+                {error}
+              </p>
+            )}
+            <div className="space-y-1.5">
+              <Label htmlFor="email" className="text-xs">
+                Email
+              </Label>
+              <Input
+                id="email"
+                type="email"
+                required
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                placeholder="you@example.com"
+                className="h-8 text-sm"
+              />
+            </div>
+          </CardContent>
+          <CardFooter className="flex-col gap-3">
+            <Button
+              type="submit"
+              className="w-full"
+              size="sm"
+              disabled={loading}
+            >
+              {loading ? "Sending..." : "Send reset link"}
+            </Button>
+            <Link
+              to="/login"
+              className="text-xs text-muted-foreground underline-offset-4 hover:underline"
+            >
+              Back to sign in
+            </Link>
+          </CardFooter>
         </form>
-
-        <Link to="/login" className="auth-link">
-          Back to sign in
-        </Link>
-      </div>
+      </Card>
     </main>
   );
 }

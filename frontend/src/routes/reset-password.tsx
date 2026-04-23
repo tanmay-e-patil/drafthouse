@@ -1,6 +1,17 @@
 import { createFileRoute, Link, useSearch } from "@tanstack/react-router";
 import { useState, type FormEvent } from "react";
 import { resetPasswordApi } from "#/features/auth/api";
+import { Button } from "#/components/ui/button";
+import { Input } from "#/components/ui/input";
+import { Label } from "#/components/ui/label";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardFooter,
+  CardHeader,
+  CardTitle,
+} from "#/components/ui/card";
 
 export const Route = createFileRoute("/reset-password")({
   component: ResetPassword,
@@ -45,61 +56,90 @@ function ResetPassword() {
 
   if (success) {
     return (
-      <main className="auth-page">
-        <div className="auth-card">
-          <h1>Password reset</h1>
-          <div className="success-msg">
-            Your password has been reset successfully.
-          </div>
-          <Link to="/login" className="auth-link">
-            Sign in with your new password
-          </Link>
-        </div>
+      <main className="flex h-screen items-center justify-center p-4">
+        <Card className="w-full max-w-sm">
+          <CardHeader>
+            <CardTitle className="text-lg">Password reset</CardTitle>
+            <CardDescription>
+              Your password has been reset successfully.
+            </CardDescription>
+          </CardHeader>
+          <CardFooter>
+            <Link
+              to="/login"
+              className="text-xs font-medium text-foreground underline-offset-4 hover:underline"
+            >
+              Sign in with your new password
+            </Link>
+          </CardFooter>
+        </Card>
       </main>
     );
   }
 
   return (
-    <main className="auth-page">
-      <div className="auth-card">
-        <h1>Reset password</h1>
-
-        {error && <div className="error-msg">{error}</div>}
-
+    <main className="flex h-screen items-center justify-center p-4">
+      <Card className="w-full max-w-sm">
+        <CardHeader>
+          <CardTitle className="text-lg">Reset password</CardTitle>
+          <CardDescription>
+            Enter your new password below
+          </CardDescription>
+        </CardHeader>
         <form onSubmit={handleSubmit}>
-          <div className="field">
-            <label htmlFor="new-password">New password</label>
-            <input
-              id="new-password"
-              type="password"
-              required
-              value={newPassword}
-              onChange={(e) => setNewPassword(e.target.value)}
-              placeholder="New password"
-            />
-          </div>
-
-          <div className="field">
-            <label htmlFor="confirm-password">Confirm password</label>
-            <input
-              id="confirm-password"
-              type="password"
-              required
-              value={confirmPassword}
-              onChange={(e) => setConfirmPassword(e.target.value)}
-              placeholder="Confirm new password"
-            />
-          </div>
-
-          <button type="submit" className="submit-btn" disabled={loading}>
-            {loading ? "Resetting..." : "Reset password"}
-          </button>
+          <CardContent className="space-y-3">
+            {error && (
+              <p className="rounded-md bg-destructive/10 px-3 py-2 text-xs text-destructive">
+                {error}
+              </p>
+            )}
+            <div className="space-y-1.5">
+              <Label htmlFor="new-password" className="text-xs">
+                New password
+              </Label>
+              <Input
+                id="new-password"
+                type="password"
+                required
+                value={newPassword}
+                onChange={(e) => setNewPassword(e.target.value)}
+                placeholder="New password"
+                className="h-8 text-sm"
+              />
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="confirm-password" className="text-xs">
+                Confirm password
+              </Label>
+              <Input
+                id="confirm-password"
+                type="password"
+                required
+                value={confirmPassword}
+                onChange={(e) => setConfirmPassword(e.target.value)}
+                placeholder="Confirm new password"
+                className="h-8 text-sm"
+              />
+            </div>
+          </CardContent>
+          <CardFooter className="flex-col gap-3">
+            <Button
+              type="submit"
+              className="w-full"
+              size="sm"
+              disabled={loading}
+            >
+              {loading ? "Resetting..." : "Reset password"}
+            </Button>
+            <Link
+              to="/login"
+              className="text-xs text-muted-foreground underline-offset-4 hover:underline"
+            >
+              Back to sign in
+            </Link>
+          </CardFooter>
         </form>
-
-        <Link to="/login" className="auth-link">
-          Back to sign in
-        </Link>
-      </div>
+      </Card>
     </main>
   );
 }

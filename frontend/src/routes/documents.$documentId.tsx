@@ -3,7 +3,6 @@ import { useEffect, useState, useCallback, useRef } from "react";
 import {
   getDocumentApi,
   updateDocumentApi,
-  createDocumentApi,
   getDocumentContentApi,
   updateDocumentContentApi,
 } from "#/features/documents/api";
@@ -13,13 +12,17 @@ import Sidebar from "#/components/Sidebar";
 import Editor from "#/widgets/editor/Editor";
 import { ShareModal } from "#/features/documents/ShareModal";
 import type { Document } from "#/features/documents/api";
+import { Button } from "#/components/ui/button";
+import { Share2 } from "lucide-react";
 
 export const Route = createFileRoute("/documents/$documentId")({
   component: DocumentEditor,
 });
 
 function DocumentEditor() {
-  const { documentId } = useParams({ strict: false }) as { documentId: string };
+  const { documentId } = useParams({ strict: false }) as {
+    documentId: string;
+  };
   const navigate = useNavigate();
   const accessToken = useAuthStore((s) => s.accessToken);
   const hydrated = useAuthStore((s) => s.hydrated);
@@ -32,7 +35,7 @@ function DocumentEditor() {
   const [content, setContent] = useState("");
   const [contentLoading, setContentLoading] = useState(true);
   const titleRef = useRef<HTMLInputElement>(null);
-  const { prependDocument } = useDocumentStore();
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
 
   useEffect(() => {
     hydrate();
@@ -75,10 +78,14 @@ function DocumentEditor() {
     if (trimmed === document.title) return;
     setSaving(true);
     try {
-      const updated = await updateDocumentApi(document.id, { title: trimmed || "Untitled" });
+      const updated = await updateDocumentApi(document.id, {
+        title: trimmed || "Untitled",
+      });
       setDocument(updated);
       setTitle(updated.title);
-      useDocumentStore.getState().updateDocumentInList(document.id, { title: updated.title });
+      useDocumentStore
+        .getState()
+        .updateDocumentInList(document.id, { title: updated.title });
     } catch {
       setTitle(document.title);
     } finally {
@@ -94,37 +101,23 @@ function DocumentEditor() {
     setTitle(newTitle);
     if (document) {
       setDocument({ ...document, title: newTitle });
-      useDocumentStore.getState().updateDocumentInList(document.id, { title: newTitle });
+      useDocumentStore
+        .getState()
+        .updateDocumentInList(document.id, { title: newTitle });
     }
   }
 
-  async function handleKeyDown(e: Event) {
-    const ke = e as KeyboardEvent;
-    if ((ke.metaKey || ke.ctrlKey) && ke.key === "n") {
-      e.preventDefault();
-      try {
-        const doc = await createDocumentApi();
-        prependDocument(doc);
-        navigate({ to: "/documents/$documentId", params: { documentId: doc.id } });
-      } catch {
-        // silently fail
-      }
-    }
-  }
-
-  useEffect(() => {
-    const handler = (e: Event) => handleKeyDown(e as KeyboardEvent);
-    window.addEventListener("keydown", handler);
-    return () => window.removeEventListener("keydown", handler);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  const toggleSidebar = useCallback(
+    () => setSidebarCollapsed((v) => !v),
+    [],
+  );
 
   if (loading) {
     return (
-      <div className="editor-layout">
-        <Sidebar />
-        <main className="editor-area">
-          <p style={{ padding: "2rem", color: "var(--ink-soft)" }}>Loading...</p>
+      <div className="flex h-screen overflow-hidden">
+        <Sidebar collapsed={sidebarCollapsed} onToggleCollapse={toggleSidebar} />
+        <main className="flex flex-1 items-center justify-center text-muted-foreground">
+          <p className="text-sm">Loading...</p>
         </main>
       </div>
     );
@@ -133,22 +126,28 @@ function DocumentEditor() {
   if (!document) return null;
 
   return (
-    <div className="editor-layout">
-      <Sidebar />
-      <main className="editor-area">
-        <div className="editor-header">
+    <div className="flex h-screen overflow-hidden">
+      <Sidebar collapsed={sidebarCollapsed} onToggleCollapse={toggleSidebar} />
+      <main className="flex flex-1 flex-col overflow-hidden">
+        <div className="flex h-12 items-center justify-between border-b border-border px-4">
           <input
             ref={titleRef}
-            className="editor-title"
+            className="border-none bg-transparent text-sm font-medium text-foreground outline-none placeholder:text-muted-foreground"
             value={title}
             onChange={(e) => setTitle(e.target.value)}
             onBlur={handleTitleBlur}
             disabled={saving}
             placeholder="Untitled"
           />
-          <button className="share-btn" onClick={() => setShareOpen(true)}>
+          <Button
+            variant="ghost"
+            size="sm"
+            className="gap-1.5 text-muted-foreground"
+            onClick={() => setShareOpen(true)}
+          >
+            <Share2 className="size-3.5" />
             Share
-          </button>
+          </Button>
         </div>
         {shareOpen && (
           <ShareModal
@@ -162,8 +161,8 @@ function DocumentEditor() {
           />
         )}
         {contentLoading ? (
-          <div className="editor-content">
-            <p style={{ color: "var(--ink-soft)" }}>Loading editor...</p>
+          <div className="flex flex-1 items-center justify-center text-muted-foreground">
+            <p className="text-sm">Loading editor...</p>
           </div>
         ) : (
           <Editor

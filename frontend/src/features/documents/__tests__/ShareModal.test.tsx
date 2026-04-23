@@ -13,6 +13,10 @@ vi.mock("../api", () => ({
   updateDocumentApi: vi.fn(),
 }));
 
+vi.mock("sonner", () => ({
+  toast: { success: vi.fn(), error: vi.fn() },
+}));
+
 const defaultProps = {
   docId: "doc-123",
   docTitle: "My Doc",
@@ -48,7 +52,7 @@ describe("ShareModal", () => {
     });
   });
 
-  it("calls createInviteLinkApi on generate link click", async () => {
+  it("calls createInviteLinkApi on generate button click", async () => {
     vi.mocked(api.createInviteLinkApi).mockResolvedValue({
       token: "newtoken123",
       doc_id: "doc-123",
@@ -60,7 +64,7 @@ describe("ShareModal", () => {
       revoked_at: null,
     });
     render(<ShareModal {...defaultProps} />);
-    fireEvent.click(screen.getByText("Generate Link"));
+    fireEvent.click(screen.getByRole("button", { name: "Generate" }));
     await waitFor(() => {
       expect(api.createInviteLinkApi).toHaveBeenCalledWith("doc-123", {
         role: "editor",
@@ -68,11 +72,10 @@ describe("ShareModal", () => {
     });
   });
 
-  it("calls onClose when backdrop clicked", () => {
+  it("calls onClose when close button clicked", async () => {
     render(<ShareModal {...defaultProps} />);
-    const backdrop = screen.getByText(/Share "My Doc"/).closest("div")
-      ?.parentElement?.parentElement;
-    if (backdrop) fireEvent.click(backdrop);
+    const closeBtn = screen.getByRole("button", { name: "Close" });
+    fireEvent.click(closeBtn);
     expect(defaultProps.onClose).toHaveBeenCalled();
   });
 
@@ -86,7 +89,7 @@ describe("ShareModal", () => {
       updated_at: "",
     });
     render(<ShareModal {...defaultProps} />);
-    fireEvent.click(screen.getByRole("checkbox"));
+    fireEvent.click(screen.getByRole("switch"));
     await waitFor(() => {
       expect(api.updateDocumentApi).toHaveBeenCalledWith("doc-123", {
         is_public: true,

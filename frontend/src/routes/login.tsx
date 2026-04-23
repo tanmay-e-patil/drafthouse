@@ -2,6 +2,17 @@ import { createFileRoute, Link, useNavigate, useSearch } from "@tanstack/react-r
 import { useState, type FormEvent } from "react";
 import { loginApi } from "#/features/auth/api";
 import { useAuthStore } from "#/features/auth/store";
+import { Button } from "#/components/ui/button";
+import { Input } from "#/components/ui/input";
+import { Label } from "#/components/ui/label";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardFooter,
+  CardHeader,
+  CardTitle,
+} from "#/components/ui/card";
 
 export const Route = createFileRoute("/login")({ component: Login });
 
@@ -46,46 +57,66 @@ function Login() {
   }
 
   return (
-    <main className="auth-page">
-      <div className="auth-card">
-        <h1>Sign in</h1>
-
-        {error && <div className="error-msg">{error}</div>}
-
+    <main className="flex h-screen items-center justify-center p-4">
+      <Card className="w-full max-w-sm">
+        <CardHeader>
+          <CardTitle className="text-lg">Sign in</CardTitle>
+          <CardDescription>
+            Enter your credentials to access Drafthouse
+          </CardDescription>
+        </CardHeader>
         <form onSubmit={handleSubmit}>
-          <div className="field">
-            <label htmlFor="email">Email</label>
-            <input
-              id="email"
-              type="email"
-              required
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              placeholder="you@example.com"
-            />
-          </div>
-
-          <div className="field">
-            <label htmlFor="password">Password</label>
-            <input
-              id="password"
-              type="password"
-              required
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              placeholder="Your password"
-            />
-          </div>
-
-          <button type="submit" className="submit-btn" disabled={loading}>
-            {loading ? "Signing in..." : "Sign in"}
-          </button>
+          <CardContent className="space-y-3">
+            {error && (
+              <p className="rounded-md bg-destructive/10 px-3 py-2 text-xs text-destructive">
+                {error}
+              </p>
+            )}
+            <div className="space-y-1.5">
+              <Label htmlFor="email" className="text-xs">
+                Email
+              </Label>
+              <Input
+                id="email"
+                type="email"
+                required
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                placeholder="you@example.com"
+                className="h-8 text-sm"
+              />
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="password" className="text-xs">
+                Password
+              </Label>
+              <Input
+                id="password"
+                type="password"
+                required
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                placeholder="Your password"
+                className="h-8 text-sm"
+              />
+            </div>
+          </CardContent>
+          <CardFooter className="flex-col gap-3">
+            <Button type="submit" className="w-full" size="sm" disabled={loading}>
+              {loading ? "Signing in..." : "Sign in"}
+            </Button>
+            <p className="text-xs text-muted-foreground">
+              Don&apos;t have an account?{" "}
+              <Link
+                to="/register"
+                className="font-medium text-foreground underline-offset-4 hover:underline"
+              >
+                Sign up
+              </Link>
+            </p>
+          </CardFooter>
         </form>
-
-        <Link to="/register" className="auth-link">
-          Need an account? Sign up
-        </Link>
-      </div>
+      </Card>
     </main>
   );
 }

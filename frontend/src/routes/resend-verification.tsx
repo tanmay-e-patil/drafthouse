@@ -1,5 +1,16 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useState, type FormEvent } from "react";
+import { Button } from "#/components/ui/button";
+import { Input } from "#/components/ui/input";
+import { Label } from "#/components/ui/label";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardFooter,
+  CardHeader,
+  CardTitle,
+} from "#/components/ui/card";
 
 export const Route = createFileRoute("/resend-verification")({
   component: ResendVerification,
@@ -47,54 +58,78 @@ function ResendVerification() {
 
   if (success) {
     return (
-      <main className="auth-page">
-        <div className="auth-card">
-          <h1>Check your email</h1>
-          <p>
-            If an account exists with <strong>{email}</strong>, a new
-            verification email has been sent.
-          </p>
-          <div className="success-msg">
-            Verification email sent! Check your inbox.
-          </div>
-          <Link to="/" className="auth-link">
-            Back to home
-          </Link>
-        </div>
+      <main className="flex h-screen items-center justify-center p-4">
+        <Card className="w-full max-w-sm">
+          <CardHeader>
+            <CardTitle className="text-lg">Check your email</CardTitle>
+            <CardDescription>
+              If an account exists with{" "}
+              <strong className="text-foreground">{email}</strong>, a new
+              verification email has been sent.
+            </CardDescription>
+          </CardHeader>
+          <CardFooter>
+            <Link
+              to="/"
+              className="text-xs font-medium text-foreground underline-offset-4 hover:underline"
+            >
+              Back to home
+            </Link>
+          </CardFooter>
+        </Card>
       </main>
     );
   }
 
   return (
-    <main className="auth-page">
-      <div className="auth-card">
-        <h1>Resend verification email</h1>
-        <p>Enter your email to receive a new verification link.</p>
-
-        {error && <div className="error-msg">{error}</div>}
-
+    <main className="flex h-screen items-center justify-center p-4">
+      <Card className="w-full max-w-sm">
+        <CardHeader>
+          <CardTitle className="text-lg">Resend verification email</CardTitle>
+          <CardDescription>
+            Enter your email to receive a new verification link
+          </CardDescription>
+        </CardHeader>
         <form onSubmit={handleSubmit}>
-          <div className="field">
-            <label htmlFor="email">Email</label>
-            <input
-              id="email"
-              type="email"
-              required
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              placeholder="you@example.com"
-            />
-          </div>
-
-          <button type="submit" className="submit-btn" disabled={loading}>
-            {loading ? "Sending..." : "Send verification email"}
-          </button>
+          <CardContent className="space-y-3">
+            {error && (
+              <p className="rounded-md bg-destructive/10 px-3 py-2 text-xs text-destructive">
+                {error}
+              </p>
+            )}
+            <div className="space-y-1.5">
+              <Label htmlFor="email" className="text-xs">
+                Email
+              </Label>
+              <Input
+                id="email"
+                type="email"
+                required
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                placeholder="you@example.com"
+                className="h-8 text-sm"
+              />
+            </div>
+          </CardContent>
+          <CardFooter className="flex-col gap-3">
+            <Button
+              type="submit"
+              className="w-full"
+              size="sm"
+              disabled={loading}
+            >
+              {loading ? "Sending..." : "Send verification email"}
+            </Button>
+            <Link
+              to="/register"
+              className="text-xs text-muted-foreground underline-offset-4 hover:underline"
+            >
+              Need an account? Sign up
+            </Link>
+          </CardFooter>
         </form>
-
-        <Link to="/register" className="auth-link">
-          Need an account? Sign up
-        </Link>
-      </div>
+      </Card>
     </main>
   );
 }
