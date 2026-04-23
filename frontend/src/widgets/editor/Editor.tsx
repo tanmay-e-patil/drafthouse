@@ -11,12 +11,16 @@ import type { ViewUpdate } from "@codemirror/view";
 import type { Extension } from "@codemirror/state";
 import { useDebounce } from "./useDebounce";
 import { Toggle } from "#/components/ui/toggle";
+import { Button } from "#/components/ui/button";
 import {
   Tooltip,
   TooltipContent,
   TooltipTrigger,
 } from "#/components/ui/tooltip";
 import { Eye, Code2 } from "lucide-react";
+import { EDITOR_ACTIONS } from "./editorActions";
+import { getFormattingEdit, type FormattingActionId } from "./formatting";
+import { cn } from "#/lib/utils";
 
 interface EditorProps {
   docId: string;
@@ -41,6 +45,29 @@ const STATUS_DOT: Record<ConnectionStatus, string> = {
   disconnected: "bg-red-500",
 };
 
+function dispatchEditorAction(view: EditorView, actionId: FormattingActionId) {
+  const selection = view.state.selection.main;
+  const edit = getFormattingEdit(actionId, view.state.doc.toString(), {
+    from: selection.from,
+    to: selection.to,
+  });
+
+  view.dispatch({
+    changes: {
+      from: edit.from,
+      to: edit.to,
+      insert: edit.insert,
+    },
+    selection: {
+      anchor: edit.selection.from,
+      head: edit.selection.to,
+    },
+    scrollIntoView: true,
+  });
+  view.focus();
+  return true;
+}
+
 export default function Editor({ docId, initialContent, onSave, onTitleUpdate }: EditorProps) {
   const collabStatus = useCollabStore((s) => s.status);
   const [container, setContainer] = useState<HTMLElement | null>(null);
@@ -49,6 +76,12 @@ export default function Editor({ docId, initialContent, onSave, onTitleUpdate }:
   const [saving, setSaving] = useState(false);
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
   const [previewHtml, setPreviewHtml] = useState("");
+  const [editorView, setEditorView] = useState<EditorView | null>(null);
+  const [selectionToolbar, setSelectionToolbar] = useState<{
+    open: boolean;
+    left: number;
+    top: number;
+  }>({ open: false, left: 0, top: 0 });
   const saveLockRef = useRef(false);
 
   const debouncedSave = useDebounce(async (value: string) => {
@@ -75,12 +108,56 @@ export default function Editor({ docId, initialContent, onSave, onTitleUpdate }:
     [debouncedSave],
   );
 
+  const updateSelectionToolbar = useCallback((view: EditorView) => {
+    const selection = view.state.selection.main;
+    if (mode !== "edit" || selection.empty || !container) {
+      setSelectionToolbar({ open: false, left: 0, top: 0 });
+      return;
+    }
+
+    const start = view.coordsAtPos(selection.from);
+    const end = view.coordsAtPos(selection.to);
+    if (!start || !end) {
+      setSelectionToolbar({ open: false, left: 0, top: 0 });
+      return;
+    }
+
+    const bounds = container.getBoundingClientRect();
+    const left = ((start.left + end.right) / 2) - bounds.left;
+    const top = Math.max(8, Math.min(start.top, end.top) - bounds.top - 44);
+
+    setSelectionToolbar({
+      open: true,
+      left,
+      top,
+    });
+  }, [container, mode]);
+
   const updateListener = useMemo(
     () =>
       EditorView.updateListener.of((update: ViewUpdate) => {
         if (update.docChanged) handleChange(update.view);
+        if (update.docChanged || update.selectionSet || update.focusChanged) {
+          updateSelectionToolbar(update.view);
+        }
       }),
-    [handleChange],
+    [handleChange, updateSelectionToolbar],
+  );
+
+  const editorKeymap = useMemo(
+    () => keymap.of([
+      { key: "Mod-b", run: (view) => dispatchEditorAction(view, "bold") },
+      { key: "Mod-i", run: (view) => dispatchEditorAction(view, "italic") },
+      { key: "Mod-e", run: (view) => dispatchEditorAction(view, "inlineCode") },
+      { key: "Mod-Shift-x", run: (view) => dispatchEditorAction(view, "strikethrough") },
+      { key: "Mod-Alt-1", run: (view) => dispatchEditorAction(view, "h1") },
+      { key: "Mod-Alt-2", run: (view) => dispatchEditorAction(view, "h2") },
+      { key: "Mod-Alt-3", run: (view) => dispatchEditorAction(view, "h3") },
+      { key: "Mod-Alt-c", run: (view) => dispatchEditorAction(view, "codeBlock") },
+      { key: "Mod-Shift-7", run: (view) => dispatchEditorAction(view, "checklist") },
+      { key: "Mod-Alt--", run: (view) => dispatchEditorAction(view, "divider") },
+    ]),
+    [],
   );
 
   const extensions = useMemo<Extension[]>(
@@ -94,6 +171,7 @@ export default function Editor({ docId, initialContent, onSave, onTitleUpdate }:
       syntaxHighlighting(defaultHighlightStyle, { fallback: true }),
       bracketMatching(),
       markdown({ base: markdownLanguage, codeLanguages: languages }),
+      editorKeymap,
       keymap.of([...defaultKeymap, ...historyKeymap]),
       updateListener,
       EditorView.theme({
@@ -102,12 +180,12 @@ export default function Editor({ docId, initialContent, onSave, onTitleUpdate }:
         "&.cm-focused": { outline: "none" },
       }),
     ],
-    [updateListener],
+    [editorKeymap, updateListener],
   );
 
   useCollabEditor(
     container && mode === "edit"
-      ? { docId, container, extensions, initialContent, onTitleUpdate }
+      ? { docId, container, extensions, initialContent, onTitleUpdate, onViewChange: setEditorView }
       : null,
   );
 
@@ -124,41 +202,79 @@ export default function Editor({ docId, initialContent, onSave, onTitleUpdate }:
     }
   }, [mode, content]);
 
+  useEffect(() => {
+    if (mode === "preview") {
+      setSelectionToolbar({ open: false, left: 0, top: 0 });
+    }
+  }, [mode]);
+
+  function runToolbarAction(actionId: FormattingActionId) {
+    if (editorView) {
+      dispatchEditorAction(editorView, actionId);
+      updateSelectionToolbar(editorView);
+    }
+  }
+
   return (
     <div className="flex flex-1 flex-col overflow-hidden">
-      <div className="flex h-10 items-center gap-1 border-b border-border px-2">
-        <Tooltip>
-          <TooltipTrigger
-            render={
-              <Toggle
-                pressed={mode === "edit"}
-                onPressedChange={() => setMode("edit")}
-                size="sm"
-                className="gap-1.5 text-xs"
-              />
-            }
-          >
-            <Code2 className="size-3.5" />
-            Edit
-          </TooltipTrigger>
-          <TooltipContent>Edit mode</TooltipContent>
-        </Tooltip>
-        <Tooltip>
-          <TooltipTrigger
-            render={
-              <Toggle
-                pressed={mode === "preview"}
-                onPressedChange={() => setMode("preview")}
-                size="sm"
-                className="gap-1.5 text-xs"
-              />
-            }
-          >
-            <Eye className="size-3.5" />
-            Preview
-          </TooltipTrigger>
-          <TooltipContent>Preview mode</TooltipContent>
-        </Tooltip>
+      <div className="flex min-h-12 items-center gap-2 border-b border-border px-2 py-2">
+        <div className="flex items-center gap-1">
+          <Tooltip>
+            <TooltipTrigger
+              render={
+                <Toggle
+                  pressed={mode === "edit"}
+                  onPressedChange={() => setMode("edit")}
+                  size="sm"
+                  className="gap-1.5 text-xs"
+                />
+              }
+            >
+              <Code2 className="size-3.5" />
+              Edit
+            </TooltipTrigger>
+            <TooltipContent>Edit mode</TooltipContent>
+          </Tooltip>
+          <Tooltip>
+            <TooltipTrigger
+              render={
+                <Toggle
+                  pressed={mode === "preview"}
+                  onPressedChange={() => setMode("preview")}
+                  size="sm"
+                  className="gap-1.5 text-xs"
+                />
+              }
+            >
+              <Eye className="size-3.5" />
+              Preview
+            </TooltipTrigger>
+            <TooltipContent>Preview mode</TooltipContent>
+          </Tooltip>
+        </div>
+
+        {mode === "edit" && (
+          <div className="flex flex-wrap items-center gap-1 border-l border-border pl-2" data-testid="editor-toolbar">
+            {EDITOR_ACTIONS.map((action) => (
+              <Tooltip key={action.id}>
+                <TooltipTrigger
+                  render={
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="xs"
+                      onClick={() => runToolbarAction(action.id)}
+                      aria-label={action.label}
+                    />
+                  }
+                >
+                  {action.shortLabel}
+                </TooltipTrigger>
+                <TooltipContent>{action.label} · {action.shortcut}</TooltipContent>
+              </Tooltip>
+            ))}
+          </div>
+        )}
 
         <div className="ml-auto flex items-center gap-2">
           {saving && (
@@ -196,7 +312,33 @@ export default function Editor({ docId, initialContent, onSave, onTitleUpdate }:
           dangerouslySetInnerHTML={{ __html: previewHtml }}
         />
       ) : (
-        <div ref={setContainer} className="flex-1 overflow-hidden" />
+        <div className="relative flex-1 overflow-hidden">
+          {selectionToolbar.open && (
+            <div
+              className="absolute z-20 flex -translate-x-1/2 items-center gap-1 rounded-lg border border-border bg-background/95 p-1 shadow-lg backdrop-blur"
+              style={{ left: selectionToolbar.left, top: selectionToolbar.top }}
+              data-testid="selection-toolbar"
+            >
+              {EDITOR_ACTIONS.map((action) => (
+                <Button
+                  key={action.id}
+                  type="button"
+                  variant="ghost"
+                  size="xs"
+                  onClick={() => runToolbarAction(action.id)}
+                  aria-label={`Selection ${action.label}`}
+                >
+                  {action.shortLabel}
+                </Button>
+              ))}
+            </div>
+          )}
+          <div
+            ref={setContainer}
+            className={cn("cm-editor-container flex-1 overflow-hidden")}
+            data-testid="editor-container"
+          />
+        </div>
       )}
     </div>
   );

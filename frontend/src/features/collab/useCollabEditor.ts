@@ -32,6 +32,7 @@ export interface UseCollabEditorOptions {
   initialContent?: string;
   /** Called when a remote title_update message (type 3) arrives. */
   onTitleUpdate?: (title: string) => void;
+  onViewChange?: (view: EditorView | null) => void;
 }
 
 export interface CollabEditorHandle {
@@ -50,7 +51,14 @@ export function useCollabEditor(
 
   useEffect(() => {
     if (!options) return;
-    const { docId, container, extensions = [], initialContent, onTitleUpdate } = options;
+    const {
+      docId,
+      container,
+      extensions = [],
+      initialContent,
+      onTitleUpdate,
+      onViewChange,
+    } = options;
 
     let destroyed = false;
     let provider: WebsocketProvider | null = null;
@@ -191,6 +199,7 @@ export function useCollabEditor(
           ],
         });
         view = new EditorView({ state, parent: container });
+        onViewChange?.(view);
       }
     }
 
@@ -214,6 +223,7 @@ export function useCollabEditor(
         if (reconnectTimer) clearTimeout(reconnectTimer);
         provider?.destroy();
         view?.destroy();
+        onViewChange?.(null);
         setPeers([]);
       },
     };

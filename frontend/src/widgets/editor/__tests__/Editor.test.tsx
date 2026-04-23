@@ -99,6 +99,9 @@ describe("Editor", () => {
     await waitFor(() => {
       expect(screen.getByText("Edit")).toBeDefined();
       expect(screen.getByText("Preview")).toBeDefined();
+      expect(screen.getByLabelText("Heading 1")).toBeDefined();
+      expect(screen.getByLabelText("Bold")).toBeDefined();
+      expect(screen.getByLabelText("Inline code")).toBeDefined();
     });
   });
 

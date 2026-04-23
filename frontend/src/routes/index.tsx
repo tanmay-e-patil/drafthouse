@@ -5,6 +5,8 @@ import { useDocumentStore } from "#/features/documents/store";
 import { useAuthStore } from "#/features/auth/store";
 import Sidebar from "#/components/Sidebar";
 import { Button } from "#/components/ui/button";
+import { CommandPalette } from "#/features/documents/CommandPalette";
+import { useDocumentHotkeys } from "#/features/documents/useDocumentHotkeys";
 import { FileText, Plus } from "lucide-react";
 import { Link } from "@tanstack/react-router";
 
@@ -17,12 +19,19 @@ function Dashboard() {
   const hydrate = useAuthStore((s) => s.hydrate);
   const { prependDocument } = useDocumentStore();
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  const [paletteOpen, setPaletteOpen] = useState(false);
 
   useEffect(() => {
     hydrate();
   }, [hydrate]);
 
   const toggleSidebar = useCallback(() => setSidebarCollapsed((v) => !v), []);
+  const openPalette = useCallback(() => setPaletteOpen(true), []);
+
+  useDocumentHotkeys({
+    onOpenPalette: openPalette,
+    onToggleSidebar: toggleSidebar,
+  });
 
   if (!hydrated) return null;
 
@@ -47,6 +56,7 @@ function Dashboard() {
 
   return (
     <div className="flex h-screen overflow-hidden">
+      <CommandPalette open={paletteOpen} onOpenChange={setPaletteOpen} />
       <Sidebar collapsed={sidebarCollapsed} onToggleCollapse={toggleSidebar} />
       <main className="flex flex-1 flex-col overflow-hidden">
         <div className="flex h-12 items-center justify-between border-b border-border px-4">
@@ -77,7 +87,7 @@ function Dashboard() {
             <FileText className="mx-auto mb-3 size-10 opacity-30" />
             <p className="text-sm">Select a document or create a new one</p>
             <p className="mt-1 text-xs text-muted-foreground/60">
-              Press <kbd className="rounded border border-border bg-muted px-1 py-0.5 text-[10px] font-mono">⌘ Shift N</kbd> to create
+              Press <kbd className="rounded border border-border bg-muted px-1 py-0.5 text-[10px] font-mono">⌘ K</kbd> to search your documents
             </p>
           </div>
         </div>

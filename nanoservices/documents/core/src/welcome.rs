@@ -14,17 +14,18 @@ Your collaborative markdown editor. Here's everything you need to get started.
 
 | Shortcut | Action |
 |---|---|
-| `Cmd/Ctrl+N` | New document |
-| `Cmd/Ctrl+S` | Manual save |
-| `Cmd/Ctrl+P` | Command palette |
-| `Cmd/Ctrl+\` | Toggle sidebar |
-| `Cmd/Ctrl+Shift+P` | Toggle preview mode |
+| `Cmd/Ctrl+K` | Command palette |
+| `Cmd/Ctrl+Shift+\` | Toggle sidebar |
 | `Cmd/Ctrl+B` | Bold |
 | `Cmd/Ctrl+I` | Italic |
-| `Cmd/Ctrl+K` | Insert link |
 | `Cmd/Ctrl+E` | Inline code |
-| `Cmd/Ctrl+Shift+F` | Focus mode |
-| `Esc` | Exit focus mode |
+| `Cmd/Ctrl+Shift+X` | Strikethrough |
+| `Cmd/Ctrl+Alt+1` | Heading 1 |
+| `Cmd/Ctrl+Alt+2` | Heading 2 |
+| `Cmd/Ctrl+Alt+3` | Heading 3 |
+| `Cmd/Ctrl+Alt+C` | Code block |
+| `Cmd/Ctrl+Shift+7` | Checklist |
+| `Cmd/Ctrl+Alt+-` | Horizontal divider |
 
 ---
 
@@ -79,7 +80,7 @@ fn main() {
 
 - **Real-time collaboration** — Multiple editors on the same document. Changes sync instantly.
 - **Offline editing** — Works without a connection. Changes sync when you reconnect.
-- **Preview mode** — Toggle between edit and rendered markdown (`Cmd+Shift+P`).
+- **Preview mode** — Toggle between edit and rendered markdown from the toolbar.
 - **Sharing** — Invite collaborators via link with editor or viewer roles.
 - **Public documents** — Make any document publicly readable.
 

@@ -13,6 +13,8 @@ import Editor from "#/widgets/editor/Editor";
 import { ShareModal } from "#/features/documents/ShareModal";
 import type { Document } from "#/features/documents/api";
 import { Button } from "#/components/ui/button";
+import { CommandPalette } from "#/features/documents/CommandPalette";
+import { useDocumentHotkeys } from "#/features/documents/useDocumentHotkeys";
 import { Share2 } from "lucide-react";
 
 export const Route = createFileRoute("/documents/$documentId")({
@@ -36,6 +38,7 @@ function DocumentEditor() {
   const [contentLoading, setContentLoading] = useState(true);
   const titleRef = useRef<HTMLInputElement>(null);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  const [paletteOpen, setPaletteOpen] = useState(false);
   const upsertDocument = useDocumentStore((s) => s.upsertDocument);
 
   useEffect(() => {
@@ -113,10 +116,21 @@ function DocumentEditor() {
     () => setSidebarCollapsed((v) => !v),
     [],
   );
+  const openPalette = useCallback(() => setPaletteOpen(true), []);
+
+  useDocumentHotkeys({
+    onOpenPalette: openPalette,
+    onToggleSidebar: toggleSidebar,
+  });
 
   if (loading) {
     return (
       <div className="flex h-screen overflow-hidden">
+        <CommandPalette
+          currentDocumentId={documentId}
+          open={paletteOpen}
+          onOpenChange={setPaletteOpen}
+        />
         <Sidebar collapsed={sidebarCollapsed} onToggleCollapse={toggleSidebar} />
         <main className="flex flex-1 items-center justify-center text-muted-foreground">
           <p className="text-sm">Loading...</p>
@@ -129,6 +143,11 @@ function DocumentEditor() {
 
   return (
     <div className="flex h-screen overflow-hidden">
+      <CommandPalette
+        currentDocumentId={documentId}
+        open={paletteOpen}
+        onOpenChange={setPaletteOpen}
+      />
       <Sidebar collapsed={sidebarCollapsed} onToggleCollapse={toggleSidebar} />
       <main className="flex flex-1 flex-col overflow-hidden">
         <div className="flex h-12 items-center justify-between border-b border-border px-4">
