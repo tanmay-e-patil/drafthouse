@@ -1,6 +1,6 @@
 use crate::auth_txs::{
     CreateEmailVerificationToken, CreatePasswordResetToken, CreateRefreshToken, CreateUser,
-    DeleteAllRefreshTokensForUser, DeleteRefreshToken, GetEmailVerificationToken,
+    DeleteAllRefreshTokensForUser, DeleteRefreshToken, DeleteUser, GetEmailVerificationToken,
     GetPasswordResetToken, GetRefreshTokenByHash, GetUserByEmail, GetUserById,
     InvalidateEmailVerificationTokens, MarkPasswordResetTokenUsed, MarkUserVerified,
     MarkWelcomeDocCreated, UpdateUserPassword,
@@ -13,6 +13,7 @@ use kernel::{
 use sqlx::PgPool;
 use utils::errors::{NanoServiceError, NanoServiceErrorStatus};
 
+#[derive(Clone)]
 pub struct SqlxPostGresDescriptor {
     pub pool: PgPool,
 }
@@ -209,6 +210,19 @@ async fn delete_all_refresh_tokens_for_user(
             .await,
         NanoServiceErrorStatus::InternalServerError,
         "Failed to delete all refresh tokens for user"
+    )?;
+    Ok(())
+}
+
+#[impl_transaction(SqlxPostGresDescriptor, DeleteUser, delete_user)]
+async fn delete_user(&self, user_id: uuid::Uuid) -> Result<(), NanoServiceError> {
+    utils::safe_eject!(
+        sqlx::query("DELETE FROM users WHERE id = $1")
+            .bind(user_id)
+            .execute(&self.pool)
+            .await,
+        NanoServiceErrorStatus::InternalServerError,
+        "Failed to delete user"
     )?;
     Ok(())
 }

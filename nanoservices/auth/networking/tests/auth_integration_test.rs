@@ -2,11 +2,12 @@ use actix_web::{App, http::StatusCode, test, web};
 use auth_networking::routes;
 use dal::postgres_txs::SqlxPostGresDescriptor;
 use kernel::{
-    ForgotPasswordRequest, LoginRequest, RegisterRequest, ResendVerificationRequest,
-    ResetPasswordRequest, VerifyEmailRequest,
+    ChangePasswordRequest, DeleteAccountRequest, ForgotPasswordRequest, LoginRequest,
+    RegisterRequest, ResendVerificationRequest, ResetPasswordRequest, VerifyEmailRequest,
 };
 use serial_test::serial;
 use sqlx::PgPool;
+use sqlx::types::Uuid;
 use testcontainers_modules::{
     postgres::Postgres,
     testcontainers::{ContainerAsync, runners::AsyncRunner},
@@ -337,6 +338,24 @@ async fn create_verified_user(pool: &sqlx::PgPool, email: &str, password: &str) 
     .unwrap();
 }
 
+async fn create_verified_user_record(
+    pool: &sqlx::PgPool,
+    email: &str,
+    password: &str,
+) -> kernel::User {
+    let hash = auth_core::password::hash_password(password).unwrap();
+    sqlx::query_as::<_, kernel::User>(
+        "INSERT INTO users (email, password_hash, email_verified_at, welcome_doc_created)
+         VALUES ($1, $2, NOW(), true)
+         RETURNING id, email, password_hash, email_verified_at, created_at, welcome_doc_created",
+    )
+    .bind(email)
+    .bind(&hash)
+    .fetch_one(pool)
+    .await
+    .unwrap()
+}
+
 fn extract_refresh_cookie(resp: &actix_web::dev::ServiceResponse) -> Option<String> {
     resp.response()
         .cookies()
@@ -647,6 +666,7 @@ async fn logout_all_revokes_all_sessions() {
 // ── forgot-password ─────────────────────────────────────────────────────────
 
 #[tokio::test]
+#[serial]
 async fn forgot_password_known_email_returns_200() {
     let env = TestEnv::new().await;
     create_verified_user(&env.pool, "forgot@example.com", "password123").await;
@@ -706,6 +726,7 @@ async fn forgot_password_unknown_email_returns_200_generic() {
 // ── reset-password ──────────────────────────────────────────────────────────
 
 #[tokio::test]
+#[serial]
 async fn reset_password_full_flow() {
     let env = TestEnv::new().await;
     create_verified_user(&env.pool, "resetuser@example.com", "oldPassword123").await;
@@ -897,4 +918,383 @@ async fn reset_password_revokes_all_sessions() {
     )
     .await;
     assert_eq!(replay.status(), StatusCode::UNAUTHORIZED);
+}
+
+// ── me/account management ───────────────────────────────────────────────────
+
+#[tokio::test]
+async fn get_me_returns_current_profile() {
+    let env = TestEnv::new().await;
+    create_verified_user(&env.pool, "me@example.com", "password123").await;
+    let app = make_app!(env);
+
+    let login_resp = test::call_service(
+        &app,
+        test::TestRequest::post()
+            .uri("/auth/login")
+            .set_json(LoginRequest {
+                email: "me@example.com".into(),
+                password: "password123".into(),
+            })
+            .to_request(),
+    )
+    .await;
+    let body: serde_json::Value = test::read_body_json(login_resp).await;
+    let access_token = body["access_token"].as_str().unwrap();
+
+    let resp = test::call_service(
+        &app,
+        test::TestRequest::get()
+            .uri("/auth/me")
+            .insert_header(("Authorization", format!("Bearer {}", access_token)))
+            .to_request(),
+    )
+    .await;
+
+    assert_eq!(resp.status(), StatusCode::OK);
+    let body: serde_json::Value = test::read_body_json(resp).await;
+    assert_eq!(body["email"], "me@example.com");
+    assert!(body["id"].is_string());
+}
+
+#[tokio::test]
+async fn change_password_updates_hash_and_revokes_refresh_tokens() {
+    let env = TestEnv::new().await;
+    create_verified_user(&env.pool, "changepw@example.com", "oldpassword123").await;
+    let app = make_app!(env);
+
+    let first_login = test::call_service(
+        &app,
+        test::TestRequest::post()
+            .uri("/auth/login")
+            .set_json(LoginRequest {
+                email: "changepw@example.com".into(),
+                password: "oldpassword123".into(),
+            })
+            .to_request(),
+    )
+    .await;
+    let first_cookie = extract_refresh_cookie(&first_login).unwrap();
+    let first_body: serde_json::Value = test::read_body_json(first_login).await;
+    let access_token = first_body["access_token"].as_str().unwrap();
+
+    let before_hash: String =
+        sqlx::query_scalar("SELECT password_hash FROM users WHERE email = $1")
+            .bind("changepw@example.com")
+            .fetch_one(&env.pool)
+            .await
+            .unwrap();
+
+    let change_resp = test::call_service(
+        &app,
+        test::TestRequest::post()
+            .uri("/auth/me/password")
+            .insert_header(("Authorization", format!("Bearer {}", access_token)))
+            .set_json(ChangePasswordRequest {
+                current_password: "oldpassword123".into(),
+                new_password: "newpassword456".into(),
+            })
+            .to_request(),
+    )
+    .await;
+    assert_eq!(change_resp.status(), StatusCode::OK);
+    assert_eq!(
+        change_resp
+            .response()
+            .cookies()
+            .find(|cookie| cookie.name() == "refresh_token")
+            .map(|cookie| cookie.max_age().map(|age| age.whole_seconds())),
+        Some(Some(0))
+    );
+
+    let after_hash: String = sqlx::query_scalar("SELECT password_hash FROM users WHERE email = $1")
+        .bind("changepw@example.com")
+        .fetch_one(&env.pool)
+        .await
+        .unwrap();
+    assert_ne!(before_hash, after_hash);
+
+    let replay = test::call_service(
+        &app,
+        test::TestRequest::post()
+            .uri("/auth/refresh")
+            .cookie(actix_web::cookie::Cookie::new(
+                "refresh_token",
+                first_cookie,
+            ))
+            .to_request(),
+    )
+    .await;
+    assert_eq!(replay.status(), StatusCode::UNAUTHORIZED);
+}
+
+#[tokio::test]
+async fn change_password_wrong_current_password_returns_400() {
+    let env = TestEnv::new().await;
+    create_verified_user(&env.pool, "changepwwrong@example.com", "oldpassword123").await;
+    let app = make_app!(env);
+
+    let login_resp = test::call_service(
+        &app,
+        test::TestRequest::post()
+            .uri("/auth/login")
+            .set_json(LoginRequest {
+                email: "changepwwrong@example.com".into(),
+                password: "oldpassword123".into(),
+            })
+            .to_request(),
+    )
+    .await;
+    let body: serde_json::Value = test::read_body_json(login_resp).await;
+    let access_token = body["access_token"].as_str().unwrap();
+
+    let resp = test::call_service(
+        &app,
+        test::TestRequest::post()
+            .uri("/auth/me/password")
+            .insert_header(("Authorization", format!("Bearer {}", access_token)))
+            .set_json(ChangePasswordRequest {
+                current_password: "wrong-password".into(),
+                new_password: "newpassword456".into(),
+            })
+            .to_request(),
+    )
+    .await;
+
+    assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
+}
+
+#[tokio::test]
+async fn delete_account_removes_user_and_related_rows() {
+    let env = TestEnv::new().await;
+    let owner = create_verified_user_record(&env.pool, "delete@example.com", "password123").await;
+    let member = create_verified_user_record(&env.pool, "member@example.com", "password123").await;
+    let app = make_app!(env);
+
+    let document_id: Uuid = sqlx::query_scalar(
+        "INSERT INTO documents (owner_id, title, content) VALUES ($1, $2, $3) RETURNING id",
+    )
+    .bind(owner.id)
+    .bind("Owned doc")
+    .bind("# owned")
+    .fetch_one(&env.pool)
+    .await
+    .unwrap();
+    sqlx::query("INSERT INTO document_members (doc_id, user_id, role) VALUES ($1, $2, 'editor')")
+        .bind(document_id)
+        .bind(member.id)
+        .execute(&env.pool)
+        .await
+        .unwrap();
+    sqlx::query(
+        "INSERT INTO refresh_tokens (user_id, token_hash, expires_at) VALUES ($1, $2, NOW() + INTERVAL '1 day')",
+    )
+    .bind(owner.id)
+    .bind("manual-refresh-hash")
+    .execute(&env.pool)
+    .await
+    .unwrap();
+    sqlx::query(
+        "INSERT INTO password_reset_tokens (user_id, token_hash, expires_at) VALUES ($1, $2, NOW() + INTERVAL '15 minutes')",
+    )
+    .bind(owner.id)
+    .bind("manual-reset-hash")
+    .execute(&env.pool)
+    .await
+    .unwrap();
+    sqlx::query(
+        "INSERT INTO email_verification_tokens (user_id, token_hash, expires_at) VALUES ($1, $2, NOW() + INTERVAL '1 day')",
+    )
+    .bind(owner.id)
+    .bind("manual-verify-hash")
+    .execute(&env.pool)
+    .await
+    .unwrap();
+    sqlx::query(
+        "INSERT INTO ws_tickets (token_hash, doc_id, user_id, expires_at) VALUES ($1, $2, $3, NOW() + INTERVAL '1 hour')",
+    )
+    .bind("manual-ws-hash")
+    .bind(document_id)
+    .bind(owner.id)
+    .execute(&env.pool)
+    .await
+    .unwrap();
+
+    let login_resp = test::call_service(
+        &app,
+        test::TestRequest::post()
+            .uri("/auth/login")
+            .set_json(LoginRequest {
+                email: "delete@example.com".into(),
+                password: "password123".into(),
+            })
+            .to_request(),
+    )
+    .await;
+    let body: serde_json::Value = test::read_body_json(login_resp).await;
+    let access_token = body["access_token"].as_str().unwrap();
+
+    let resp = test::call_service(
+        &app,
+        test::TestRequest::delete()
+            .uri("/auth/me")
+            .insert_header(("Authorization", format!("Bearer {}", access_token)))
+            .set_json(DeleteAccountRequest {
+                current_password: "password123".into(),
+            })
+            .to_request(),
+    )
+    .await;
+
+    assert_eq!(resp.status(), StatusCode::OK);
+    let user_count: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM users WHERE id = $1")
+        .bind(owner.id)
+        .fetch_one(&env.pool)
+        .await
+        .unwrap();
+    let document_count: i64 =
+        sqlx::query_scalar("SELECT COUNT(*) FROM documents WHERE owner_id = $1")
+            .bind(owner.id)
+            .fetch_one(&env.pool)
+            .await
+            .unwrap();
+    let member_count: i64 =
+        sqlx::query_scalar("SELECT COUNT(*) FROM document_members WHERE doc_id = $1")
+            .bind(document_id)
+            .fetch_one(&env.pool)
+            .await
+            .unwrap();
+    let refresh_count: i64 =
+        sqlx::query_scalar("SELECT COUNT(*) FROM refresh_tokens WHERE user_id = $1")
+            .bind(owner.id)
+            .fetch_one(&env.pool)
+            .await
+            .unwrap();
+    let reset_count: i64 =
+        sqlx::query_scalar("SELECT COUNT(*) FROM password_reset_tokens WHERE user_id = $1")
+            .bind(owner.id)
+            .fetch_one(&env.pool)
+            .await
+            .unwrap();
+    let verify_count: i64 =
+        sqlx::query_scalar("SELECT COUNT(*) FROM email_verification_tokens WHERE user_id = $1")
+            .bind(owner.id)
+            .fetch_one(&env.pool)
+            .await
+            .unwrap();
+    let ws_count: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM ws_tickets WHERE user_id = $1")
+        .bind(owner.id)
+        .fetch_one(&env.pool)
+        .await
+        .unwrap();
+
+    assert_eq!(user_count, 0);
+    assert_eq!(document_count, 0);
+    assert_eq!(member_count, 0);
+    assert_eq!(refresh_count, 0);
+    assert_eq!(reset_count, 0);
+    assert_eq!(verify_count, 0);
+    assert_eq!(ws_count, 0);
+}
+
+#[tokio::test]
+async fn delete_account_wrong_password_returns_400() {
+    let env = TestEnv::new().await;
+    create_verified_user(&env.pool, "deletewrong@example.com", "password123").await;
+    let app = make_app!(env);
+
+    let login_resp = test::call_service(
+        &app,
+        test::TestRequest::post()
+            .uri("/auth/login")
+            .set_json(LoginRequest {
+                email: "deletewrong@example.com".into(),
+                password: "password123".into(),
+            })
+            .to_request(),
+    )
+    .await;
+    let body: serde_json::Value = test::read_body_json(login_resp).await;
+    let access_token = body["access_token"].as_str().unwrap();
+
+    let resp = test::call_service(
+        &app,
+        test::TestRequest::delete()
+            .uri("/auth/me")
+            .insert_header(("Authorization", format!("Bearer {}", access_token)))
+            .set_json(DeleteAccountRequest {
+                current_password: "wrong-password".into(),
+            })
+            .to_request(),
+    )
+    .await;
+
+    assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
+}
+
+#[tokio::test]
+#[serial]
+async fn export_account_data_returns_202_and_sends_email() {
+    let env = TestEnv::new().await;
+    let owner = create_verified_user_record(&env.pool, "export@example.com", "password123").await;
+    sqlx::query("INSERT INTO documents (owner_id, title, content) VALUES ($1, $2, $3)")
+        .bind(owner.id)
+        .bind("Export Doc")
+        .bind("# exported")
+        .execute(&env.pool)
+        .await
+        .unwrap();
+
+    let mock_server = MockServer::start().await;
+    Mock::given(method("POST"))
+        .and(path("/emails"))
+        .respond_with(
+            ResponseTemplate::new(200).set_body_json(serde_json::json!({"id": "test-id"})),
+        )
+        .mount(&mock_server)
+        .await;
+
+    unsafe {
+        std::env::set_var("RESEND_API_BASE_URL", mock_server.uri());
+    }
+
+    let app = make_app!(env);
+
+    let login_resp = test::call_service(
+        &app,
+        test::TestRequest::post()
+            .uri("/auth/login")
+            .set_json(LoginRequest {
+                email: "export@example.com".into(),
+                password: "password123".into(),
+            })
+            .to_request(),
+    )
+    .await;
+    let body: serde_json::Value = test::read_body_json(login_resp).await;
+    let access_token = body["access_token"].as_str().unwrap();
+
+    let resp = test::call_service(
+        &app,
+        test::TestRequest::post()
+            .uri("/auth/me/export")
+            .insert_header(("Authorization", format!("Bearer {}", access_token)))
+            .to_request(),
+    )
+    .await;
+    assert_eq!(resp.status(), StatusCode::ACCEPTED);
+
+    for _ in 0..100 {
+        if mock_server.received_requests().await.unwrap().len() > 0 {
+            break;
+        }
+        tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+    }
+
+    let requests = mock_server.received_requests().await.unwrap();
+    assert!(!requests.is_empty(), "export email request should be sent");
+
+    unsafe {
+        std::env::remove_var("RESEND_API_BASE_URL");
+    }
 }

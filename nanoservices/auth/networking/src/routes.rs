@@ -16,6 +16,10 @@ pub fn configure(cfg: &mut web::ServiceConfig, dal: web::Data<SqlxPostGresDescri
             .route("/refresh", web::post().to(handlers::refresh))
             .route("/logout", web::post().to(handlers::logout))
             .route("/logout-all", web::post().to(handlers::logout_all))
+            .route("/me", web::get().to(handlers::get_me))
+            .route("/me/password", web::post().to(handlers::change_password))
+            .route("/me", web::delete().to(handlers::delete_account))
+            .route("/me/export", web::post().to(handlers::export_account_data))
             .route(
                 "/forgot-password",
                 web::post().to(handlers::forgot_password),

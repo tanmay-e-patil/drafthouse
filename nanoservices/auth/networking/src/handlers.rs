@@ -1,8 +1,8 @@
 use actix_web::{HttpRequest, HttpResponse, cookie::Cookie, web};
 use dal::postgres_txs::SqlxPostGresDescriptor;
 use kernel::{
-    ForgotPasswordRequest, LoginRequest, RegisterRequest, ResendVerificationRequest,
-    ResetPasswordRequest, VerifyEmailRequest,
+    ChangePasswordRequest, DeleteAccountRequest, ForgotPasswordRequest, LoginRequest,
+    RegisterRequest, ResendVerificationRequest, ResetPasswordRequest, VerifyEmailRequest,
 };
 use utils::errors::{NanoServiceError, NanoServiceErrorStatus};
 
@@ -28,6 +28,15 @@ fn refresh_cookie_max_age() -> i64 {
         .unwrap_or(30)
         * 24
         * 3600
+}
+
+fn expired_refresh_cookie() -> Cookie<'static> {
+    Cookie::build(REFRESH_COOKIE, "")
+        .http_only(true)
+        .same_site(actix_web::cookie::SameSite::Strict)
+        .max_age(actix_web::cookie::time::Duration::seconds(0))
+        .path("/")
+        .finish()
 }
 
 pub async fn register(
@@ -116,14 +125,7 @@ pub async fn logout(req: HttpRequest) -> Result<HttpResponse, NanoServiceError> 
         auth_core::login::logout(dal, cookie.value()).await?;
     }
 
-    let expired_cookie = Cookie::build(REFRESH_COOKIE, "")
-        .http_only(true)
-        .same_site(actix_web::cookie::SameSite::Strict)
-        .max_age(actix_web::cookie::time::Duration::seconds(0))
-        .path("/")
-        .finish();
-
-    Ok(HttpResponse::Ok().cookie(expired_cookie).finish())
+    Ok(HttpResponse::Ok().cookie(expired_refresh_cookie()).finish())
 }
 
 pub async fn logout_all(req: HttpRequest) -> Result<HttpResponse, NanoServiceError> {
@@ -131,14 +133,7 @@ pub async fn logout_all(req: HttpRequest) -> Result<HttpResponse, NanoServiceErr
     let claims = crate::middleware::extract_verified_jwt(&req).await?;
     auth_core::login::logout_all(dal, claims.sub).await?;
 
-    let expired_cookie = Cookie::build(REFRESH_COOKIE, "")
-        .http_only(true)
-        .same_site(actix_web::cookie::SameSite::Strict)
-        .max_age(actix_web::cookie::time::Duration::seconds(0))
-        .path("/")
-        .finish();
-
-    Ok(HttpResponse::Ok().cookie(expired_cookie).finish())
+    Ok(HttpResponse::Ok().cookie(expired_refresh_cookie()).finish())
 }
 
 pub async fn forgot_password(
@@ -158,4 +153,47 @@ pub async fn reset_password(
     let result =
         auth_core::password_reset::reset_password(dal, &body.token, &body.new_password).await?;
     Ok(HttpResponse::Ok().json(result))
+}
+
+pub async fn get_me(req: HttpRequest) -> Result<HttpResponse, NanoServiceError> {
+    let dal = get_dal(&req)?;
+    let claims = crate::middleware::extract_verified_jwt(&req).await?;
+    let result = auth_core::me::get_me(dal, claims.sub).await?;
+    Ok(HttpResponse::Ok().json(result))
+}
+
+pub async fn change_password(
+    req: HttpRequest,
+    body: web::Json<ChangePasswordRequest>,
+) -> Result<HttpResponse, NanoServiceError> {
+    let dal = get_dal(&req)?;
+    let claims = crate::middleware::extract_verified_jwt(&req).await?;
+    let result =
+        auth_core::me::change_password(dal, claims.sub, &body.current_password, &body.new_password)
+            .await?;
+
+    Ok(HttpResponse::Ok()
+        .cookie(expired_refresh_cookie())
+        .json(result))
+}
+
+pub async fn delete_account(
+    req: HttpRequest,
+    body: web::Json<DeleteAccountRequest>,
+) -> Result<HttpResponse, NanoServiceError> {
+    let dal = get_dal(&req)?;
+    let claims = crate::middleware::extract_verified_jwt(&req).await?;
+    let result = auth_core::me::delete_account(dal, claims.sub, &body.current_password).await?;
+
+    Ok(HttpResponse::Ok()
+        .cookie(expired_refresh_cookie())
+        .json(result))
+}
+
+pub async fn export_account_data(req: HttpRequest) -> Result<HttpResponse, NanoServiceError> {
+    let dal = get_dal(&req)?;
+    let claims = crate::middleware::extract_verified_jwt(&req).await?;
+    auth_core::me::register_export_dal(claims.sub, dal.clone());
+    let result = auth_core::me::request_export(dal, claims.sub).await?;
+    Ok(HttpResponse::Accepted().json(result))
 }

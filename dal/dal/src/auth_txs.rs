@@ -15,6 +15,7 @@ crate::define_dal_transactions!(
     GetRefreshTokenByHash => get_refresh_token_by_hash(token_hash: String) -> Option<RefreshToken>,
     DeleteRefreshToken => delete_refresh_token(token_hash: String) -> (),
     DeleteAllRefreshTokensForUser => delete_all_refresh_tokens_for_user(user_id: uuid::Uuid) -> (),
+    DeleteUser => delete_user(user_id: uuid::Uuid) -> (),
     CreatePasswordResetToken => create_password_reset_token(new_token: NewPasswordResetToken) -> PasswordResetToken,
     GetPasswordResetToken => get_password_reset_token(token_hash: String) -> Option<PasswordResetToken>,
     MarkPasswordResetTokenUsed => mark_password_reset_token_used(token_hash: String) -> (),

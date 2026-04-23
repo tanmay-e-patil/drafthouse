@@ -51,13 +51,93 @@ export interface MeResponse {
   created_at: string;
 }
 
+export interface ChangePasswordResponse {
+  message: string;
+}
+
+export interface DeleteAccountResponse {
+  message: string;
+}
+
+export interface ExportResponse {
+  message: string;
+}
+
+function getAuthHeaders(accessToken: string): Record<string, string> {
+  return {
+    "Content-Type": "application/json",
+    Authorization: `Bearer ${accessToken}`,
+  };
+}
+
+async function handleAuthedResponse<T>(
+  res: Response,
+  fallbackError: string
+): Promise<T> {
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) {
+    const err = data as ApiError;
+    throw new Error(err.detail ?? fallbackError);
+  }
+  return data as T;
+}
+
 export async function getMeApi(accessToken: string): Promise<MeResponse> {
   const res = await fetch(`${API_BASE}/auth/me`, {
     headers: { Authorization: `Bearer ${accessToken}` },
     credentials: "include",
   });
-  if (!res.ok) throw new Error("Failed to fetch profile");
-  return res.json() as Promise<MeResponse>;
+  return handleAuthedResponse<MeResponse>(res, "Failed to fetch profile");
+}
+
+export async function changePasswordApi(
+  accessToken: string,
+  currentPassword: string,
+  newPassword: string
+): Promise<ChangePasswordResponse> {
+  const res = await fetch(`${API_BASE}/auth/me/password`, {
+    method: "POST",
+    headers: getAuthHeaders(accessToken),
+    credentials: "include",
+    body: JSON.stringify({
+      current_password: currentPassword,
+      new_password: newPassword,
+    }),
+  });
+
+  return handleAuthedResponse<ChangePasswordResponse>(
+    res,
+    "Failed to update password"
+  );
+}
+
+export async function deleteAccountApi(
+  accessToken: string,
+  currentPassword: string
+): Promise<DeleteAccountResponse> {
+  const res = await fetch(`${API_BASE}/auth/me`, {
+    method: "DELETE",
+    headers: getAuthHeaders(accessToken),
+    credentials: "include",
+    body: JSON.stringify({ current_password: currentPassword }),
+  });
+
+  return handleAuthedResponse<DeleteAccountResponse>(
+    res,
+    "Failed to delete account"
+  );
+}
+
+export async function exportAccountDataApi(
+  accessToken: string
+): Promise<ExportResponse> {
+  const res = await fetch(`${API_BASE}/auth/me/export`, {
+    method: "POST",
+    headers: getAuthHeaders(accessToken),
+    credentials: "include",
+  });
+
+  return handleAuthedResponse<ExportResponse>(res, "Failed to export account data");
 }
 
 export async function logoutApi(): Promise<void> {

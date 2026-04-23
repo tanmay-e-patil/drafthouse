@@ -3,8 +3,8 @@ use crate::documents_txs::{
     AcceptInviteLink, CountDocumentsByOwner, CreateDocument, CreateInviteLink, CreateWsTicket,
     DeleteDocument, DeleteDocumentMember, DeleteWsTicket, GetDocumentById, GetDocumentContent,
     GetDocumentMember, GetInviteLinkByToken, GetWsTicketByHash, ListActiveInviteLinks,
-    ListDocumentMembers, ListDocumentsByOwner, RevokeInviteLink, UpdateDocument,
-    UpdateDocumentContent, UpdateDocumentMemberRole,
+    ListDocumentMembers, ListDocumentsByOwner, ListDocumentsByOwnerNoPagination, RevokeInviteLink,
+    UpdateDocument, UpdateDocumentContent, UpdateDocumentMemberRole,
 };
 use chrono::Utc;
 use dal_tx_impl::impl_transaction;
@@ -121,6 +121,34 @@ async fn list_documents_by_owner(
     .map_err(|e| {
         NanoServiceError::new(
             format!("Failed to list documents: {}", e),
+            NanoServiceErrorStatus::InternalServerError,
+        )
+    })?;
+
+    Ok(rows)
+}
+
+#[impl_transaction(
+    SqlxPostGresDescriptor,
+    ListDocumentsByOwnerNoPagination,
+    list_documents_by_owner_no_pagination
+)]
+async fn list_documents_by_owner_no_pagination(
+    &self,
+    owner_id: uuid::Uuid,
+) -> Result<Vec<Document>, NanoServiceError> {
+    let rows = sqlx::query_as::<_, Document>(
+        "SELECT id, owner_id, title, is_public, created_at, updated_at
+         FROM documents
+         WHERE owner_id = $1
+         ORDER BY updated_at DESC",
+    )
+    .bind(owner_id)
+    .fetch_all(&self.pool)
+    .await
+    .map_err(|e| {
+        NanoServiceError::new(
+            format!("Failed to list owned documents for export: {}", e),
             NanoServiceErrorStatus::InternalServerError,
         )
     })?;

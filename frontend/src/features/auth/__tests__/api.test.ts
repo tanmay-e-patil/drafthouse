@@ -4,6 +4,10 @@ import {
   refreshApi,
   forgotPasswordApi,
   resetPasswordApi,
+  getMeApi,
+  changePasswordApi,
+  deleteAccountApi,
+  exportAccountDataApi,
 } from "../api";
 
 afterEach(() => {
@@ -214,5 +218,95 @@ describe("resetPasswordApi", () => {
     await expect(resetPasswordApi("bad", "new")).rejects.toThrow(
       "Failed to reset password"
     );
+  });
+});
+
+describe("getMeApi", () => {
+  it("returns profile on success", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue({
+        ok: true,
+        json: async () => ({
+          id: "user-id",
+          email: "user@example.com",
+          email_verified_at: "2024-01-01T00:00:00Z",
+          created_at: "2024-01-01T00:00:00Z",
+        }),
+      })
+    );
+
+    const result = await getMeApi("token");
+    expect(result.email).toBe("user@example.com");
+  });
+
+  it("throws server detail on failure", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue({
+        ok: false,
+        json: async () => ({ detail: "Unauthorized" }),
+      })
+    );
+
+    await expect(getMeApi("token")).rejects.toThrow("Unauthorized");
+  });
+});
+
+describe("changePasswordApi", () => {
+  it("posts current and new password", async () => {
+    const mockFetch = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({ message: "Password updated successfully." }),
+    });
+    vi.stubGlobal("fetch", mockFetch);
+
+    const result = await changePasswordApi("token", "old-pass", "new-pass-123");
+    expect(result.message).toContain("updated");
+    expect(mockFetch).toHaveBeenCalledWith(
+      expect.any(String),
+      expect.objectContaining({
+        method: "POST",
+        credentials: "include",
+        headers: expect.objectContaining({
+          Authorization: "Bearer token",
+          "Content-Type": "application/json",
+        }),
+      })
+    );
+  });
+});
+
+describe("deleteAccountApi", () => {
+  it("sends delete request with current password", async () => {
+    const mockFetch = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({ message: "Account deleted successfully." }),
+    });
+    vi.stubGlobal("fetch", mockFetch);
+
+    await deleteAccountApi("token", "current-pass");
+    expect(mockFetch).toHaveBeenCalledWith(
+      expect.any(String),
+      expect.objectContaining({
+        method: "DELETE",
+        body: JSON.stringify({ current_password: "current-pass" }),
+      })
+    );
+  });
+});
+
+describe("exportAccountDataApi", () => {
+  it("returns export-started message", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue({
+        ok: true,
+        json: async () => ({ message: "Export started. Check your email." }),
+      })
+    );
+
+    const result = await exportAccountDataApi("token");
+    expect(result.message).toContain("Export started");
   });
 });

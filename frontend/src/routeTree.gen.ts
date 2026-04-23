@@ -10,6 +10,7 @@
 
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as VerifyEmailRouteImport } from './routes/verify-email'
+import { Route as SettingsRouteImport } from './routes/settings'
 import { Route as ResetPasswordRouteImport } from './routes/reset-password'
 import { Route as ResendVerificationRouteImport } from './routes/resend-verification'
 import { Route as RegisterRouteImport } from './routes/register'
@@ -22,6 +23,11 @@ import { Route as DocumentsDocumentIdRouteImport } from './routes/documents.$doc
 const VerifyEmailRoute = VerifyEmailRouteImport.update({
   id: '/verify-email',
   path: '/verify-email',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const SettingsRoute = SettingsRouteImport.update({
+  id: '/settings',
+  path: '/settings',
   getParentRoute: () => rootRouteImport,
 } as any)
 const ResetPasswordRoute = ResetPasswordRouteImport.update({
@@ -72,6 +78,7 @@ export interface FileRoutesByFullPath {
   '/register': typeof RegisterRoute
   '/resend-verification': typeof ResendVerificationRoute
   '/reset-password': typeof ResetPasswordRoute
+  '/settings': typeof SettingsRoute
   '/verify-email': typeof VerifyEmailRoute
   '/documents/$documentId': typeof DocumentsDocumentIdRoute
   '/invite/$token': typeof InviteTokenRoute
@@ -83,6 +90,7 @@ export interface FileRoutesByTo {
   '/register': typeof RegisterRoute
   '/resend-verification': typeof ResendVerificationRoute
   '/reset-password': typeof ResetPasswordRoute
+  '/settings': typeof SettingsRoute
   '/verify-email': typeof VerifyEmailRoute
   '/documents/$documentId': typeof DocumentsDocumentIdRoute
   '/invite/$token': typeof InviteTokenRoute
@@ -95,6 +103,7 @@ export interface FileRoutesById {
   '/register': typeof RegisterRoute
   '/resend-verification': typeof ResendVerificationRoute
   '/reset-password': typeof ResetPasswordRoute
+  '/settings': typeof SettingsRoute
   '/verify-email': typeof VerifyEmailRoute
   '/documents/$documentId': typeof DocumentsDocumentIdRoute
   '/invite/$token': typeof InviteTokenRoute
@@ -108,6 +117,7 @@ export interface FileRouteTypes {
     | '/register'
     | '/resend-verification'
     | '/reset-password'
+    | '/settings'
     | '/verify-email'
     | '/documents/$documentId'
     | '/invite/$token'
@@ -119,6 +129,7 @@ export interface FileRouteTypes {
     | '/register'
     | '/resend-verification'
     | '/reset-password'
+    | '/settings'
     | '/verify-email'
     | '/documents/$documentId'
     | '/invite/$token'
@@ -130,6 +141,7 @@ export interface FileRouteTypes {
     | '/register'
     | '/resend-verification'
     | '/reset-password'
+    | '/settings'
     | '/verify-email'
     | '/documents/$documentId'
     | '/invite/$token'
@@ -142,6 +154,7 @@ export interface RootRouteChildren {
   RegisterRoute: typeof RegisterRoute
   ResendVerificationRoute: typeof ResendVerificationRoute
   ResetPasswordRoute: typeof ResetPasswordRoute
+  SettingsRoute: typeof SettingsRoute
   VerifyEmailRoute: typeof VerifyEmailRoute
   DocumentsDocumentIdRoute: typeof DocumentsDocumentIdRoute
   InviteTokenRoute: typeof InviteTokenRoute
@@ -154,6 +167,13 @@ declare module '@tanstack/react-router' {
       path: '/verify-email'
       fullPath: '/verify-email'
       preLoaderRoute: typeof VerifyEmailRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/settings': {
+      id: '/settings'
+      path: '/settings'
+      fullPath: '/settings'
+      preLoaderRoute: typeof SettingsRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/reset-password': {
@@ -222,6 +242,7 @@ const rootRouteChildren: RootRouteChildren = {
   RegisterRoute: RegisterRoute,
   ResendVerificationRoute: ResendVerificationRoute,
   ResetPasswordRoute: ResetPasswordRoute,
+  SettingsRoute: SettingsRoute,
   VerifyEmailRoute: VerifyEmailRoute,
   DocumentsDocumentIdRoute: DocumentsDocumentIdRoute,
   InviteTokenRoute: InviteTokenRoute,

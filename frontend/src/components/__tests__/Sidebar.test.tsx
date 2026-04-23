@@ -1,11 +1,14 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen, waitFor } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import Sidebar from "../Sidebar";
 import { useDocumentStore } from "#/features/documents/store";
 import { useAuthStore } from "#/features/auth/store";
 
+const navigate = vi.fn();
+
 vi.mock("@tanstack/react-router", () => ({
-  useNavigate: () => vi.fn(),
+  useNavigate: () => navigate,
   useParams: () => ({}),
 }));
 
@@ -19,6 +22,7 @@ beforeEach(() => {
   useDocumentStore.getState().reset();
   useAuthStore.setState({ accessToken: "test_token", hydrated: true, email: "test@example.com" });
   vi.restoreAllMocks();
+  navigate.mockReset();
 });
 
 describe("Sidebar", () => {
@@ -205,5 +209,23 @@ describe("Sidebar", () => {
     await waitFor(() => {
       expect(screen.getByTitle("alice")).toBeDefined();
     });
+  });
+
+  it("shows settings in the avatar menu and navigates to the settings route", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue({
+        ok: true,
+        json: async () => ({ data: [], next_cursor: null, has_more: false }),
+      })
+    );
+
+    const user = userEvent.setup();
+    render(<Sidebar collapsed={false} onToggleCollapse={noop} />);
+
+    await user.click(screen.getByRole("button", { name: /test/i }));
+    await user.click(await screen.findByText("Settings"));
+
+    expect(navigate).toHaveBeenCalledWith({ to: "/settings" });
   });
 });

@@ -9,6 +9,20 @@ struct ResendEmailPayload {
     to: Vec<String>,
     subject: String,
     html: String,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    attachments: Vec<ResendEmailAttachment>,
+}
+
+#[derive(Debug, Clone)]
+pub struct EmailAttachment {
+    pub filename: String,
+    pub content_base64: String,
+}
+
+#[derive(Serialize)]
+struct ResendEmailAttachment {
+    filename: String,
+    content: String,
 }
 
 pub async fn send_verification_email(to_email: &str, token: &str) -> Result<(), NanoServiceError> {
@@ -39,34 +53,10 @@ pub async fn send_verification_email(to_email: &str, token: &str) -> Result<(), 
         to: vec![to_email.to_string()],
         subject: "Verify your email - Drafthouse".to_string(),
         html,
+        attachments: vec![],
     };
 
-    let base_url =
-        env::var("RESEND_API_BASE_URL").unwrap_or_else(|_| "https://api.resend.com".into());
-
-    let client = reqwest::Client::new();
-    let response = client
-        .post(format!("{}/emails", base_url))
-        .header("Authorization", format!("Bearer {}", api_key))
-        .json(&payload)
-        .send()
-        .await
-        .map_err(|e| {
-            NanoServiceError::new(
-                format!("Failed to send email: {}", e),
-                NanoServiceErrorStatus::InternalServerError,
-            )
-        })?;
-
-    if !response.status().is_success() {
-        let status = response.status();
-        let body = response.text().await.unwrap_or_default();
-        tracing::error!("Resend API error {}: {}", status, body);
-        return Err(NanoServiceError::new(
-            "Failed to send verification email".to_string(),
-            NanoServiceErrorStatus::InternalServerError,
-        ));
-    }
+    send_email(payload, &api_key, "Failed to send verification email").await?;
 
     tracing::info!(email = %to_email, "Verification email sent");
     Ok(())
@@ -103,8 +93,61 @@ pub async fn send_password_reset_email(
         to: vec![to_email.to_string()],
         subject: "Reset your password - Drafthouse".to_string(),
         html,
+        attachments: vec![],
     };
 
+    send_email(payload, &api_key, "Failed to send password reset email").await?;
+
+    tracing::info!(email = %to_email, "Password reset email sent");
+    Ok(())
+}
+
+pub async fn send_export_email(
+    to_email: &str,
+    attachment: &EmailAttachment,
+) -> Result<(), NanoServiceError> {
+    let api_key = env::var("RESEND_API_KEY").unwrap_or_else(|_| "re_test_key".into());
+    let from =
+        env::var("EMAIL_FROM").unwrap_or_else(|_| "Drafthouse <onboarding@tanmayep.dev>".into());
+    let generated_at = chrono::Utc::now().to_rfc3339();
+    let html = format!(
+        r#"<!DOCTYPE html>
+<html>
+<head><meta charset="utf-8"></head>
+<body style="font-family: sans-serif; max-width: 600px; margin: 0 auto; padding: 20px;">
+  <h2>Your Drafthouse export is ready</h2>
+  <p>Your export is attached to this email as a ZIP archive of your Markdown documents.</p>
+  <p>Generated at: {generated_at}</p>
+</body>
+</html>"#
+    );
+
+    let base_url =
+        env::var("RESEND_API_BASE_URL").unwrap_or_else(|_| "https://api.resend.com".into());
+
+    let _ = base_url;
+
+    let payload = ResendEmailPayload {
+        from,
+        to: vec![to_email.to_string()],
+        subject: "Your Drafthouse export".to_string(),
+        html,
+        attachments: vec![ResendEmailAttachment {
+            filename: attachment.filename.clone(),
+            content: attachment.content_base64.clone(),
+        }],
+    };
+
+    send_email(payload, &api_key, "Failed to send export email").await?;
+    tracing::info!(email = %to_email, "Export email sent");
+    Ok(())
+}
+
+async fn send_email(
+    payload: ResendEmailPayload,
+    api_key: &str,
+    error_message: &str,
+) -> Result<(), NanoServiceError> {
     let base_url =
         env::var("RESEND_API_BASE_URL").unwrap_or_else(|_| "https://api.resend.com".into());
 
@@ -127,11 +170,10 @@ pub async fn send_password_reset_email(
         let body = response.text().await.unwrap_or_default();
         tracing::error!("Resend API error {}: {}", status, body);
         return Err(NanoServiceError::new(
-            "Failed to send password reset email".to_string(),
+            error_message.to_string(),
             NanoServiceErrorStatus::InternalServerError,
         ));
     }
 
-    tracing::info!(email = %to_email, "Password reset email sent");
     Ok(())
 }

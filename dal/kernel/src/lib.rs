@@ -107,6 +107,40 @@ pub struct RefreshResponse {
     pub token_type: String,
 }
 
+#[derive(Debug, Clone, Serialize)]
+pub struct MeResponse {
+    pub id: Uuid,
+    pub email: String,
+    pub email_verified_at: Option<DateTime<Utc>>,
+    pub created_at: DateTime<Utc>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ChangePasswordRequest {
+    pub current_password: String,
+    pub new_password: String,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct ChangePasswordResponse {
+    pub message: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct DeleteAccountRequest {
+    pub current_password: String,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct DeleteAccountResponse {
+    pub message: String,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct ExportResponse {
+    pub message: String,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, sqlx::FromRow)]
 pub struct PasswordResetToken {
     pub id: Uuid,
@@ -306,4 +340,10 @@ pub struct NewCollabSnapshot {
 pub struct TitleUpdated {
     pub doc_id: Uuid,
     pub title: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ExportRequested {
+    pub user_id: Uuid,
+    pub email: String,
 }

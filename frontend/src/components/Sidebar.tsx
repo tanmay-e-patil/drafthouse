@@ -33,6 +33,7 @@ import {
   Trash2,
   MoreHorizontal,
   LogOut,
+  Settings,
   PanelLeftClose,
   PanelLeft,
 } from "lucide-react";
@@ -368,6 +369,10 @@ export default function Sidebar({ collapsed, onToggleCollapse }: SidebarProps) {
             }
           />
           <DropdownMenuContent align="start" className="w-48">
+            <DropdownMenuItem onClick={() => navigate({ to: "/settings" })}>
+              <Settings className="size-4" />
+              Settings
+            </DropdownMenuItem>
             <DropdownMenuItem onClick={handleLogout}>
               <LogOut className="size-4" />
               Sign out
