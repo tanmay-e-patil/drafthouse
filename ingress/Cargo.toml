@@ -9,9 +9,11 @@ actix-cors = "0.7"
 sqlx = { workspace = true }
 tracing = { workspace = true }
 tracing-subscriber = { workspace = true }
+tracing-actix-web = "0.7"
 tokio = { workspace = true }
 dal = { path = "../dal/dal" }
 utils = { path = "../crates/utils" }
+auth-core = { path = "../nanoservices/auth/core" }
 auth-networking = { path = "../nanoservices/auth/networking" }
 documents-networking = { path = "../nanoservices/documents/networking" }
 collab-networking = { path = "../nanoservices/collab/networking" }

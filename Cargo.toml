@@ -4,6 +4,7 @@ members = [
     "ingress",
     "crates/utils",
     "crates/dal-tx-impl",
+    "crates/migrate-pg",
     "crates/migrate-scylla",
     "crates/event-subscriber",
     "crates/publish-event",
@@ -31,7 +32,7 @@ tracing-subscriber = { version = "0.3", features = ["env-filter", "json"] }
 actix-web    = "4"
 actix-ws     = "0.3"
 sqlx         = { version = "0.8",  features = ["runtime-tokio", "postgres", "uuid", "chrono", "migrate"] }
-scylla       = "0.15"
+    scylla       = { version = "0.15", default-features = false }
 thiserror    = "2"
 anyhow       = "1"
 yrs          = "0.21"

@@ -1,0 +1,9 @@
+[package]
+name = "migrate-pg"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+sqlx = { workspace = true }
+tokio = { workspace = true }
+anyhow = { workspace = true }

@@ -67,6 +67,7 @@ where
     };
 
     let doc = dal.create_document(NewDocument { owner_id, title }).await?;
+    tracing::info!(doc_id = %doc.id, owner_id = %owner_id, "document created");
     Ok(doc)
 }
 
@@ -132,7 +133,9 @@ where
         ));
     }
 
-    dal.delete_document(id).await
+    dal.delete_document(id).await?;
+    tracing::info!(doc_id = %id, owner_id = %owner_id, "document deleted");
+    Ok(())
 }
 
 pub async fn list_documents<D>(
@@ -282,6 +285,7 @@ where
         })
         .await?;
 
+    tracing::info!(doc_id = %doc_id, role = ?request.role, "invite link created");
     Ok(link)
 }
 
@@ -352,7 +356,9 @@ pub async fn accept_invite<D>(
 where
     D: AcceptInviteLink,
 {
-    dal.accept_invite_link(token.to_string(), user_id).await
+    let member = dal.accept_invite_link(token.to_string(), user_id).await?;
+    tracing::info!(doc_id = %member.doc_id, user_id = %user_id, role = ?member.role, "invite accepted");
+    Ok(member)
 }
 
 pub async fn list_members<D>(

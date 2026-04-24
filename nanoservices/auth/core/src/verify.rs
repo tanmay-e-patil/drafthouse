@@ -23,12 +23,16 @@ where
     let stored = dal.get_email_verification_token(token_hash).await?;
 
     match stored {
-        None => Err(NanoServiceError::new(
-            "Invalid or expired verification token",
-            NanoServiceErrorStatus::BadRequest,
-        )),
+        None => {
+            tracing::warn!("email verification failed: invalid token");
+            Err(NanoServiceError::new(
+                "Invalid or expired verification token",
+                NanoServiceErrorStatus::BadRequest,
+            ))
+        }
         Some(token) => {
             if token.expires_at < Utc::now() {
+                tracing::warn!(user_id = %token.user_id, "email verification failed: token expired");
                 return Err(NanoServiceError::new(
                     "Verification token has expired",
                     NanoServiceErrorStatus::BadRequest,
@@ -36,6 +40,7 @@ where
             }
 
             dal.mark_user_verified(token.user_id).await?;
+            tracing::info!(user_id = %token.user_id, "email verified");
 
             Ok(VerifyEmailResponse {
                 message: "Email verified successfully. You can now log in.".to_string(),

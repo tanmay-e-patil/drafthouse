@@ -43,10 +43,10 @@ function Dashboard() {
           Collaborative Markdown Editor
         </p>
         <div className="flex gap-3">
-          <Button variant="outline" size="sm" render={<Link to="/login" />}>
+          <Button variant="outline" size="sm" nativeButton={false} render={<Link to="/login" />}>
             Sign in
           </Button>
-          <Button size="sm" render={<Link to="/register" />}>
+          <Button size="sm" nativeButton={false} render={<Link to="/register" />}>
             Sign up
           </Button>
         </div>

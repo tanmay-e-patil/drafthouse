@@ -2,8 +2,8 @@ use bytes::Bytes;
 use chrono::{DateTime, Utc};
 use dashmap::DashMap;
 use std::sync::{
-    Arc, Mutex,
     atomic::{AtomicUsize, Ordering},
+    Arc, Mutex,
 };
 use std::time::Instant;
 use tokio::sync::broadcast;
@@ -72,12 +72,20 @@ impl DocRoom {
         let prev = self
             .connections
             .fetch_update(Ordering::SeqCst, Ordering::SeqCst, |n| {
-                if n < MAX_EDITORS { Some(n + 1) } else { None }
+                if n < MAX_EDITORS {
+                    Some(n + 1)
+                } else {
+                    None
+                }
             });
         if prev.is_ok() {
             *self.last_empty_at.lock().unwrap() = None;
             true
         } else {
+            tracing::warn!(
+                doc_id_hint = "unknown",
+                "connection rejected: editor cap reached"
+            );
             false
         }
     }
@@ -188,7 +196,10 @@ pub type DocStore = DashMap<Uuid, Arc<DocRoom>>;
 pub fn get_or_create_room(store: &DocStore, doc_id: Uuid) -> Arc<DocRoom> {
     store
         .entry(doc_id)
-        .or_insert_with(|| Arc::new(DocRoom::new()))
+        .or_insert_with(|| {
+            tracing::debug!(doc_id = %doc_id, "room created");
+            Arc::new(DocRoom::new())
+        })
         .clone()
 }
 

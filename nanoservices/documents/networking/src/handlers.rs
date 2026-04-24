@@ -39,6 +39,7 @@ pub async fn create_document(
 ) -> Result<HttpResponse, NanoServiceError> {
     let dal = get_dal(&req)?;
     let claims = crate::middleware::extract_verified_jwt(&req).await?;
+    tracing::debug!(user_id = %claims.sub, "create_document");
     let doc = documents_core::create_document(
         dal,
         claims.sub,
@@ -83,6 +84,7 @@ pub async fn update_document(
 ) -> Result<HttpResponse, NanoServiceError> {
     let dal = get_dal(&req)?;
     let claims = crate::middleware::extract_verified_jwt(&req).await?;
+    tracing::debug!(user_id = %claims.sub, "update_document");
     let doc = documents_core::update_document(dal, *path, claims.sub, &body).await?;
     Ok(HttpResponse::Ok().json(doc))
 }
@@ -93,6 +95,7 @@ pub async fn delete_document(
 ) -> Result<HttpResponse, NanoServiceError> {
     let dal = get_dal(&req)?;
     let claims = crate::middleware::extract_verified_jwt(&req).await?;
+    tracing::debug!(user_id = %claims.sub, doc_id = %path, "delete_document");
     documents_core::delete_document(dal, *path, claims.sub).await?;
     Ok(HttpResponse::NoContent().finish())
 }
@@ -163,6 +166,7 @@ pub async fn issue_ws_ticket(
 ) -> Result<HttpResponse, NanoServiceError> {
     let dal = get_dal(&req)?;
     let claims = crate::middleware::extract_verified_jwt(&req).await?;
+    tracing::debug!(user_id = %claims.sub, doc_id = %path, "issue_ws_ticket");
     let resp = documents_core::issue_ws_ticket(dal, *path, claims.sub).await?;
     Ok(HttpResponse::Created().json(resp))
 }
@@ -205,6 +209,7 @@ pub async fn accept_invite(
 ) -> Result<HttpResponse, NanoServiceError> {
     let dal = get_dal(&req)?;
     let claims = crate::middleware::extract_verified_jwt(&req).await?;
+    tracing::debug!(user_id = %claims.sub, doc_id = %path, "accept_invite");
     let member = documents_core::accept_invite(dal, &path, claims.sub).await?;
     Ok(HttpResponse::Ok().json(member))
 }

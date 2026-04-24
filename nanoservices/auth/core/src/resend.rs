@@ -29,6 +29,7 @@ where
         })?;
 
     if user.email_verified_at.is_some() {
+        tracing::info!(user_id = %user.id, "resend verification skipped: already verified");
         return Err(NanoServiceError::new(
             "Email is already verified",
             NanoServiceErrorStatus::BadRequest,
@@ -50,6 +51,7 @@ where
     dal.create_email_verification_token(new_token).await?;
 
     email::send_verification_email(email, &verification_token).await?;
+    tracing::info!(user_id = %user.id, "verification email resent");
 
     Ok(ResendVerificationResponse {
         message: "A new verification email has been sent. Please check your inbox.".to_string(),

@@ -8,6 +8,7 @@ pub async fn extract_jwt(req: &HttpRequest) -> Result<JwtClaims, NanoServiceErro
         .get("Authorization")
         .and_then(|v| v.to_str().ok())
         .ok_or_else(|| {
+            tracing::warn!("request rejected: missing authorization header");
             NanoServiceError::new(
                 "Missing authorization header",
                 NanoServiceErrorStatus::Unauthorized,
@@ -15,6 +16,7 @@ pub async fn extract_jwt(req: &HttpRequest) -> Result<JwtClaims, NanoServiceErro
         })?;
 
     if !auth_header.starts_with("Bearer ") {
+        tracing::warn!("request rejected: invalid authorization header format");
         return Err(NanoServiceError::new(
             "Invalid authorization header format",
             NanoServiceErrorStatus::Unauthorized,

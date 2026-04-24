@@ -33,9 +33,13 @@ where
     let user = dal
         .get_user_by_email(email.to_string())
         .await?
-        .ok_or_else(invalid_err)?;
+        .ok_or_else(|| {
+            tracing::warn!("login failed: user not found");
+            invalid_err()
+        })?;
 
     if user.email_verified_at.is_none() {
+        tracing::warn!(user_id = %user.id, "login rejected: email not verified");
         return Err(NanoServiceError::new(
             "Email not verified. Please verify your email before logging in.",
             NanoServiceErrorStatus::Forbidden,
@@ -43,6 +47,7 @@ where
     }
 
     if !password::verify_password(plain_password, &user.password_hash)? {
+        tracing::warn!(user_id = %user.id, "login failed: invalid password");
         return Err(invalid_err());
     }
 
@@ -50,6 +55,8 @@ where
     if is_first_login {
         dal.mark_welcome_doc_created(user.id).await?;
     }
+
+    tracing::info!(user_id = %user.id, "user logged in");
 
     let access_token = jwt::create_jwt(user.id, &user.email, true)?;
     let raw_refresh = token::generate_verification_token()?;
@@ -88,6 +95,7 @@ where
         .get_refresh_token_by_hash(token_hash.clone())
         .await?
         .ok_or_else(|| {
+            tracing::warn!("token refresh failed: token not found");
             NanoServiceError::new(
                 "Invalid or revoked refresh token",
                 NanoServiceErrorStatus::Unauthorized,
@@ -95,6 +103,7 @@ where
         })?;
 
     if stored.expires_at < Utc::now() {
+        tracing::warn!(user_id = %stored.user_id, "token refresh failed: token expired");
         dal.delete_refresh_token(token_hash).await?;
         return Err(NanoServiceError::new(
             "Refresh token expired",
@@ -133,6 +142,7 @@ pub async fn logout<D>(dal: &D, raw_refresh_token: &str) -> Result<(), NanoServi
 where
     D: DeleteRefreshToken,
 {
+    tracing::info!("user logged out");
     let token_hash = token::hash_token(raw_refresh_token);
     dal.delete_refresh_token(token_hash).await
 }
@@ -141,6 +151,7 @@ pub async fn logout_all<D>(dal: &D, user_id: uuid::Uuid) -> Result<(), NanoServi
 where
     D: DeleteAllRefreshTokensForUser,
 {
+    tracing::info!(user_id = %user_id, "all sessions logged out");
     dal.delete_all_refresh_tokens_for_user(user_id).await
 }
 

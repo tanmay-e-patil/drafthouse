@@ -1,18 +1,57 @@
 use actix_cors::Cors;
-use actix_web::{App, HttpServer, middleware as actix_middleware, web};
+use actix_web::{dev::ServiceRequest, web, App, HttpServer};
 use collab_core::DocStore;
 use dal::{ScyllaDescriptor, postgres_txs::SqlxPostGresDescriptor};
 use dashmap::DashMap;
 use sqlx::PgPool;
 use std::env;
 use tokio::time::{Duration, interval};
+use tracing_actix_web::{DefaultRootSpanBuilder, RootSpanBuilder, TracingLogger};
 use tracing_subscriber::EnvFilter;
+
+struct AppRootSpanBuilder;
+
+impl RootSpanBuilder for AppRootSpanBuilder {
+    fn on_request_start(request: &ServiceRequest) -> tracing::Span {
+        let span = DefaultRootSpanBuilder::on_request_start(request);
+
+        if let Some(user_id) = request
+            .headers()
+            .get("Authorization")
+            .and_then(|v| v.to_str().ok())
+            .and_then(|h| h.strip_prefix("Bearer "))
+            .and_then(|token| auth_core::jwt::verify_jwt(token).ok())
+            .map(|claims| claims.sub.to_string())
+        {
+            span.record("user_id", user_id);
+        }
+
+        span
+    }
+
+    fn on_request_end<B: actix_web::body::MessageBody>(
+        span: tracing::Span,
+        outcome: &Result<actix_web::dev::ServiceResponse<B>, actix_web::Error>,
+    ) {
+        DefaultRootSpanBuilder::on_request_end(span, outcome);
+    }
+}
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     tracing_subscriber::fmt()
-        .with_env_filter(EnvFilter::from_default_env().add_directive("drafthouse=debug".parse()?))
-        .with_target(false)
+        .json()
+        .with_env_filter(
+            EnvFilter::from_default_env()
+                .add_directive("ingress=debug".parse()?)
+                .add_directive("auth_core=debug".parse()?)
+                .add_directive("auth_networking=debug".parse()?)
+                .add_directive("documents_core=debug".parse()?)
+                .add_directive("documents_networking=debug".parse()?)
+                .add_directive("collab_core=debug".parse()?)
+                .add_directive("collab_networking=debug".parse()?)
+        )
+        .with_target(true)
         .init();
 
     let database_url = env::var("DATABASE_URL")
@@ -60,7 +99,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             .max_age(3600);
 
         App::new()
-            .wrap(actix_middleware::Logger::default())
+            .wrap(TracingLogger::<AppRootSpanBuilder>::new())
             .wrap(cors)
             .configure(|cfg| auth_networking::routes::configure(cfg, pg_dal.clone()))
             .configure(|cfg| {

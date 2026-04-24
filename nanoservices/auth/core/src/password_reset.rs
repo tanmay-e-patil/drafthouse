@@ -64,6 +64,7 @@ where
         .get_password_reset_token(token_hash)
         .await?
         .ok_or_else(|| {
+            tracing::warn!("password reset failed: invalid token");
             NanoServiceError::new(
                 "Invalid or expired reset token",
                 NanoServiceErrorStatus::BadRequest,
@@ -71,6 +72,7 @@ where
         })?;
 
     if stored.expires_at < Utc::now() {
+        tracing::warn!(user_id = %stored.user_id, "password reset failed: token expired");
         return Err(NanoServiceError::new(
             "Reset token has expired",
             NanoServiceErrorStatus::BadRequest,
@@ -78,6 +80,7 @@ where
     }
 
     if stored.used_at.is_some() {
+        tracing::warn!(user_id = %stored.user_id, "password reset failed: token already used");
         return Err(NanoServiceError::new(
             "Reset token has already been used",
             NanoServiceErrorStatus::BadRequest,
@@ -91,6 +94,8 @@ where
         .await?;
     dal.delete_all_refresh_tokens_for_user(stored.user_id)
         .await?;
+
+    tracing::info!(user_id = %stored.user_id, "password reset successful");
 
     Ok(ResetPasswordResponse {
         message: "Password has been reset successfully.".to_string(),

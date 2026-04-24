@@ -53,10 +53,34 @@ pub async fn send_verification_email(to_email: &str, token: &str) -> Result<(), 
         to: vec![to_email.to_string()],
         subject: "Verify your email - Drafthouse".to_string(),
         html,
-        attachments: vec![],
     };
 
-    send_email(payload, &api_key, "Failed to send verification email").await?;
+    let base_url =
+        env::var("RESEND_API_BASE_URL").unwrap_or_else(|_| "https://api.resend.com".into());
+
+    let client = reqwest::Client::new();
+    let response = client
+        .post(format!("{}/emails", base_url))
+        .header("Authorization", format!("Bearer {}", api_key))
+        .json(&payload)
+        .send()
+        .await
+        .map_err(|e| {
+            NanoServiceError::new(
+                format!("Failed to send email: {}", e),
+                NanoServiceErrorStatus::InternalServerError,
+            )
+        })?;
+
+    if !response.status().is_success() {
+        let status = response.status();
+        let body = response.text().await.unwrap_or_default();
+        tracing::error!("Resend API error {}: {}", status, body);
+        return Err(NanoServiceError::new(
+            "Failed to send verification email".to_string(),
+            NanoServiceErrorStatus::InternalServerError,
+        ));
+    }
 
     tracing::info!(email = %to_email, "Verification email sent");
     Ok(())
@@ -175,5 +199,6 @@ async fn send_email(
         ));
     }
 
+    tracing::info!("Password reset email sent");
     Ok(())
 }
