@@ -53,6 +53,7 @@ pub async fn send_verification_email(to_email: &str, token: &str) -> Result<(), 
         to: vec![to_email.to_string()],
         subject: "Verify your email - Drafthouse".to_string(),
         html,
+        attachments: vec![],
     };
 
     let base_url =
