@@ -1,7 +1,13 @@
 {
-  "short_name": "TanStack App",
-  "name": "Create TanStack App Sample",
+  "short_name": "Drafthouse",
+  "name": "Drafthouse | Collaborative Markdown Editor",
+  "description": "A focused collaborative Markdown editor with live cursors, secure sharing, and resilient team document sync.",
   "icons": [
+    {
+      "src": "favicon.svg",
+      "type": "image/svg+xml",
+      "sizes": "64x64"
+    },
     {
       "src": "favicon.ico",
       "sizes": "64x64 32x32 24x24 16x16",
@@ -20,6 +26,6 @@
   ],
   "start_url": ".",
   "display": "standalone",
-  "theme_color": "#000000",
-  "background_color": "#ffffff"
+  "theme_color": "#f5f0df",
+  "background_color": "#fff8e6"
 }
