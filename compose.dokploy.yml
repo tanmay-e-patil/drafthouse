@@ -19,12 +19,10 @@ services:
     volumes:
       - scylla_data:/var/lib/scylla
     healthcheck:
-      test: ["CMD-SHELL", "cqlsh 127.0.0.1 9042 -e 'DESCRIBE KEYSPACES' >/dev/null 2>&1"]
+      test: ["CMD-SHELL", "cqlsh $(hostname -i | awk '{print $1}') 9042 -e 'DESCRIBE KEYSPACES' >/dev/null 2>&1"]
       interval: 10s
       timeout: 10s
-      retries: 15
-      start_period: 30s
-
+      retries: 30
   migrate-pg:
     image: ghcr.io/tanmay-e-patil/drafthouse:latest
     command: /app/migrate-pg
