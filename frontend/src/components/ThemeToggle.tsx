@@ -22,7 +22,7 @@ export default function ThemeToggle() {
       size="icon"
       onClick={cycle}
       aria-label={`Current: ${theme ?? 'system'}. Click to switch.`}
-      className="size-8"
+      className="size-8 text-muted-foreground hover:text-accent-foreground"
     >
       <ThemeIcon theme={theme} />
     </Button>

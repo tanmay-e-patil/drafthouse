@@ -203,7 +203,7 @@ export default function Sidebar({ collapsed, onToggleCollapse }: SidebarProps) {
 
   if (collapsed) {
     return (
-      <aside className="flex h-screen w-14 flex-col border-r border-border bg-sidebar">
+      <aside className="flex h-screen w-14 flex-col border-r border-sidebar-border bg-sidebar/95 shadow-sm shadow-foreground/5 backdrop-blur">
         <div className="flex h-12 items-center justify-center">
           <Tooltip>
             <TooltipTrigger
@@ -231,8 +231,8 @@ export default function Sidebar({ collapsed, onToggleCollapse }: SidebarProps) {
                     <button
                       className={`rounded-md p-2 transition-colors ${
                         params.documentId === doc.id
-                          ? "bg-accent text-accent-foreground"
-                          : "text-sidebar-foreground hover:bg-accent/50"
+                          ? "bg-sidebar-accent text-sidebar-accent-foreground shadow-sm"
+                          : "text-sidebar-foreground hover:bg-sidebar-accent/60 hover:text-sidebar-accent-foreground"
                       }`}
                       onClick={() =>
                         navigate({
@@ -255,9 +255,9 @@ export default function Sidebar({ collapsed, onToggleCollapse }: SidebarProps) {
   }
 
   return (
-    <aside className="flex h-screen w-60 flex-col border-r border-border bg-sidebar">
+    <aside className="flex h-screen w-60 flex-col border-r border-sidebar-border bg-sidebar/95 shadow-sm shadow-foreground/5 backdrop-blur">
       <div className="flex h-12 items-center justify-between px-3">
-        <span className="text-sm font-semibold tracking-tight text-sidebar-foreground">
+        <span className="font-heading text-sm font-semibold tracking-tight text-sidebar-foreground">
           Drafthouse
         </span>
         <Tooltip>
@@ -305,13 +305,16 @@ export default function Sidebar({ collapsed, onToggleCollapse }: SidebarProps) {
           </div>
         )}
         {documents.map((doc) => (
-          <div key={doc.id} className="group flex items-center gap-1">
+          <div
+            key={doc.id}
+            className={`group flex items-center gap-1 rounded-md transition-colors ${
+              params.documentId === doc.id
+                ? "bg-sidebar-accent text-sidebar-accent-foreground shadow-sm"
+                : "text-sidebar-foreground hover:bg-sidebar-accent/60 hover:text-sidebar-accent-foreground"
+            }`}
+          >
             <button
-              className={`min-w-0 flex-1 truncate rounded-md px-2 py-1.5 text-left text-sm transition-colors ${
-                params.documentId === doc.id
-                  ? "bg-accent text-accent-foreground font-medium"
-                  : "text-sidebar-foreground hover:bg-accent/50"
-              }`}
+              className="min-w-0 flex-1 truncate rounded-md px-2 py-1.5 text-left text-sm transition-colors"
               onClick={() =>
                 navigate({
                   to: "/documents/$documentId",
@@ -320,7 +323,13 @@ export default function Sidebar({ collapsed, onToggleCollapse }: SidebarProps) {
               }
             >
               <span className="block truncate">{doc.title}</span>
-              <span className="block text-[11px] text-muted-foreground">
+              <span
+                className={`block text-[11px] ${
+                  params.documentId === doc.id
+                    ? "text-sidebar-accent-foreground/75"
+                    : "text-muted-foreground"
+                }`}
+              >
                 {formatRelativeTime(doc.updated_at)}
               </span>
             </button>
@@ -334,7 +343,11 @@ export default function Sidebar({ collapsed, onToggleCollapse }: SidebarProps) {
                   <Button
                     variant="ghost"
                     size="icon"
-                    className="mr-1 size-7 opacity-0 group-hover:opacity-100"
+                    className={`mr-1 size-7 ${
+                      params.documentId === doc.id
+                        ? "opacity-100"
+                        : "opacity-0 group-hover:opacity-100"
+                    }`}
                   />
                 }
               >

@@ -41,10 +41,10 @@ const STATUS_LABEL: Record<ConnectionStatus, string> = {
 };
 
 const STATUS_DOT: Record<ConnectionStatus, string> = {
-  connecting: "bg-yellow-500",
-  connected: "bg-green-500",
-  syncing: "bg-yellow-500",
-  disconnected: "bg-red-500",
+  connecting: "bg-primary",
+  connected: "bg-emerald-500 dark:bg-emerald-400",
+  syncing: "bg-primary",
+  disconnected: "bg-destructive",
 };
 
 function dispatchEditorAction(view: EditorView, actionId: FormattingActionId) {
@@ -227,7 +227,7 @@ export default function Editor({
   return (
     <div className="flex flex-1 flex-col overflow-hidden">
       {!focusMode && (
-        <div className="flex min-h-12 items-center gap-2 border-b border-border px-2 py-2">
+        <div className="flex min-h-12 items-center gap-2 border-b border-border/80 bg-card/50 px-2 py-2 shadow-xs backdrop-blur">
           <div className="flex items-center gap-1">
             <Tooltip>
               <TooltipTrigger
@@ -265,7 +265,7 @@ export default function Editor({
 
           {mode === "edit" && (
             <div
-              className="flex flex-wrap items-center gap-1 border-l border-border pl-2"
+              className="flex flex-wrap items-center gap-1 border-l border-border/80 pl-2"
               data-testid="editor-toolbar"
             >
               {EDITOR_ACTIONS.map((action) => (
@@ -302,7 +302,7 @@ export default function Editor({
             <Tooltip>
               <TooltipTrigger
                 render={
-                  <div className="flex items-center gap-1.5 rounded-md px-1.5 py-0.5 text-[11px] text-muted-foreground">
+                  <div className="flex items-center gap-1.5 rounded-full border border-border/70 bg-card/70 px-2 py-1 text-[11px] text-muted-foreground shadow-xs">
                     <span className={`inline-block size-1.5 rounded-full ${STATUS_DOT[collabStatus]}`} />
                     {STATUS_LABEL[collabStatus]}
                   </div>
@@ -322,14 +322,14 @@ export default function Editor({
 
       {mode === "preview" ? (
         <div
-          className="prose prose-sm dark:prose-invert max-w-none flex-1 overflow-y-auto p-6"
+          className="prose prose-sm dark:prose-invert prose-headings:font-heading max-w-none flex-1 overflow-y-auto bg-card/65 p-6"
           dangerouslySetInnerHTML={{ __html: previewHtml }}
         />
       ) : (
-        <div className="relative flex-1 overflow-hidden">
+        <div className="relative flex-1 overflow-hidden bg-card/65">
           {selectionToolbar.open && (
             <div
-              className="absolute z-20 flex -translate-x-1/2 items-center gap-1 rounded-lg border border-border bg-background/95 p-1 shadow-lg backdrop-blur"
+              className="absolute z-20 flex -translate-x-1/2 items-center gap-1 rounded-lg border border-border/80 bg-popover/95 p-1 shadow-lg shadow-foreground/10 ring-1 ring-primary/10 backdrop-blur"
               style={{ left: selectionToolbar.left, top: selectionToolbar.top }}
               data-testid="selection-toolbar"
             >

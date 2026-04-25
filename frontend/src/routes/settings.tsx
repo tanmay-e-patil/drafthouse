@@ -193,15 +193,15 @@ export function SettingsPage() {
   if (!hydrated) return null;
 
   return (
-    <div className="flex h-screen overflow-hidden">
+    <div className="flex h-screen overflow-hidden bg-background">
       <Sidebar collapsed={sidebarCollapsed} onToggleCollapse={toggleSidebar} />
-      <main className="flex flex-1 flex-col overflow-hidden">
-        <div className="flex h-12 items-center border-b border-border px-4">
-          <h1 className="text-sm font-medium">Settings</h1>
+      <main className="flex flex-1 flex-col overflow-hidden bg-background/65">
+        <div className="flex h-12 items-center border-b border-border/80 bg-card/65 px-4 shadow-xs backdrop-blur">
+          <h1 className="font-heading text-sm font-semibold tracking-tight">Settings</h1>
         </div>
         <div className="flex-1 overflow-y-auto p-4 sm:p-6">
           <div className="mx-auto flex w-full max-w-3xl flex-col gap-4">
-            <Card>
+            <Card className="ambient-panel">
               <CardHeader>
                 <CardTitle>Account</CardTitle>
                 <CardDescription>Your verified profile details.</CardDescription>
@@ -285,7 +285,7 @@ export function SettingsPage() {
               </CardContent>
             </Card>
 
-            <Card className="border-destructive/40">
+            <Card className="border-destructive/40 bg-destructive/5">
               <CardHeader>
                 <CardTitle>Delete account</CardTitle>
                 <CardDescription>

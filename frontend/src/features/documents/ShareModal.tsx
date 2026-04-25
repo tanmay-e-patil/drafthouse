@@ -157,7 +157,7 @@ export function ShareModal({
                 {members.map((m) => (
                   <div
                     key={m.user_id}
-                    className="flex items-center justify-between rounded-md px-2 py-1.5"
+                    className="flex items-center justify-between rounded-md px-2 py-1.5 transition-colors hover:bg-muted/60"
                   >
                     <span className="truncate text-xs text-muted-foreground">
                       {m.user_id}
@@ -213,7 +213,7 @@ export function ShareModal({
               </Select>
               <Button
                 size="sm"
-                className="h-7 text-xs"
+                className="text-xs"
                 onClick={handleGenerateLink}
                 disabled={loading}
               >
@@ -228,7 +228,7 @@ export function ShareModal({
                   return (
                     <div
                       key={link.token}
-                      className="flex items-center justify-between rounded-md bg-muted/50 px-2 py-1.5"
+                      className="flex items-center justify-between rounded-md border border-border/70 bg-muted/50 px-2 py-1.5"
                     >
                       <span className="truncate font-mono text-[11px] text-muted-foreground">
                         {url}
@@ -240,7 +240,7 @@ export function ShareModal({
                           onClick={() => copyToClipboard(link.token)}
                         >
                           {copiedToken === link.token ? (
-                            <Check className="size-3 text-green-500" />
+                            <Check className="size-3 text-accent-foreground" />
                           ) : (
                             <Copy className="size-3" />
                           )}

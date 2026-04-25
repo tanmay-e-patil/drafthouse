@@ -132,7 +132,7 @@ export function CommandPalette({
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-xl p-0" showCloseButton={false}>
-        <div className="border-b border-border p-3">
+        <div className="border-b border-border/80 bg-muted/35 p-3">
           <Input
             ref={inputRef}
             value={query}
@@ -158,8 +158,8 @@ export function CommandPalette({
               type="button"
               onClick={() => handleSelect(doc)}
               className={cn(
-                "flex w-full items-center justify-between rounded-md px-3 py-2 text-left text-sm transition-colors",
-                index === activeIndex ? "bg-accent text-accent-foreground" : "hover:bg-muted",
+                "flex w-full items-center justify-between rounded-md px-3 py-2 text-left text-sm transition-all duration-200",
+                index === activeIndex ? "bg-accent text-accent-foreground shadow-sm" : "hover:-translate-y-px hover:bg-muted",
               )}
             >
               <span className="truncate">{doc.title}</span>

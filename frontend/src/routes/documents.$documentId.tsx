@@ -163,7 +163,7 @@ function DocumentEditor() {
 
   if (loading) {
     return (
-      <div className="flex h-screen overflow-hidden">
+      <div className="flex h-screen overflow-hidden bg-background">
         <CommandPalette
           currentDocumentId={documentId}
           open={paletteOpen}
@@ -181,11 +181,11 @@ function DocumentEditor() {
 
   if (inaccessibleDocument) {
     return (
-      <div className="flex h-screen overflow-hidden">
+      <div className="flex h-screen overflow-hidden bg-background">
         <Sidebar collapsed={sidebarCollapsed} onToggleCollapse={toggleSidebar} />
         <main className="flex flex-1 items-center justify-center p-8">
-          <div className="max-w-sm text-center">
-            <h1 className="text-xl font-semibold tracking-tight">Document unavailable</h1>
+          <div className="ambient-panel max-w-sm rounded-3xl border border-border/80 p-8 text-center shadow-lg">
+            <h1 className="font-heading text-xl font-semibold tracking-tight">Document unavailable</h1>
             <p className="mt-2 text-sm text-muted-foreground">
               This document was deleted, or you do not have access to it.
             </p>
@@ -201,7 +201,7 @@ function DocumentEditor() {
   if (!document) return null;
 
   return (
-    <div className="flex h-screen overflow-hidden">
+    <div className="flex h-screen overflow-hidden bg-background">
       <CommandPalette
         currentDocumentId={documentId}
         open={paletteOpen}
@@ -210,12 +210,12 @@ function DocumentEditor() {
       {!focusMode && (
         <Sidebar collapsed={sidebarCollapsed} onToggleCollapse={toggleSidebar} />
       )}
-      <main className="flex flex-1 flex-col overflow-hidden">
+      <main className="flex flex-1 flex-col overflow-hidden bg-background/65">
         {!focusMode && (
-          <div className="flex h-12 items-center justify-between border-b border-border px-4">
+          <div className="flex h-12 items-center justify-between border-b border-border/80 bg-card/65 px-4 shadow-xs backdrop-blur">
             <input
               ref={titleRef}
-              className="border-none bg-transparent text-sm font-medium text-foreground outline-none placeholder:text-muted-foreground"
+              className="min-w-0 border-none bg-transparent font-heading text-sm font-semibold text-foreground outline-none transition-colors placeholder:text-muted-foreground focus:text-primary"
               value={title}
               onChange={(e) => setTitle(e.target.value)}
               onBlur={handleTitleBlur}
@@ -226,7 +226,7 @@ function DocumentEditor() {
               <label className="flex items-center gap-2 text-xs text-muted-foreground">
                 Font
                 <select
-                  className="h-8 rounded-md border border-input bg-background px-2 text-xs text-foreground"
+                  className="h-8 rounded-md border border-input bg-card/80 px-2 text-xs text-foreground shadow-xs transition-all focus:border-ring focus:outline-none focus:ring-2 focus:ring-ring/30"
                   value={editorFont}
                   onChange={(event) => setEditorFont(event.target.value as EditorFont)}
                   aria-label="Editor font"
@@ -241,7 +241,7 @@ function DocumentEditor() {
               <Button
                 variant="ghost"
                 size="sm"
-                className="gap-1.5 text-muted-foreground"
+                className="gap-1.5 text-muted-foreground hover:text-accent-foreground"
                 onClick={toggleFocusMode}
                 title="Toggle focus mode (Cmd/Ctrl+Shift+.)"
               >
@@ -251,7 +251,7 @@ function DocumentEditor() {
               <Button
                 variant="ghost"
                 size="sm"
-                className="gap-1.5 text-muted-foreground"
+                className="gap-1.5 text-muted-foreground hover:text-accent-foreground"
                 onClick={() => setShareOpen(true)}
               >
                 <Share2 className="size-3.5" />
@@ -264,7 +264,7 @@ function DocumentEditor() {
           <Button
             variant="secondary"
             size="sm"
-            className="absolute right-4 top-4 z-30 gap-1.5 shadow-md"
+            className="absolute right-4 top-4 z-30 gap-1.5 shadow-md shadow-primary/20"
             onClick={toggleFocusMode}
             aria-label="Exit focus mode"
           >
