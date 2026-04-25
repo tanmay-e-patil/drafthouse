@@ -1,5 +1,5 @@
 use actix_cors::Cors;
-use actix_web::{dev::ServiceRequest, web, App, HttpServer};
+use actix_web::{App, HttpServer, dev::ServiceRequest, web};
 use collab_core::DocStore;
 use dal::{ScyllaDescriptor, postgres_txs::SqlxPostGresDescriptor};
 use dashmap::DashMap;
@@ -49,7 +49,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 .add_directive("documents_core=debug".parse()?)
                 .add_directive("documents_networking=debug".parse()?)
                 .add_directive("collab_core=debug".parse()?)
-                .add_directive("collab_networking=debug".parse()?)
+                .add_directive("collab_networking=debug".parse()?),
         )
         .with_target(true)
         .init();

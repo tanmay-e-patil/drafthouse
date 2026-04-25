@@ -1,0 +1,11 @@
+target/
+.git/
+.gitignore
+frontend/node_modules/
+frontend/dist/
+*.md
+AGENTS.md
+.kilo/
+.kilocode/
+.github/
+frontend/

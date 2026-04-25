@@ -2,8 +2,8 @@ use bytes::Bytes;
 use chrono::{DateTime, Utc};
 use dashmap::DashMap;
 use std::sync::{
-    atomic::{AtomicUsize, Ordering},
     Arc, Mutex,
+    atomic::{AtomicUsize, Ordering},
 };
 use std::time::Instant;
 use tokio::sync::broadcast;
@@ -72,11 +72,7 @@ impl DocRoom {
         let prev = self
             .connections
             .fetch_update(Ordering::SeqCst, Ordering::SeqCst, |n| {
-                if n < MAX_EDITORS {
-                    Some(n + 1)
-                } else {
-                    None
-                }
+                if n < MAX_EDITORS { Some(n + 1) } else { None }
             });
         if prev.is_ok() {
             *self.last_empty_at.lock().unwrap() = None;

@@ -1,53 +1,59 @@
-FROM rust:1-alpine AS builder
+FROM --platform=$BUILDPLATFORM lukemathwalker/cargo-chef:latest-rust-1-alpine AS chef
 
-RUN apk add --no-cache musl-dev pkgconf
+ARG TARGETARCH
+
+RUN apk add --no-cache build-base musl-dev pkgconf ca-certificates
 
 WORKDIR /app
 
-COPY Cargo.toml Cargo.lock ./
-COPY crates/migrate-pg/Cargo.toml crates/migrate-pg/Cargo.toml
-COPY crates/migrate-scylla/Cargo.toml crates/migrate-scylla/Cargo.toml
-COPY ingress/Cargo.toml ingress/Cargo.toml
-COPY crates/utils/Cargo.toml crates/utils/Cargo.toml
-COPY crates/dal-tx-impl/Cargo.toml crates/dal-tx-impl/Cargo.toml
-COPY crates/event-subscriber/Cargo.toml crates/event-subscriber/Cargo.toml
-COPY crates/publish-event/Cargo.toml crates/publish-event/Cargo.toml
-COPY dal/kernel/Cargo.toml dal/kernel/Cargo.toml
-COPY dal/dal/Cargo.toml dal/dal/Cargo.toml
-COPY nanoservices/auth/networking/Cargo.toml nanoservices/auth/networking/Cargo.toml
-COPY nanoservices/auth/core/Cargo.toml nanoservices/auth/core/Cargo.toml
-COPY nanoservices/auth/dal/Cargo.toml nanoservices/auth/dal/Cargo.toml
-COPY nanoservices/documents/networking/Cargo.toml nanoservices/documents/networking/Cargo.toml
-COPY nanoservices/documents/core/Cargo.toml nanoservices/documents/core/Cargo.toml
-COPY nanoservices/documents/dal/Cargo.toml nanoservices/documents/dal/Cargo.toml
-COPY nanoservices/collab/networking/Cargo.toml nanoservices/collab/networking/Cargo.toml
-COPY nanoservices/collab/core/Cargo.toml nanoservices/collab/core/Cargo.toml
-COPY nanoservices/collab/dal/Cargo.toml nanoservices/collab/dal/Cargo.toml
+RUN case "$TARGETARCH" in \
+        amd64) rustup target add x86_64-unknown-linux-musl ;; \
+        arm64) rustup target add aarch64-unknown-linux-musl ;; \
+        *) echo "Unsupported TARGETARCH: $TARGETARCH" >&2; exit 1 ;; \
+    esac
 
-RUN mkdir -p crates/migrate-pg/src && echo "fn main() {}" > crates/migrate-pg/src/main.rs
-RUN mkdir -p crates/migrate-scylla/src && echo "fn main() {}" > crates/migrate-scylla/src/main.rs
-RUN mkdir -p ingress/src && echo "fn main() {}" > ingress/src/main.rs
-
-RUN cargo build --release --target x86_64-unknown-linux-musl \
-    -p ingress -p migrate-pg -p migrate-scylla \
-    && rm -rf crates/*/src ingress/src
+FROM chef AS planner
 
 COPY . .
 
-RUN cargo build --release --target x86_64-unknown-linux-musl \
-    -p ingress -p migrate-pg -p migrate-scylla
+RUN cargo chef prepare --recipe-path recipe.json
 
-RUN strip target/x86_64-unknown-linux-musl/release/ingress \
-    && strip target/x86_64-unknown-linux-musl/release/migrate-pg \
-    && strip target/x86_64-unknown-linux-musl/release/migrate-scylla
+FROM chef AS cacher
+
+COPY --from=planner /app/recipe.json recipe.json
+
+RUN case "$TARGETARCH" in \
+        amd64) export RUST_TARGET=x86_64-unknown-linux-musl ;; \
+        arm64) export RUST_TARGET=aarch64-unknown-linux-musl ;; \
+        *) echo "Unsupported TARGETARCH: $TARGETARCH" >&2; exit 1 ;; \
+    esac \
+    && cargo chef cook --release --target "$RUST_TARGET" --recipe-path recipe.json
+
+FROM chef AS builder
+
+COPY . .
+COPY --from=cacher /app/target target
+
+RUN case "$TARGETARCH" in \
+        amd64) export RUST_TARGET=x86_64-unknown-linux-musl ;; \
+        arm64) export RUST_TARGET=aarch64-unknown-linux-musl ;; \
+        *) echo "Unsupported TARGETARCH: $TARGETARCH" >&2; exit 1 ;; \
+    esac \
+    && cargo build --release --target "$RUST_TARGET" \
+        -p ingress -p migrate-pg -p migrate-scylla \
+    && install -D "target/$RUST_TARGET/release/ingress" /out/app/ingress \
+    && install -D "target/$RUST_TARGET/release/migrate-pg" /out/app/migrate-pg \
+    && install -D "target/$RUST_TARGET/release/migrate-scylla" /out/app/migrate-scylla
 
 FROM alpine:3.19
 
 RUN apk add --no-cache ca-certificates
 
-COPY --from=builder /app/target/x86_64-unknown-linux-musl/release/ingress /app/ingress
-COPY --from=builder /app/target/x86_64-unknown-linux-musl/release/migrate-pg /app/migrate-pg
-COPY --from=builder /app/target/x86_64-unknown-linux-musl/release/migrate-scylla /app/migrate-scylla
+WORKDIR /app
+
+COPY --from=builder /out/app/ingress /app/ingress
+COPY --from=builder /out/app/migrate-pg /app/migrate-pg
+COPY --from=builder /out/app/migrate-scylla /app/migrate-scylla
 COPY migrations /app/migrations
 
 ENTRYPOINT ["/app/ingress"]
