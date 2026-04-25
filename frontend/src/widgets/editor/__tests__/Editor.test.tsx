@@ -145,4 +145,41 @@ describe("Editor", () => {
       expect(screen.getByText("Preview")).toBeDefined();
     });
   });
+
+  it("hides editor chrome in focus mode", async () => {
+    const { default: Editor } = await import("../Editor");
+    const onSave = vi.fn().mockResolvedValue(undefined);
+
+    render(
+      <Editor
+        docId="test-doc-id"
+        initialContent="# Hello"
+        onSave={onSave}
+        focusMode
+      />
+    );
+
+    await waitFor(() => {
+      expect(screen.queryByTestId("editor-toolbar")).toBeNull();
+      expect(screen.getByTestId("editor-container").className).toContain("font-sans");
+    });
+  });
+
+  it("applies the selected editor font to the editable surface", async () => {
+    const { default: Editor } = await import("../Editor");
+    const onSave = vi.fn().mockResolvedValue(undefined);
+
+    render(
+      <Editor
+        docId="test-doc-id"
+        initialContent="# Hello"
+        onSave={onSave}
+        fontClassName="font-serif"
+      />
+    );
+
+    await waitFor(() => {
+      expect(screen.getByTestId("editor-container").className).toContain("font-serif");
+    });
+  });
 });

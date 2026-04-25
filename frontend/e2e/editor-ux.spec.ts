@@ -39,6 +39,38 @@ test.describe("Editor UX", () => {
     await expect(page.locator(".cm-content")).toContainText("**Hello world**");
   });
 
+  test("focus mode hides editor chrome and exits with escape", async ({ page }) => {
+    await login(page);
+    await createDocument(page, "Focus mode test");
+
+    await page.getByRole("button", { name: "Focus" }).click();
+
+    await expect(page.getByText("Drafthouse")).toHaveCount(0);
+    await expect(page.getByTestId("editor-toolbar")).toHaveCount(0);
+    await expect(page.getByRole("button", { name: "Exit focus mode" })).toBeVisible();
+
+    await page.keyboard.press("Escape");
+
+    await expect(page.getByText("Drafthouse")).toBeVisible();
+    await expect(page.getByTestId("editor-toolbar")).toBeVisible();
+  });
+
+  test("font choice applies immediately and persists across reload", async ({ page }) => {
+    await login(page);
+    await createDocument(page, "Font preference test");
+
+    await page.getByLabel("Editor font").selectOption("lora");
+
+    await expect(page.getByTestId("editor-container")).toHaveClass(/font-serif/);
+    await expect(page.locator(".cm-content")).toHaveCSS("font-family", /Lora/);
+
+    await page.reload();
+
+    await expect(page.getByLabel("Editor font")).toHaveValue("lora");
+    await expect(page.getByTestId("editor-container")).toHaveClass(/font-serif/);
+    await expect(page.locator(".cm-content")).toHaveCSS("font-family", /Lora/);
+  });
+
   test("command palette filters documents and navigates on enter", async ({ page }) => {
     await login(page);
     await createDocument(page, "Alpha doc");
@@ -53,7 +85,7 @@ test.describe("Editor UX", () => {
     await page.keyboard.press("Enter");
 
     await expect(page).toHaveURL(/\/documents\//);
-    await expect(page.getByDisplayValue("Beta search target")).toBeVisible();
+    await expect(page.locator('input[value="Beta search target"]')).toBeVisible();
   });
 
   test("sidebar toggles with the global shortcut", async ({ page }) => {

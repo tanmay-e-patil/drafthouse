@@ -135,3 +135,18 @@
     @apply font-sans;
   }
 }
+
+.cm-editor-container.font-sans .cm-content,
+.cm-editor-container.font-sans .cm-scroller {
+  font-family: var(--font-sans);
+}
+
+.cm-editor-container.font-serif .cm-content,
+.cm-editor-container.font-serif .cm-scroller {
+  font-family: var(--font-serif);
+}
+
+.cm-editor-container.font-mono .cm-content,
+.cm-editor-container.font-mono .cm-scroller {
+  font-family: var(--font-mono);
+}

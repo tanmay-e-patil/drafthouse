@@ -9,11 +9,11 @@ function ThemeIcon({ theme }: { theme: string | undefined }) {
 }
 
 export default function ThemeToggle() {
-  const { theme, setTheme, resolvedTheme } = useTheme()
+  const { theme, setTheme } = useTheme()
   const cycle = () => {
-    if (resolvedTheme === 'dark') setTheme('light')
-    else if (resolvedTheme === 'light') setTheme('system')
-    else setTheme('dark')
+    if (theme === 'light') setTheme('dark')
+    else if (theme === 'dark') setTheme('system')
+    else setTheme('light')
   }
 
   return (

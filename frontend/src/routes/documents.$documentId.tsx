@@ -15,7 +15,12 @@ import type { Document } from "#/features/documents/api";
 import { Button } from "#/components/ui/button";
 import { CommandPalette } from "#/features/documents/CommandPalette";
 import { useDocumentHotkeys } from "#/features/documents/useDocumentHotkeys";
-import { Share2 } from "lucide-react";
+import {
+  EDITOR_FONT_OPTIONS,
+  usePreferencesStore,
+  type EditorFont,
+} from "#/features/preferences/store";
+import { Maximize2, Minimize2, Share2 } from "lucide-react";
 
 export const Route = createFileRoute("/documents/$documentId")({
   component: DocumentEditor,
@@ -40,6 +45,14 @@ function DocumentEditor() {
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [paletteOpen, setPaletteOpen] = useState(false);
   const upsertDocument = useDocumentStore((s) => s.upsertDocument);
+  const focusMode = usePreferencesStore((s) => s.focusMode);
+  const setFocusMode = usePreferencesStore((s) => s.setFocusMode);
+  const toggleFocusMode = usePreferencesStore((s) => s.toggleFocusMode);
+  const editorFont = usePreferencesStore((s) => s.editorFont);
+  const setEditorFont = usePreferencesStore((s) => s.setEditorFont);
+  const fontClassName =
+    EDITOR_FONT_OPTIONS.find((option) => option.value === editorFont)?.className ??
+    "font-sans";
 
   useEffect(() => {
     hydrate();
@@ -123,6 +136,24 @@ function DocumentEditor() {
     onToggleSidebar: toggleSidebar,
   });
 
+  useEffect(() => {
+    function handleKeyDown(event: KeyboardEvent) {
+      const key = event.key.toLowerCase();
+      if ((event.metaKey || event.ctrlKey) && event.shiftKey && key === "f") {
+        event.preventDefault();
+        toggleFocusMode();
+        return;
+      }
+
+      if (event.key === "Escape") {
+        setFocusMode(false);
+      }
+    }
+
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [setFocusMode, toggleFocusMode]);
+
   if (loading) {
     return (
       <div className="flex h-screen overflow-hidden">
@@ -131,7 +162,9 @@ function DocumentEditor() {
           open={paletteOpen}
           onOpenChange={setPaletteOpen}
         />
-        <Sidebar collapsed={sidebarCollapsed} onToggleCollapse={toggleSidebar} />
+        {!focusMode && (
+          <Sidebar collapsed={sidebarCollapsed} onToggleCollapse={toggleSidebar} />
+        )}
         <main className="flex flex-1 items-center justify-center text-muted-foreground">
           <p className="text-sm">Loading...</p>
         </main>
@@ -148,28 +181,70 @@ function DocumentEditor() {
         open={paletteOpen}
         onOpenChange={setPaletteOpen}
       />
-      <Sidebar collapsed={sidebarCollapsed} onToggleCollapse={toggleSidebar} />
+      {!focusMode && (
+        <Sidebar collapsed={sidebarCollapsed} onToggleCollapse={toggleSidebar} />
+      )}
       <main className="flex flex-1 flex-col overflow-hidden">
-        <div className="flex h-12 items-center justify-between border-b border-border px-4">
-          <input
-            ref={titleRef}
-            className="border-none bg-transparent text-sm font-medium text-foreground outline-none placeholder:text-muted-foreground"
-            value={title}
-            onChange={(e) => setTitle(e.target.value)}
-            onBlur={handleTitleBlur}
-            disabled={saving}
-            placeholder="Untitled"
-          />
+        {!focusMode && (
+          <div className="flex h-12 items-center justify-between border-b border-border px-4">
+            <input
+              ref={titleRef}
+              className="border-none bg-transparent text-sm font-medium text-foreground outline-none placeholder:text-muted-foreground"
+              value={title}
+              onChange={(e) => setTitle(e.target.value)}
+              onBlur={handleTitleBlur}
+              disabled={saving}
+              placeholder="Untitled"
+            />
+            <div className="flex items-center gap-2">
+              <label className="flex items-center gap-2 text-xs text-muted-foreground">
+                Font
+                <select
+                  className="h-8 rounded-md border border-input bg-background px-2 text-xs text-foreground"
+                  value={editorFont}
+                  onChange={(event) => setEditorFont(event.target.value as EditorFont)}
+                  aria-label="Editor font"
+                >
+                  {EDITOR_FONT_OPTIONS.map((option) => (
+                    <option key={option.value} value={option.value}>
+                      {option.label}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <Button
+                variant="ghost"
+                size="sm"
+                className="gap-1.5 text-muted-foreground"
+                onClick={toggleFocusMode}
+              >
+                <Maximize2 className="size-3.5" />
+                Focus
+              </Button>
+              <Button
+                variant="ghost"
+                size="sm"
+                className="gap-1.5 text-muted-foreground"
+                onClick={() => setShareOpen(true)}
+              >
+                <Share2 className="size-3.5" />
+                Share
+              </Button>
+            </div>
+          </div>
+        )}
+        {focusMode && (
           <Button
-            variant="ghost"
+            variant="secondary"
             size="sm"
-            className="gap-1.5 text-muted-foreground"
-            onClick={() => setShareOpen(true)}
+            className="absolute right-4 top-4 z-30 gap-1.5 shadow-md"
+            onClick={toggleFocusMode}
+            aria-label="Exit focus mode"
           >
-            <Share2 className="size-3.5" />
-            Share
+            <Minimize2 className="size-3.5" />
+            Exit focus
           </Button>
-        </div>
+        )}
         {shareOpen && (
           <ShareModal
             docId={document.id}
@@ -192,6 +267,8 @@ function DocumentEditor() {
             initialContent={content}
             onSave={handleContentSave}
             onTitleUpdate={handleRemoteTitleUpdate}
+            focusMode={focusMode}
+            fontClassName={fontClassName}
           />
         )}
       </main>

@@ -84,7 +84,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     }
 
     let bind_addr = env::var("BIND_ADDR").unwrap_or_else(|_| "0.0.0.0:8080".into());
-    tracing::info!("App origin: {:?}", &env::var("APP_ORIGIN").expect("APP_ORIGIN must be set"));
+    tracing::info!(
+        "App origin: {:?}",
+        &env::var("APP_ORIGIN").expect("APP_ORIGIN must be set")
+    );
     HttpServer::new(move || {
         let cors = Cors::default()
             .allowed_origin(&env::var("APP_ORIGIN").expect("APP_ORIGIN must be set"))

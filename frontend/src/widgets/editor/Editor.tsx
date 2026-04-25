@@ -27,6 +27,8 @@ interface EditorProps {
   initialContent: string;
   onSave: (content: string) => Promise<void>;
   onTitleUpdate?: (title: string) => void;
+  focusMode?: boolean;
+  fontClassName?: string;
 }
 
 const DEBOUNCE_MS = 500;
@@ -68,7 +70,14 @@ function dispatchEditorAction(view: EditorView, actionId: FormattingActionId) {
   return true;
 }
 
-export default function Editor({ docId, initialContent, onSave, onTitleUpdate }: EditorProps) {
+export default function Editor({
+  docId,
+  initialContent,
+  onSave,
+  onTitleUpdate,
+  focusMode = false,
+  fontClassName = "font-sans",
+}: EditorProps) {
   const collabStatus = useCollabStore((s) => s.status);
   const [container, setContainer] = useState<HTMLElement | null>(null);
   const [mode, setMode] = useState<"edit" | "preview">("edit");
@@ -217,94 +226,99 @@ export default function Editor({ docId, initialContent, onSave, onTitleUpdate }:
 
   return (
     <div className="flex flex-1 flex-col overflow-hidden">
-      <div className="flex min-h-12 items-center gap-2 border-b border-border px-2 py-2">
-        <div className="flex items-center gap-1">
-          <Tooltip>
-            <TooltipTrigger
-              render={
-                <Toggle
-                  pressed={mode === "edit"}
-                  onPressedChange={() => setMode("edit")}
-                  size="sm"
-                  className="gap-1.5 text-xs"
-                />
-              }
-            >
-              <Code2 className="size-3.5" />
-              Edit
-            </TooltipTrigger>
-            <TooltipContent>Edit mode</TooltipContent>
-          </Tooltip>
-          <Tooltip>
-            <TooltipTrigger
-              render={
-                <Toggle
-                  pressed={mode === "preview"}
-                  onPressedChange={() => setMode("preview")}
-                  size="sm"
-                  className="gap-1.5 text-xs"
-                />
-              }
-            >
-              <Eye className="size-3.5" />
-              Preview
-            </TooltipTrigger>
-            <TooltipContent>Preview mode</TooltipContent>
-          </Tooltip>
-        </div>
-
-        {mode === "edit" && (
-          <div className="flex flex-wrap items-center gap-1 border-l border-border pl-2" data-testid="editor-toolbar">
-            {EDITOR_ACTIONS.map((action) => (
-              <Tooltip key={action.id}>
-                <TooltipTrigger
-                  render={
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      size="xs"
-                      onClick={() => runToolbarAction(action.id)}
-                      aria-label={action.label}
-                    />
-                  }
-                >
-                  {action.shortLabel}
-                </TooltipTrigger>
-                <TooltipContent>{action.label} · {action.shortcut}</TooltipContent>
-              </Tooltip>
-            ))}
+      {!focusMode && (
+        <div className="flex min-h-12 items-center gap-2 border-b border-border px-2 py-2">
+          <div className="flex items-center gap-1">
+            <Tooltip>
+              <TooltipTrigger
+                render={
+                  <Toggle
+                    pressed={mode === "edit"}
+                    onPressedChange={() => setMode("edit")}
+                    size="sm"
+                    className="gap-1.5 text-xs"
+                  />
+                }
+              >
+                <Code2 className="size-3.5" />
+                Edit
+              </TooltipTrigger>
+              <TooltipContent>Edit mode</TooltipContent>
+            </Tooltip>
+            <Tooltip>
+              <TooltipTrigger
+                render={
+                  <Toggle
+                    pressed={mode === "preview"}
+                    onPressedChange={() => setMode("preview")}
+                    size="sm"
+                    className="gap-1.5 text-xs"
+                  />
+                }
+              >
+                <Eye className="size-3.5" />
+                Preview
+              </TooltipTrigger>
+              <TooltipContent>Preview mode</TooltipContent>
+            </Tooltip>
           </div>
-        )}
 
-        <div className="ml-auto flex items-center gap-2">
-          {saving && (
-            <span className="text-[11px] text-muted-foreground animate-pulse">
-              Saving...
-            </span>
+          {mode === "edit" && (
+            <div
+              className="flex flex-wrap items-center gap-1 border-l border-border pl-2"
+              data-testid="editor-toolbar"
+            >
+              {EDITOR_ACTIONS.map((action) => (
+                <Tooltip key={action.id}>
+                  <TooltipTrigger
+                    render={
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="xs"
+                        onClick={() => runToolbarAction(action.id)}
+                        aria-label={action.label}
+                      />
+                    }
+                  >
+                    {action.shortLabel}
+                  </TooltipTrigger>
+                  <TooltipContent>{action.label} · {action.shortcut}</TooltipContent>
+                </Tooltip>
+              ))}
+            </div>
           )}
-          {!saving && hasUnsavedChanges && (
-            <span className="text-[11px] text-muted-foreground">Unsaved</span>
-          )}
-          <AvatarStrip />
-          <Tooltip>
-            <TooltipTrigger
-              render={
-                <div className="flex items-center gap-1.5 rounded-md px-1.5 py-0.5 text-[11px] text-muted-foreground">
-                  <span className={`inline-block size-1.5 rounded-full ${STATUS_DOT[collabStatus]}`} />
-                  {STATUS_LABEL[collabStatus]}
-                </div>
-              }
-            />
-            <TooltipContent>
-              {collabStatus === "connected"
-                ? "Connected to server"
-                : collabStatus === "disconnected"
-                  ? "Changes saved locally — will sync when reconnected"
-                  : STATUS_LABEL[collabStatus]}
-            </TooltipContent>
-          </Tooltip>
+
+          <div className="ml-auto flex items-center gap-2">
+            {saving && (
+              <span className="text-[11px] text-muted-foreground animate-pulse">
+                Saving...
+              </span>
+            )}
+            {!saving && hasUnsavedChanges && (
+              <span className="text-[11px] text-muted-foreground">Unsaved</span>
+            )}
+            <AvatarStrip />
+            <Tooltip>
+              <TooltipTrigger
+                render={
+                  <div className="flex items-center gap-1.5 rounded-md px-1.5 py-0.5 text-[11px] text-muted-foreground">
+                    <span className={`inline-block size-1.5 rounded-full ${STATUS_DOT[collabStatus]}`} />
+                    {STATUS_LABEL[collabStatus]}
+                  </div>
+                }
+              />
+              <TooltipContent>
+                {collabStatus === "connected"
+                  ? "Connected to server"
+                  : collabStatus === "disconnected"
+                    ? "Changes saved locally — will sync when reconnected"
+                    : STATUS_LABEL[collabStatus]}
+              </TooltipContent>
+            </Tooltip>
+          </div>
         </div>
-      </div>
+      )}
 
       {mode === "preview" ? (
         <div
@@ -335,7 +349,7 @@ export default function Editor({ docId, initialContent, onSave, onTitleUpdate }:
           )}
           <div
             ref={setContainer}
-            className={cn("cm-editor-container flex-1 overflow-hidden")}
+            className={cn("cm-editor-container flex-1 overflow-hidden", fontClassName)}
             data-testid="editor-container"
           />
         </div>

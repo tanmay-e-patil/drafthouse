@@ -5,7 +5,7 @@ import { ThemeProvider } from 'next-themes'
 
 import appCss from '../styles.css?url'
 
-const THEME_INIT_SCRIPT = `(function(){try{var s=window.localStorage.getItem('theme');if(s==='light'||s==='dark'){document.documentElement.classList.add(s);document.documentElement.style.colorScheme=s}else{document.documentElement.style.colorScheme='light'}}catch(e){}})();`
+const THEME_INIT_SCRIPT = `(function(){try{var s=window.localStorage.getItem('theme');var p=window.matchMedia('(prefers-color-scheme: dark)').matches?'dark':'light';var t=s==='light'||s==='dark'?s:p;document.documentElement.classList.add(t);document.documentElement.style.colorScheme=t}catch(e){}})();`
 
 export const Route = createRootRoute({
   head: () => ({
