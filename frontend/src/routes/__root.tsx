@@ -1,4 +1,5 @@
-import { HeadContent, Outlet, Scripts, createRootRoute } from '@tanstack/react-router'
+import { HeadContent, Link, Outlet, Scripts, createRootRoute } from '@tanstack/react-router'
+import { buttonVariants } from '#/components/ui/button'
 import { Toaster } from '#/components/ui/sonner'
 import { TooltipProvider } from '#/components/ui/tooltip'
 import { ThemeProvider } from 'next-themes'
@@ -17,6 +18,7 @@ export const Route = createRootRoute({
     links: [{ rel: 'stylesheet', href: appCss }],
   }),
   component: RootLayout,
+  errorComponent: AppErrorPage,
 })
 
 function RootLayout() {
@@ -36,5 +38,21 @@ function RootLayout() {
         <Scripts />
       </body>
     </html>
+  )
+}
+
+function AppErrorPage() {
+  return (
+    <main className="flex min-h-screen items-center justify-center p-8">
+      <div className="max-w-sm text-center">
+        <h1 className="text-xl font-semibold tracking-tight">Something went wrong</h1>
+        <p className="mt-2 text-sm text-muted-foreground">
+          The page could not be loaded. Return to your dashboard and try again.
+        </p>
+        <Link className={buttonVariants({ className: 'mt-6' })} to="/">
+          Back to dashboard
+        </Link>
+      </div>
+    </main>
   )
 }

@@ -1,4 +1,5 @@
 import { useAuthStore } from "#/features/auth/store";
+import { ApiError } from "#/shared/errors";
 
 const API_BASE = import.meta.env.VITE_API_URL ?? "http://localhost:8080";
 
@@ -29,7 +30,7 @@ export interface DocumentPresenceResponse {
   data: DocumentPresencePeer[];
 }
 
-export interface ApiError {
+export interface ApiErrorResponse {
   detail: string;
 }
 
@@ -48,8 +49,8 @@ function getAuthHeaders(): Record<string, string> {
 function handleResponse<T>(res: Response, fallbackError: string): Promise<T> {
   if (!res.ok) {
     return res.json().then((data) => {
-      const err = data as ApiError;
-      throw new Error(err.detail ?? fallbackError);
+      const err = data as ApiErrorResponse;
+      throw new ApiError(err.detail ?? fallbackError, res.status);
     });
   }
   return res.json() as Promise<T>;
@@ -130,8 +131,8 @@ export async function deleteDocumentApi(id: string): Promise<void> {
 
   if (!res.ok) {
     const data = await res.json().catch(() => ({}));
-    const err = data as ApiError;
-    throw new Error(err.detail ?? "Failed to delete document");
+    const err = data as ApiErrorResponse;
+    throw new ApiError(err.detail ?? "Failed to delete document", res.status);
   }
 }
 
@@ -159,8 +160,8 @@ export async function updateDocumentContentApi(
 
   if (!res.ok) {
     const data = await res.json().catch(() => ({}));
-    const err = data as ApiError;
-    throw new Error(err.detail ?? "Failed to save document content");
+    const err = data as ApiErrorResponse;
+    throw new ApiError(err.detail ?? "Failed to save document content", res.status);
   }
 }
 
@@ -220,7 +221,7 @@ export async function revokeInviteLinkApi(
   });
   if (!res.ok) {
     const data = await res.json().catch(() => ({}));
-    throw new Error((data as ApiError).detail ?? "Failed to revoke invite link");
+    throw new ApiError((data as ApiErrorResponse).detail ?? "Failed to revoke invite link", res.status);
   }
 }
 
@@ -253,7 +254,7 @@ export async function removeMemberApi(
   });
   if (!res.ok) {
     const data = await res.json().catch(() => ({}));
-    throw new Error((data as ApiError).detail ?? "Failed to remove member");
+    throw new ApiError((data as ApiErrorResponse).detail ?? "Failed to remove member", res.status);
   }
 }
 

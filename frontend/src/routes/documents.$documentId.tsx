@@ -1,4 +1,4 @@
-import { createFileRoute, useNavigate, useParams } from "@tanstack/react-router";
+import { createFileRoute, useParams } from "@tanstack/react-router";
 import { useEffect, useState, useCallback, useRef } from "react";
 import {
   getDocumentApi,
@@ -12,15 +12,17 @@ import Sidebar from "#/components/Sidebar";
 import Editor from "#/widgets/editor/Editor";
 import { ShareModal } from "#/features/documents/ShareModal";
 import type { Document } from "#/features/documents/api";
-import { Button } from "#/components/ui/button";
+import { Button, buttonVariants } from "#/components/ui/button";
 import { CommandPalette } from "#/features/documents/CommandPalette";
 import { useDocumentHotkeys } from "#/features/documents/useDocumentHotkeys";
+import { isInaccessibleDocumentError, notifyTransientError } from "#/shared/errors";
 import {
   EDITOR_FONT_OPTIONS,
   usePreferencesStore,
   type EditorFont,
 } from "#/features/preferences/store";
 import { Maximize2, Minimize2, Share2 } from "lucide-react";
+import { Link } from "@tanstack/react-router";
 
 export const Route = createFileRoute("/documents/$documentId")({
   component: DocumentEditor,
@@ -30,13 +32,13 @@ function DocumentEditor() {
   const { documentId } = useParams({ strict: false }) as {
     documentId: string;
   };
-  const navigate = useNavigate();
   const accessToken = useAuthStore((s) => s.accessToken);
   const hydrated = useAuthStore((s) => s.hydrated);
   const hydrate = useAuthStore((s) => s.hydrate);
   const [document, setDocument] = useState<Document | null>(null);
   const [title, setTitle] = useState("");
   const [loading, setLoading] = useState(true);
+  const [inaccessibleDocument, setInaccessibleDocument] = useState(false);
   const [saving, setSaving] = useState(false);
   const [shareOpen, setShareOpen] = useState(false);
   const [content, setContent] = useState("");
@@ -62,6 +64,7 @@ function DocumentEditor() {
     setLoading(true);
     setContentLoading(true);
     try {
+      setInaccessibleDocument(false);
       const [doc, contentResp] = await Promise.all([
         getDocumentApi(documentId),
         getDocumentContentApi(documentId),
@@ -70,13 +73,17 @@ function DocumentEditor() {
       setTitle(doc.title);
       setContent(contentResp.content);
       upsertDocument(doc);
-    } catch {
-      navigate({ to: "/" });
+    } catch (error) {
+      if (isInaccessibleDocumentError(error)) {
+        setInaccessibleDocument(true);
+      } else {
+        notifyTransientError(error);
+      }
     } finally {
       setLoading(false);
       setContentLoading(false);
     }
-  }, [documentId, navigate, upsertDocument]);
+  }, [documentId, upsertDocument]);
 
   useEffect(() => {
     if (hydrated && accessToken) {
@@ -104,7 +111,8 @@ function DocumentEditor() {
       useDocumentStore
         .getState()
         .updateDocumentInList(document.id, { title: updated.title });
-    } catch {
+    } catch (error) {
+      notifyTransientError(error);
       setTitle(document.title);
     } finally {
       setSaving(false);
@@ -112,7 +120,12 @@ function DocumentEditor() {
   }
 
   async function handleContentSave(newContent: string) {
-    await updateDocumentContentApi(documentId, newContent);
+    try {
+      await updateDocumentContentApi(documentId, newContent);
+    } catch (error) {
+      notifyTransientError(error);
+      throw error;
+    }
   }
 
   function handleRemoteTitleUpdate(newTitle: string) {
@@ -161,6 +174,25 @@ function DocumentEditor() {
         )}
         <main className="flex flex-1 items-center justify-center text-muted-foreground">
           <p className="text-sm">Loading...</p>
+        </main>
+      </div>
+    );
+  }
+
+  if (inaccessibleDocument) {
+    return (
+      <div className="flex h-screen overflow-hidden">
+        <Sidebar collapsed={sidebarCollapsed} onToggleCollapse={toggleSidebar} />
+        <main className="flex flex-1 items-center justify-center p-8">
+          <div className="max-w-sm text-center">
+            <h1 className="text-xl font-semibold tracking-tight">Document unavailable</h1>
+            <p className="mt-2 text-sm text-muted-foreground">
+              This document was deleted, or you do not have access to it.
+            </p>
+            <Link className={buttonVariants({ className: "mt-6" })} to="/">
+              Back to dashboard
+            </Link>
+          </div>
         </main>
       </div>
     );

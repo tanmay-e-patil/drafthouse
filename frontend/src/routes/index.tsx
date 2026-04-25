@@ -9,6 +9,7 @@ import { CommandPalette } from "#/features/documents/CommandPalette";
 import { useDocumentHotkeys } from "#/features/documents/useDocumentHotkeys";
 import { FileText, Plus } from "lucide-react";
 import { Link } from "@tanstack/react-router";
+import { notifyTransientError } from "#/shared/errors";
 
 export const Route = createFileRoute("/")({ component: Dashboard });
 
@@ -75,7 +76,7 @@ function Dashboard() {
                   to: "/documents/$documentId",
                   params: { documentId: doc.id },
                 });
-              }).catch(() => {});
+              }).catch((error) => notifyTransientError(error));
             }}
           >
             <Plus className="size-3.5" />

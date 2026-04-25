@@ -27,6 +27,7 @@ import {
   TooltipTrigger,
 } from "#/components/ui/tooltip";
 import ThemeToggle from "#/components/ThemeToggle";
+import { notifyTransientError } from "#/shared/errors";
 import {
   FileText,
   Plus,
@@ -95,7 +96,8 @@ export default function Sidebar({ collapsed, onToggleCollapse }: SidebarProps) {
             resp.has_more,
           );
         }
-      } catch {
+      } catch (error) {
+        notifyTransientError(error);
       } finally {
         setLoading(false);
       }
@@ -160,7 +162,8 @@ export default function Sidebar({ collapsed, onToggleCollapse }: SidebarProps) {
         to: "/documents/$documentId",
         params: { documentId: doc.id },
       });
-    } catch {
+    } catch (error) {
+      notifyTransientError(error);
     }
   }
 
@@ -171,7 +174,8 @@ export default function Sidebar({ collapsed, onToggleCollapse }: SidebarProps) {
       if (params.documentId === doc.id) {
         navigate({ to: "/" });
       }
-    } catch {
+    } catch (error) {
+      notifyTransientError(error);
     }
   }
 
@@ -289,6 +293,15 @@ export default function Sidebar({ collapsed, onToggleCollapse }: SidebarProps) {
           <div className="flex flex-col items-center justify-center py-12 text-center text-muted-foreground">
             <FileText className="mb-2 size-8 opacity-40" />
             <p className="text-xs">No documents yet</p>
+            <Button
+              variant="outline"
+              size="sm"
+              className="mt-3 gap-1.5"
+              onClick={handleCreate}
+            >
+              <Plus className="size-3.5" />
+              Create document
+            </Button>
           </div>
         )}
         {documents.map((doc) => (

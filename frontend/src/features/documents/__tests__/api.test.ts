@@ -16,6 +16,7 @@ import {
   updateMemberRoleApi,
 } from "../api";
 import { useAuthStore } from "#/features/auth/store";
+import { ApiError } from "#/shared/errors";
 
 const mockDoc = {
   id: "123e4567-e89b-12d3-a456-426614174000",
@@ -156,6 +157,21 @@ describe("getDocumentApi", () => {
     await expect(getDocumentApi("bad-id")).rejects.toThrow(
       "Document not found"
     );
+  });
+
+  it("preserves the response status on errors", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue({
+        ok: false,
+        status: 404,
+        json: async () => ({ detail: "Document not found" }),
+      })
+    );
+
+    await expect(getDocumentApi("bad-id")).rejects.toMatchObject({
+      status: 404,
+    } satisfies Partial<ApiError>);
   });
 });
 
