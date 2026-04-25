@@ -43,7 +43,19 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Trigger backend deployment
-        run: curl -X POST "${{ secrets.DOKPLOY_BACKEND_WEBHOOK }}"
+        env:
+          DOKPLOY_TOKEN: ${{ secrets.DOKPLOY_API_TOKEN }}
+          DOKPLOY_URL: ${{ secrets.DOKPLOY_URL }}
+          APP_ID: ${{ secrets.DOKPLOY_BACKEND_APP_ID }}
+        run: |
+          curl -X POST "${DOKPLOY_URL}/api/deploy?appId=${APP_ID}" \
+            -H "Authorization: Bearer ${DOKPLOY_TOKEN}"
 
       - name: Trigger frontend deployment
-        run: curl -X POST "${{ secrets.DOKPLOY_FRONTEND_WEBHOOK }}"
+        env:
+          DOKPLOY_TOKEN: ${{ secrets.DOKPLOY_API_TOKEN }}
+          DOKPLOY_URL: ${{ secrets.DOKPLOY_URL }}
+          APP_ID: ${{ secrets.DOKPLOY_FRONTEND_APP_ID }}
+        run: |
+          curl -X POST "${DOKPLOY_URL}/api/deploy?appId=${APP_ID}" \
+            -H "Authorization: Bearer ${DOKPLOY_TOKEN}"
