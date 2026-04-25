@@ -61,6 +61,7 @@ services:
       SCYLLA_KEYSPACE: drafthouse
       BIND_ADDR: 0.0.0.0:8080
       APP_ORIGIN: ${APP_ORIGIN}
+      RESEND_API_KEY: ${RESEND_API_KEY}
     depends_on:
       migrate-pg:
         condition: service_completed_successfully
