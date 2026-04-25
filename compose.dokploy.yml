@@ -25,7 +25,7 @@ services:
       retries: 30
   migrate-pg:
     image: ghcr.io/tanmay-e-patil/drafthouse:latest
-    command: /app/migrate-pg
+    entrypoint: ["/app/migrate-pg"]
     environment:
       DATABASE_URL: postgres://${POSTGRES_USER:-drafthouse}:${POSTGRES_PASSWORD:-drafthouse}@postgres:5432/${POSTGRES_DB:-drafthouse}
       MIGRATIONS_DIR: /app/migrations/postgres
@@ -36,7 +36,7 @@ services:
 
   migrate-scylla:
     image: ghcr.io/tanmay-e-patil/drafthouse:latest
-    command: /app/migrate-scylla
+    entrypoint: ["/app/migrate-scylla"]
     environment:
       SCYLLA_NODES: scylla:9042
       SCYLLA_KEYSPACE: drafthouse
