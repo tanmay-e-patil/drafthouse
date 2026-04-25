@@ -19,7 +19,7 @@ services:
     volumes:
       - scylla_data:/var/lib/scylla
     healthcheck:
-      test: ["CMD-SHELL", "nodetool status || exit 1"]
+      test: ["CMD-SHELL", "cqlsh 127.0.0.1 9042 -e 'DESCRIBE KEYSPACES' >/dev/null 2>&1"]
       interval: 10s
       timeout: 10s
       retries: 15
