@@ -43,7 +43,15 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Trigger backend deployment
-        run: curl -X POST "${{ secrets.DOKPLOY_BACKEND_WEBHOOK }}"
+        run: |
+          curl -X POST "${{ secrets.DOKPLOY_BACKEND_WEBHOOK }}" \
+            -H "Content-Type: application/json" \
+            -H "X-Github-Event: push" \
+            -d '{"ref": "refs/heads/main"}'
 
       - name: Trigger frontend deployment
-        run: curl -X POST "${{ secrets.DOKPLOY_FRONTEND_WEBHOOK }}"
+        run: |
+          curl -X POST "${{ secrets.DOKPLOY_FRONTEND_WEBHOOK }}" \
+            -H "Content-Type: application/json" \
+            -H "X-Github-Event: push" \
+            -d '{"ref": "refs/heads/main"}'
