@@ -99,8 +99,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             .max_age(3600);
 
         App::new()
-            .wrap(TracingLogger::<AppRootSpanBuilder>::new())
             .wrap(cors)
+            .wrap(TracingLogger::<AppRootSpanBuilder>::new())
             .configure(|cfg| auth_networking::routes::configure(cfg, pg_dal.clone()))
             .configure(|cfg| {
                 documents_networking::routes::configure(cfg, pg_dal.clone(), doc_store.clone())
