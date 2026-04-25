@@ -5,6 +5,7 @@ import { useDocumentHotkeys } from "../useDocumentHotkeys";
 function TestHarness(props: {
   onOpenPalette: () => void;
   onToggleSidebar: () => void;
+  onToggleFocusMode?: () => void;
 }) {
   useDocumentHotkeys(props);
   return null;
@@ -44,4 +45,52 @@ describe("useDocumentHotkeys", () => {
     expect(onToggleSidebar).toHaveBeenCalledTimes(1);
     expect(onOpenPalette).not.toHaveBeenCalled();
   });
+
+  it("toggles focus mode on Cmd/Ctrl+Shift+Period", () => {
+    const onOpenPalette = vi.fn();
+    const onToggleSidebar = vi.fn();
+    const onToggleFocusMode = vi.fn();
+
+    render(
+      <TestHarness
+        onOpenPalette={onOpenPalette}
+        onToggleSidebar={onToggleSidebar}
+        onToggleFocusMode={onToggleFocusMode}
+      />,
+    );
+
+    window.dispatchEvent(
+      new KeyboardEvent("keydown", {
+        key: ">",
+        code: "Period",
+        metaKey: true,
+        shiftKey: true,
+      }),
+    );
+
+    expect(onToggleFocusMode).toHaveBeenCalledTimes(1);
+    expect(onOpenPalette).not.toHaveBeenCalled();
+    expect(onToggleSidebar).not.toHaveBeenCalled();
+  });
+
+  it("does not use Cmd/Ctrl+Shift+F because browsers reserve it", () => {
+    const onOpenPalette = vi.fn();
+    const onToggleSidebar = vi.fn();
+    const onToggleFocusMode = vi.fn();
+
+    render(
+      <TestHarness
+        onOpenPalette={onOpenPalette}
+        onToggleSidebar={onToggleSidebar}
+        onToggleFocusMode={onToggleFocusMode}
+      />,
+    );
+
+    window.dispatchEvent(
+      new KeyboardEvent("keydown", { key: "F", metaKey: true, shiftKey: true }),
+    );
+
+    expect(onToggleFocusMode).not.toHaveBeenCalled();
+  });
+
 });

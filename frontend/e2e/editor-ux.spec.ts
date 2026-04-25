@@ -43,7 +43,7 @@ test.describe("Editor UX", () => {
     await login(page);
     await createDocument(page, "Focus mode test");
 
-    await page.getByRole("button", { name: "Focus" }).click();
+    await page.keyboard.press(`${MOD}+Shift+.`);
 
     await expect(page.getByText("Drafthouse")).toHaveCount(0);
     await expect(page.getByTestId("editor-toolbar")).toHaveCount(0);

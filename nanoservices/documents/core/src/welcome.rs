@@ -12,10 +12,19 @@ Your collaborative markdown editor. Here's everything you need to get started.
 
 ## Keyboard Shortcuts
 
+Global shortcuts are chosen to avoid common browser and system shortcuts like find, reload, print, save, and fullscreen.
+
 | Shortcut | Action |
 |---|---|
 | `Cmd/Ctrl+K` | Command palette |
-| `Cmd/Ctrl+Shift+\` | Toggle sidebar |
+| `Cmd/Ctrl+Shift+.` | Focus mode |
+| `Esc` | Exit focus mode |
+| `Cmd/Ctrl+Shift+Backslash` | Toggle sidebar |
+
+Editor formatting shortcuts are scoped to the editor and follow standard writing-app conventions.
+
+| Shortcut | Action |
+|---|---|
 | `Cmd/Ctrl+B` | Bold |
 | `Cmd/Ctrl+I` | Italic |
 | `Cmd/Ctrl+E` | Inline code |
@@ -189,6 +198,27 @@ mod tests {
         assert!(content.contains("Welcome to Drafthouse"));
         assert!(content.contains("Keyboard Shortcuts"));
         assert!(content.contains("Markdown Tips"));
+    }
+
+    #[tokio::test]
+    async fn welcome_document_lists_current_global_shortcuts() {
+        let dal = MockDal::new();
+        let doc = create_welcome_document(&dal, Uuid::new_v4()).await.unwrap();
+        let content = dal.content.lock().unwrap().get(&doc.id).cloned().unwrap();
+
+        assert!(content.contains("`Cmd/Ctrl+K` | Command palette"));
+        assert!(content.contains("`Cmd/Ctrl+Shift+.` | Focus mode"));
+        assert!(content.contains("`Esc` | Exit focus mode"));
+        assert!(content.contains("`Cmd/Ctrl+Shift+Backslash` | Toggle sidebar"));
+    }
+
+    #[tokio::test]
+    async fn welcome_document_does_not_promote_reserved_browser_shortcuts() {
+        let dal = MockDal::new();
+        let doc = create_welcome_document(&dal, Uuid::new_v4()).await.unwrap();
+        let content = dal.content.lock().unwrap().get(&doc.id).cloned().unwrap();
+
+        assert!(!content.contains("`Cmd/Ctrl+Shift+F`"));
     }
 
     #[tokio::test]

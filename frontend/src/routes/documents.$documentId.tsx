@@ -134,17 +134,11 @@ function DocumentEditor() {
   useDocumentHotkeys({
     onOpenPalette: openPalette,
     onToggleSidebar: toggleSidebar,
+    onToggleFocusMode: toggleFocusMode,
   });
 
   useEffect(() => {
     function handleKeyDown(event: KeyboardEvent) {
-      const key = event.key.toLowerCase();
-      if ((event.metaKey || event.ctrlKey) && event.shiftKey && key === "f") {
-        event.preventDefault();
-        toggleFocusMode();
-        return;
-      }
-
       if (event.key === "Escape") {
         setFocusMode(false);
       }
@@ -152,7 +146,7 @@ function DocumentEditor() {
 
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [setFocusMode, toggleFocusMode]);
+  }, [setFocusMode]);
 
   if (loading) {
     return (
@@ -217,6 +211,7 @@ function DocumentEditor() {
                 size="sm"
                 className="gap-1.5 text-muted-foreground"
                 onClick={toggleFocusMode}
+                title="Toggle focus mode (Cmd/Ctrl+Shift+.)"
               >
                 <Maximize2 className="size-3.5" />
                 Focus
