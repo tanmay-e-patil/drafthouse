@@ -1,6 +1,7 @@
 import { createFileRoute, useSearch } from "@tanstack/react-router";
 import { useState, useEffect } from "react";
 import { Link } from "@tanstack/react-router";
+import { AuthLayout } from "#/features/auth/AuthLayout";
 import {
   Card,
   CardDescription,
@@ -58,7 +59,11 @@ function VerifyEmail() {
 
   if (loading) {
     return (
-      <main className="flex h-screen items-center justify-center p-4">
+      <AuthLayout
+        eyebrow="Verifying account"
+        title="Setting up secure access to your drafts."
+        description="Drafthouse verifies email ownership before opening private collaborative documents."
+      >
         <Card className="w-full max-w-sm">
           <CardHeader>
             <CardTitle className="text-lg">Verifying your email...</CardTitle>
@@ -67,13 +72,17 @@ function VerifyEmail() {
             </CardDescription>
           </CardHeader>
         </Card>
-      </main>
+      </AuthLayout>
     );
   }
 
   if (success) {
     return (
-      <main className="flex h-screen items-center justify-center p-4">
+      <AuthLayout
+        eyebrow="Email verified"
+        title="Your Drafthouse workspace is ready."
+        description="Sign in to create your welcome document and start collaborating in Markdown."
+      >
         <Card className="w-full max-w-sm">
           <CardHeader>
             <CardTitle className="text-lg">Email verified</CardTitle>
@@ -90,12 +99,16 @@ function VerifyEmail() {
             </Link>
           </CardFooter>
         </Card>
-      </main>
+      </AuthLayout>
     );
   }
 
   return (
-    <main className="flex h-screen items-center justify-center p-4">
+    <AuthLayout
+      eyebrow="Verification failed"
+      title="The link did not open your workspace."
+      description="Verification links can expire. Request a new email to continue creating your Drafthouse account."
+    >
       <Card className="w-full max-w-sm">
         <CardHeader>
           <CardTitle className="text-lg">Verification failed</CardTitle>
@@ -113,6 +126,6 @@ function VerifyEmail() {
           </Link>
         </CardFooter>
       </Card>
-    </main>
+    </AuthLayout>
   );
 }

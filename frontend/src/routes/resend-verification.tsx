@@ -3,6 +3,7 @@ import { useState, type FormEvent } from "react";
 import { Button } from "#/components/ui/button";
 import { Input } from "#/components/ui/input";
 import { Label } from "#/components/ui/label";
+import { AuthLayout } from "#/features/auth/AuthLayout";
 import {
   Card,
   CardContent,
@@ -58,7 +59,11 @@ function ResendVerification() {
 
   if (success) {
     return (
-      <main className="flex h-screen items-center justify-center p-4">
+      <AuthLayout
+        eyebrow="Verification sent"
+        title="One more click before your writing room opens."
+        description="Verification keeps shared drafts limited to confirmed Drafthouse accounts."
+      >
         <Card className="w-full max-w-sm">
           <CardHeader>
             <CardTitle className="text-lg">Check your email</CardTitle>
@@ -77,12 +82,16 @@ function ResendVerification() {
             </Link>
           </CardFooter>
         </Card>
-      </main>
+      </AuthLayout>
     );
   }
 
   return (
-    <main className="flex h-screen items-center justify-center p-4">
+    <AuthLayout
+      eyebrow="Verify your account"
+      title="Request a fresh verification link."
+      description="Drafthouse requires verified email addresses before users can access private documents."
+    >
       <Card className="w-full max-w-sm">
         <CardHeader>
           <CardTitle className="text-lg">Resend verification email</CardTitle>
@@ -130,6 +139,6 @@ function ResendVerification() {
           </CardFooter>
         </form>
       </Card>
-    </main>
+    </AuthLayout>
   );
 }

@@ -4,6 +4,7 @@ import { resetPasswordApi } from "#/features/auth/api";
 import { Button } from "#/components/ui/button";
 import { Input } from "#/components/ui/input";
 import { Label } from "#/components/ui/label";
+import { AuthLayout } from "#/features/auth/AuthLayout";
 import {
   Card,
   CardContent,
@@ -56,7 +57,11 @@ function ResetPassword() {
 
   if (success) {
     return (
-      <main className="flex h-screen items-center justify-center p-4">
+      <AuthLayout
+        eyebrow="Password updated"
+        title="Your account is ready for the next draft."
+        description="Sign in with the new password to return to your private collaborative workspace."
+      >
         <Card className="w-full max-w-sm">
           <CardHeader>
             <CardTitle className="text-lg">Password reset</CardTitle>
@@ -73,12 +78,16 @@ function ResetPassword() {
             </Link>
           </CardFooter>
         </Card>
-      </main>
+      </AuthLayout>
     );
   }
 
   return (
-    <main className="flex h-screen items-center justify-center p-4">
+    <AuthLayout
+      eyebrow="Secure reset"
+      title="Choose a new password for your Drafthouse account."
+      description="A fresh password protects your documents, invite links, and team collaboration sessions."
+    >
       <Card className="w-full max-w-sm">
         <CardHeader>
           <CardTitle className="text-lg">Reset password</CardTitle>
@@ -140,6 +149,6 @@ function ResetPassword() {
           </CardFooter>
         </form>
       </Card>
-    </main>
+    </AuthLayout>
   );
 }

@@ -3,6 +3,7 @@ import { useState, type FormEvent } from "react";
 import { Button } from "#/components/ui/button";
 import { Input } from "#/components/ui/input";
 import { Label } from "#/components/ui/label";
+import { AuthLayout } from "#/features/auth/AuthLayout";
 import {
   Card,
   CardContent,
@@ -57,7 +58,11 @@ function Register() {
 
   if (success) {
     return (
-      <main className="flex h-screen items-center justify-center p-4">
+      <AuthLayout
+        eyebrow="Welcome to Drafthouse"
+        title="One verification step before your first shared draft."
+        description="Confirm your email to unlock private markdown workspaces, live collaboration, and secure sharing."
+      >
         <Card className="w-full max-w-sm">
           <CardHeader>
             <CardTitle className="text-lg">Check your email</CardTitle>
@@ -76,12 +81,16 @@ function Register() {
             </Link>
           </CardFooter>
         </Card>
-      </main>
+      </AuthLayout>
     );
   }
 
   return (
-    <main className="flex h-screen items-center justify-center p-4">
+    <AuthLayout
+      eyebrow="Start a private writing room"
+      title="Create a home for notes, specs, and product thinking."
+      description="Your first verified login creates a welcome document with shortcuts and examples so you can start drafting immediately."
+    >
       <Card className="w-full max-w-sm">
         <CardHeader>
           <CardTitle className="text-lg">Create your account</CardTitle>
@@ -147,6 +156,6 @@ function Register() {
           </CardFooter>
         </form>
       </Card>
-    </main>
+    </AuthLayout>
   );
 }

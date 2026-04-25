@@ -5,6 +5,7 @@ import { useAuthStore } from "#/features/auth/store";
 import { Button } from "#/components/ui/button";
 import { Input } from "#/components/ui/input";
 import { Label } from "#/components/ui/label";
+import { AuthLayout } from "#/features/auth/AuthLayout";
 import {
   Card,
   CardContent,
@@ -57,7 +58,7 @@ function Login() {
   }
 
   return (
-    <main className="flex h-screen items-center justify-center p-4">
+    <AuthLayout>
       <Card className="w-full max-w-sm">
         <CardHeader>
           <CardTitle className="text-lg">Sign in</CardTitle>
@@ -123,6 +124,6 @@ function Login() {
           </CardFooter>
         </form>
       </Card>
-    </main>
+    </AuthLayout>
   );
 }

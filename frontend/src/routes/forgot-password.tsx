@@ -4,6 +4,7 @@ import { forgotPasswordApi } from "#/features/auth/api";
 import { Button } from "#/components/ui/button";
 import { Input } from "#/components/ui/input";
 import { Label } from "#/components/ui/label";
+import { AuthLayout } from "#/features/auth/AuthLayout";
 import {
   Card,
   CardContent,
@@ -41,7 +42,11 @@ function ForgotPassword() {
 
   if (success) {
     return (
-      <main className="flex h-screen items-center justify-center p-4">
+      <AuthLayout
+        eyebrow="Password recovery"
+        title="Check your inbox, then return to your writing room."
+        description="Reset links are short-lived so your account and private drafts stay protected."
+      >
         <Card className="w-full max-w-sm">
           <CardHeader>
             <CardTitle className="text-lg">Check your email</CardTitle>
@@ -59,12 +64,16 @@ function ForgotPassword() {
             </Link>
           </CardFooter>
         </Card>
-      </main>
+      </AuthLayout>
     );
   }
 
   return (
-    <main className="flex h-screen items-center justify-center p-4">
+    <AuthLayout
+      eyebrow="Password recovery"
+      title="Get back to your drafts securely."
+      description="Enter your account email and Drafthouse will send a reset link if the account exists."
+    >
       <Card className="w-full max-w-sm">
         <CardHeader>
           <CardTitle className="text-lg">Forgot password</CardTitle>
@@ -112,6 +121,6 @@ function ForgotPassword() {
           </CardFooter>
         </form>
       </Card>
-    </main>
+    </AuthLayout>
   );
 }
