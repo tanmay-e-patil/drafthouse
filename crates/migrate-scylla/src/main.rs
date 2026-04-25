@@ -1,6 +1,7 @@
 use anyhow::{Context, Result};
 use scylla::{Session, SessionBuilder};
 use std::{env, fs, path::PathBuf};
+use tokio::time::{Duration, sleep};
 
 #[tokio::main]
 async fn main() -> Result<()> {
@@ -9,11 +10,7 @@ async fn main() -> Result<()> {
     let migrations_dir =
         env::var("SCYLLA_MIGRATIONS_DIR").unwrap_or_else(|_| "migrations/scylla".into());
 
-    let session: Session = SessionBuilder::new()
-        .known_node(&nodes)
-        .build()
-        .await
-        .context("connect to ScyllaDB")?;
+    let session: Session = connect_with_retry(&nodes).await?;
 
     bootstrap_tracking(&session, &keyspace).await?;
 
@@ -48,6 +45,32 @@ async fn main() -> Result<()> {
 
     println!("Scylla migrations complete.");
     Ok(())
+}
+
+async fn connect_with_retry(nodes: &str) -> Result<Session> {
+    const MAX_ATTEMPTS: usize = 30;
+    const RETRY_DELAY: Duration = Duration::from_secs(2);
+
+    let mut last_err = None;
+
+    for attempt in 1..=MAX_ATTEMPTS {
+        match SessionBuilder::new().known_node(nodes).build().await {
+            Ok(session) => return Ok(session),
+            Err(err) if attempt < MAX_ATTEMPTS => {
+                eprintln!(
+                    "Scylla connection attempt {attempt}/{MAX_ATTEMPTS} failed: {err}. Retrying in {}s.",
+                    RETRY_DELAY.as_secs()
+                );
+                last_err = Some(err);
+                sleep(RETRY_DELAY).await;
+            }
+            Err(err) => return Err(err).context("connect to ScyllaDB"),
+        }
+    }
+
+    Err(last_err
+        .context("connect to ScyllaDB after retries")
+        .unwrap_err())
 }
 
 async fn bootstrap_tracking(session: &Session, keyspace: &str) -> Result<()> {
