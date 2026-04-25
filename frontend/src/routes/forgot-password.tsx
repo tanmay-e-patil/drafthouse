@@ -72,7 +72,7 @@ function ForgotPassword() {
             Enter your email and we&apos;ll send you a reset link
           </CardDescription>
         </CardHeader>
-        <form onSubmit={handleSubmit}>
+        <form onSubmit={handleSubmit} className="space-y-4">
           <CardContent className="space-y-3">
             {error && (
               <p className="rounded-md bg-destructive/10 px-3 py-2 text-xs text-destructive">

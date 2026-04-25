@@ -65,7 +65,7 @@ function Login() {
             Enter your credentials to access Drafthouse
           </CardDescription>
         </CardHeader>
-        <form onSubmit={handleSubmit}>
+        <form onSubmit={handleSubmit} className="space-y-4">
           <CardContent className="space-y-3">
             {error && (
               <p className="rounded-md bg-destructive/10 px-3 py-2 text-xs text-destructive">
@@ -105,6 +105,12 @@ function Login() {
             <Button type="submit" className="w-full" size="sm" disabled={loading}>
               {loading ? "Signing in..." : "Sign in"}
             </Button>
+            <Link
+              to="/forgot-password"
+              className="text-xs text-muted-foreground underline-offset-4 hover:underline"
+            >
+              Forgot password?
+            </Link>
             <p className="text-xs text-muted-foreground">
               Don&apos;t have an account?{" "}
               <Link
