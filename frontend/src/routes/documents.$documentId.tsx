@@ -1,5 +1,5 @@
 import { createFileRoute, useParams } from "@tanstack/react-router";
-import { useEffect, useState, useCallback, useRef } from "react";
+import { useEffect, useState, useCallback, useRef, lazy, Suspense } from "react";
 import {
   getDocumentApi,
   updateDocumentApi,
@@ -8,12 +8,8 @@ import {
 } from "#/features/documents/api";
 import { useDocumentStore } from "#/features/documents/store";
 import { useAuthStore } from "#/features/auth/store";
-import Sidebar from "#/components/Sidebar";
-import Editor from "#/widgets/editor/Editor";
-import { ShareModal } from "#/features/documents/ShareModal";
 import type { Document } from "#/features/documents/api";
 import { Button, buttonVariants } from "#/components/ui/button";
-import { CommandPalette } from "#/features/documents/CommandPalette";
 import { useDocumentHotkeys } from "#/features/documents/useDocumentHotkeys";
 import { isInaccessibleDocumentError, notifyTransientError } from "#/shared/errors";
 import {
@@ -23,6 +19,19 @@ import {
 } from "#/features/preferences/store";
 import { Maximize2, Minimize2, Share2 } from "lucide-react";
 import { Link } from "@tanstack/react-router";
+
+const LazySidebar = lazy(() => import("#/components/Sidebar"));
+const LazyEditor = lazy(() => import("#/widgets/editor/Editor"));
+const LazyCommandPalette = lazy(() =>
+  import("#/features/documents/CommandPalette").then((m) => ({
+    default: m.CommandPalette,
+  }))
+);
+const LazyShareModal = lazy(() =>
+  import("#/features/documents/ShareModal").then((m) => ({
+    default: m.ShareModal,
+  }))
+);
 
 export const Route = createFileRoute("/documents/$documentId")({
   component: DocumentEditor,
@@ -164,13 +173,17 @@ function DocumentEditor() {
   if (loading) {
     return (
       <div className="flex h-screen overflow-hidden bg-background">
-        <CommandPalette
-          currentDocumentId={documentId}
-          open={paletteOpen}
-          onOpenChange={setPaletteOpen}
-        />
+        <Suspense fallback={null}>
+          <LazyCommandPalette
+            currentDocumentId={documentId}
+            open={paletteOpen}
+            onOpenChange={setPaletteOpen}
+          />
+        </Suspense>
         {!focusMode && (
-          <Sidebar collapsed={sidebarCollapsed} onToggleCollapse={toggleSidebar} />
+          <Suspense fallback={<aside className="h-screen w-60 border-r border-sidebar-border bg-sidebar/95" />}>
+            <LazySidebar collapsed={sidebarCollapsed} onToggleCollapse={toggleSidebar} />
+          </Suspense>
         )}
         <main className="flex flex-1 items-center justify-center text-muted-foreground">
           <p className="text-sm">Loading...</p>
@@ -182,7 +195,9 @@ function DocumentEditor() {
   if (inaccessibleDocument) {
     return (
       <div className="flex h-screen overflow-hidden bg-background">
-        <Sidebar collapsed={sidebarCollapsed} onToggleCollapse={toggleSidebar} />
+        <Suspense fallback={<aside className="h-screen w-60 border-r border-sidebar-border bg-sidebar/95" />}>
+          <LazySidebar collapsed={sidebarCollapsed} onToggleCollapse={toggleSidebar} />
+        </Suspense>
         <main className="flex flex-1 items-center justify-center p-8">
           <div className="ambient-panel max-w-sm rounded-3xl border border-border/80 p-8 text-center shadow-lg">
             <h1 className="font-heading text-xl font-semibold tracking-tight">Document unavailable</h1>
@@ -202,13 +217,17 @@ function DocumentEditor() {
 
   return (
     <div className="flex h-screen overflow-hidden bg-background">
-      <CommandPalette
-        currentDocumentId={documentId}
-        open={paletteOpen}
-        onOpenChange={setPaletteOpen}
-      />
+      <Suspense fallback={null}>
+        <LazyCommandPalette
+          currentDocumentId={documentId}
+          open={paletteOpen}
+          onOpenChange={setPaletteOpen}
+        />
+      </Suspense>
       {!focusMode && (
-        <Sidebar collapsed={sidebarCollapsed} onToggleCollapse={toggleSidebar} />
+        <Suspense fallback={<aside className="h-screen w-60 border-r border-sidebar-border bg-sidebar/95" />}>
+          <LazySidebar collapsed={sidebarCollapsed} onToggleCollapse={toggleSidebar} />
+        </Suspense>
       )}
       <main className="flex flex-1 flex-col overflow-hidden bg-background/65">
         {!focusMode && (
@@ -273,30 +292,34 @@ function DocumentEditor() {
           </Button>
         )}
         {shareOpen && (
-          <ShareModal
-            docId={document.id}
-            docTitle={title}
-            isPublic={document.is_public}
-            onClose={() => setShareOpen(false)}
-            onPublicToggle={(isPublic) => {
-              setDocument({ ...document, is_public: isPublic });
-            }}
-          />
+          <Suspense fallback={null}>
+            <LazyShareModal
+              docId={document.id}
+              docTitle={title}
+              isPublic={document.is_public}
+              onClose={() => setShareOpen(false)}
+              onPublicToggle={(isPublic) => {
+                setDocument({ ...document, is_public: isPublic });
+              }}
+            />
+          </Suspense>
         )}
         {contentLoading ? (
           <div className="flex flex-1 items-center justify-center text-muted-foreground">
             <p className="text-sm">Loading editor...</p>
           </div>
         ) : (
-          <Editor
-            key={documentId}
-            docId={documentId}
-            initialContent={content}
-            onSave={handleContentSave}
-            onTitleUpdate={handleRemoteTitleUpdate}
-            focusMode={focusMode}
-            fontClassName={fontClassName}
-          />
+          <Suspense fallback={<div className="flex flex-1 items-center justify-center text-muted-foreground"><p className="text-sm">Loading editor...</p></div>}>
+            <LazyEditor
+              key={documentId}
+              docId={documentId}
+              initialContent={content}
+              onSave={handleContentSave}
+              onTitleUpdate={handleRemoteTitleUpdate}
+              focusMode={focusMode}
+              fontClassName={fontClassName}
+            />
+          </Suspense>
         )}
       </main>
     </div>

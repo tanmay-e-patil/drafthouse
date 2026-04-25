@@ -1,11 +1,9 @@
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
-import { useEffect, useState, useCallback, type ReactNode } from "react";
+import { useEffect, useState, useCallback, lazy, Suspense, type ReactNode } from "react";
 import { createDocumentApi } from "#/features/documents/api";
 import { useDocumentStore } from "#/features/documents/store";
 import { useAuthStore } from "#/features/auth/store";
-import Sidebar from "#/components/Sidebar";
 import { Button } from "#/components/ui/button";
-import { CommandPalette } from "#/features/documents/CommandPalette";
 import { useDocumentHotkeys } from "#/features/documents/useDocumentHotkeys";
 import {
   ArrowRight,
@@ -23,20 +21,38 @@ import {
 import { Link } from "@tanstack/react-router";
 import { notifyTransientError } from "#/shared/errors";
 
-export const Route = createFileRoute("/")({ component: Dashboard });
+const LazySidebar = lazy(() => import("#/components/Sidebar"));
+const LazyCommandPalette = lazy(() =>
+  import("#/features/documents/CommandPalette").then((m) => ({
+    default: m.CommandPalette,
+  }))
+);
 
-function Dashboard() {
-  const navigate = useNavigate();
+export const Route = createFileRoute("/")({ component: HomePage });
+
+function HomePage() {
   const accessToken = useAuthStore((s) => s.accessToken);
   const hydrated = useAuthStore((s) => s.hydrated);
   const hydrate = useAuthStore((s) => s.hydrate);
-  const { prependDocument } = useDocumentStore();
-  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
-  const [paletteOpen, setPaletteOpen] = useState(false);
 
   useEffect(() => {
     hydrate();
   }, [hydrate]);
+
+  if (!hydrated) return null;
+
+  if (!accessToken) {
+    return <LandingPage />;
+  }
+
+  return <Dashboard />;
+}
+
+function Dashboard() {
+  const navigate = useNavigate();
+  const { prependDocument } = useDocumentStore();
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  const [paletteOpen, setPaletteOpen] = useState(false);
 
   const toggleSidebar = useCallback(() => setSidebarCollapsed((v) => !v), []);
   const openPalette = useCallback(() => setPaletteOpen(true), []);
@@ -46,16 +62,21 @@ function Dashboard() {
     onToggleSidebar: toggleSidebar,
   });
 
-  if (!hydrated) return null;
-
-  if (!accessToken) {
-    return <LandingPage />;
-  }
-
   return (
     <div className="flex h-screen overflow-hidden">
-      <CommandPalette open={paletteOpen} onOpenChange={setPaletteOpen} />
-      <Sidebar collapsed={sidebarCollapsed} onToggleCollapse={toggleSidebar} />
+      <Suspense fallback={null}>
+        <LazyCommandPalette open={paletteOpen} onOpenChange={setPaletteOpen} />
+      </Suspense>
+      <Suspense
+        fallback={
+          <aside className="h-screen w-60 border-r border-sidebar-border bg-sidebar/95" />
+        }
+      >
+        <LazySidebar
+          collapsed={sidebarCollapsed}
+          onToggleCollapse={toggleSidebar}
+        />
+      </Suspense>
       <main className="flex flex-1 flex-col overflow-hidden">
         <div className="flex h-12 items-center justify-between border-b border-border px-4">
           <div className="flex items-center gap-2 text-sm text-muted-foreground">
@@ -67,13 +88,15 @@ function Dashboard() {
             size="sm"
             className="gap-1.5 text-muted-foreground"
             onClick={() => {
-              createDocumentApi().then((doc) => {
-                prependDocument(doc);
-                navigate({
-                  to: "/documents/$documentId",
-                  params: { documentId: doc.id },
-                });
-              }).catch((error) => notifyTransientError(error));
+              createDocumentApi()
+                .then((doc) => {
+                  prependDocument(doc);
+                  navigate({
+                    to: "/documents/$documentId",
+                    params: { documentId: doc.id },
+                  });
+                })
+                .catch((error) => notifyTransientError(error));
             }}
           >
             <Plus className="size-3.5" />
@@ -85,7 +108,11 @@ function Dashboard() {
             <FileText className="mx-auto mb-3 size-10 opacity-30" />
             <p className="text-sm">Select a document or create a new one</p>
             <p className="mt-1 text-xs text-muted-foreground/60">
-              Press <kbd className="rounded border border-border bg-muted px-1 py-0.5 text-[10px] font-mono">⌘ K</kbd> to search your documents
+              Press{" "}
+              <kbd className="rounded border border-border bg-muted px-1 py-0.5 text-[10px] font-mono">
+                ⌘ K
+              </kbd>{" "}
+              to search your documents
             </p>
           </div>
         </div>
@@ -100,17 +127,29 @@ function LandingPage() {
       <section className="relative isolate border-b border-border/80">
         <div className="absolute inset-0 -z-10 bg-[radial-gradient(circle_at_18%_14%,oklch(0.82_0.12_72_/_0.5),transparent_34%),radial-gradient(circle_at_84%_6%,oklch(0.81_0.09_138_/_0.36),transparent_32%),linear-gradient(180deg,oklch(0.99_0.015_88_/_0.65),oklch(0.95_0.03_90_/_0.85))] dark:bg-[radial-gradient(circle_at_18%_14%,oklch(0.52_0.13_72_/_0.28),transparent_34%),radial-gradient(circle_at_84%_6%,oklch(0.38_0.09_138_/_0.24),transparent_32%),linear-gradient(180deg,oklch(0.2_0.035_74_/_0.78),oklch(0.16_0.03_73_/_0.95))]" />
         <header className="mx-auto flex max-w-7xl items-center justify-between px-5 py-5 sm:px-8">
-          <Link to="/" className="flex items-center gap-2 font-semibold tracking-tight">
+          <Link
+            to="/"
+            className="flex items-center gap-2 font-semibold tracking-tight"
+          >
             <span className="brand-mark flex size-8 items-center justify-center rounded-xl">
               <FileText className="size-4" />
             </span>
             Drafthouse
           </Link>
           <nav className="flex items-center gap-2">
-            <Button variant="ghost" size="sm" nativeButton={false} render={<Link to="/login" />}>
+            <Button
+              variant="ghost"
+              size="sm"
+              nativeButton={false}
+              render={<Link to="/login" />}
+            >
               Sign in
             </Button>
-            <Button size="sm" nativeButton={false} render={<Link to="/register" />}>
+            <Button
+              size="sm"
+              nativeButton={false}
+              render={<Link to="/register" />}
+            >
               Start writing
             </Button>
           </nav>
@@ -126,14 +165,25 @@ function LandingPage() {
               A focused writing room for teams that think in Markdown.
             </h1>
             <p className="mt-6 max-w-2xl text-pretty text-lg leading-8 text-muted-foreground">
-              Drafthouse gives your team live cursors, resilient CRDT sync, sharing controls, and a clean editor built for product notes, specs, research, and long-form work.
+              Drafthouse gives your team live cursors, resilient CRDT sync,
+              sharing controls, and a clean editor built for product notes,
+              specs, research, and long-form work.
             </p>
             <div className="mt-8 flex flex-col gap-3 sm:flex-row">
-              <Button size="lg" nativeButton={false} render={<Link to="/register" />}>
+              <Button
+                size="lg"
+                nativeButton={false}
+                render={<Link to="/register" />}
+              >
                 Create your first draft
                 <ArrowRight className="size-4" />
               </Button>
-              <Button variant="outline" size="lg" nativeButton={false} render={<Link to="/login" />}>
+              <Button
+                variant="outline"
+                size="lg"
+                nativeButton={false}
+                render={<Link to="/login" />}
+              >
                 Sign in
               </Button>
             </div>
@@ -150,7 +200,9 @@ function LandingPage() {
 
       <section className="mx-auto max-w-7xl px-5 py-20 sm:px-8">
         <div className="max-w-2xl">
-          <p className="text-sm font-medium text-primary">Built for collaborative docs</p>
+          <p className="text-sm font-medium text-primary">
+            Built for collaborative docs
+          </p>
           <h2 className="mt-3 font-heading text-3xl font-bold tracking-tight sm:text-4xl">
             Everything needed for a dependable shared writing space.
           </h2>
@@ -177,7 +229,9 @@ function LandingPage() {
       <section className="border-y border-border/80 bg-muted/55">
         <div className="mx-auto grid max-w-7xl gap-10 px-5 py-20 sm:px-8 lg:grid-cols-[0.85fr_1fr]">
           <div>
-            <p className="text-sm font-medium text-primary">Writer-first workflow</p>
+            <p className="text-sm font-medium text-primary">
+              Writer-first workflow
+            </p>
             <h2 className="mt-3 font-heading text-3xl font-bold tracking-tight sm:text-4xl">
               Draft, preview, share, and keep moving.
             </h2>
@@ -191,7 +245,10 @@ function LandingPage() {
               "Dark mode and selectable editor typography",
               "Recoverable snapshots with checksum validation",
             ].map((item) => (
-              <div key={item} className="flex gap-3 rounded-2xl border border-border/80 bg-card/80 p-4 text-sm shadow-sm transition-all duration-300 hover:-translate-y-1 hover:border-primary/35 hover:shadow-md">
+              <div
+                key={item}
+                className="flex gap-3 rounded-2xl border border-border/80 bg-card/80 p-4 text-sm shadow-sm transition-all duration-300 hover:-translate-y-1 hover:border-primary/35 hover:shadow-md"
+              >
                 <Check className="mt-0.5 size-4 shrink-0 text-accent-foreground" />
                 <span>{item}</span>
               </div>
@@ -207,12 +264,20 @@ function LandingPage() {
               <Lock className="size-4" />
               Designed for private team knowledge
             </div>
-            <h2 className="font-heading text-3xl font-bold tracking-tight">Start with a blank page. Keep the whole team in sync.</h2>
+            <h2 className="font-heading text-3xl font-bold tracking-tight">
+              Start with a blank page. Keep the whole team in sync.
+            </h2>
             <p className="mt-3 text-muted-foreground">
-              Create an account, verify your email, and Drafthouse creates a welcome document with shortcuts and examples.
+              Create an account, verify your email, and Drafthouse creates a
+              welcome document with shortcuts and examples.
             </p>
           </div>
-          <Button size="lg" className="mt-8 lg:mt-0" nativeButton={false} render={<Link to="/register" />}>
+          <Button
+            size="lg"
+            className="mt-8 lg:mt-0"
+            nativeButton={false}
+            render={<Link to="/register" />}
+          >
             Get started
             <ArrowRight className="size-4" />
           </Button>
@@ -227,11 +292,13 @@ function HeroEditorMockup() {
     <div className="relative mx-auto w-full max-w-xl">
       <div className="absolute -left-6 top-10 z-20 hidden rounded-2xl border border-border/80 bg-card/90 p-3 shadow-xl backdrop-blur motion-safe:animate-in motion-safe:fade-in-0 motion-safe:slide-in-from-left-4 sm:block">
         <div className="flex -space-x-2">
-          {['AM', 'RK', 'JS'].map((initials, index) => (
+          {["AM", "RK", "JS"].map((initials, index) => (
             <span
               key={initials}
               className="flex size-8 items-center justify-center rounded-full border-2 border-background text-[10px] font-semibold text-white"
-              style={{ backgroundColor: ['#2563eb', '#16a34a', '#9333ea'][index] }}
+              style={{
+                backgroundColor: ["#2563eb", "#16a34a", "#9333ea"][index],
+              }}
             >
               {initials}
             </span>
@@ -254,25 +321,37 @@ function HeroEditorMockup() {
           </div>
           <div className="grid min-h-[430px] md:grid-cols-[0.38fr_1fr]">
             <aside className="hidden border-r border-border/80 bg-muted/55 p-4 md:block">
-              <p className="text-xs font-medium uppercase tracking-[0.2em] text-muted-foreground">Docs</p>
-              {['Product Roadmap', 'Launch Notes', 'Research'].map((doc, index) => (
-                <div key={doc} className={`mt-3 rounded-xl p-3 text-xs transition-all duration-300 ${index === 0 ? 'bg-card shadow-sm' : 'text-muted-foreground'}`}>
-                  <p className="font-medium text-foreground">{doc}</p>
-                  <p className="mt-1 text-muted-foreground">{index === 0 ? '2 min ago' : 'Yesterday'}</p>
-                </div>
-              ))}
+              <p className="text-xs font-medium uppercase tracking-[0.2em] text-muted-foreground">
+                Docs
+              </p>
+              {["Product Roadmap", "Launch Notes", "Research"].map(
+                (doc, index) => (
+                  <div
+                    key={doc}
+                    className={`mt-3 rounded-xl p-3 text-xs transition-all duration-300 ${index === 0 ? "bg-card shadow-sm" : "text-muted-foreground"}`}
+                  >
+                    <p className="font-medium text-foreground">{doc}</p>
+                    <p className="mt-1 text-muted-foreground">
+                      {index === 0 ? "2 min ago" : "Yesterday"}
+                    </p>
+                  </div>
+                )
+              )}
             </aside>
             <div className="p-5">
               <div className="mb-5 flex flex-wrap items-center gap-2 border-b border-border pb-3 text-xs text-muted-foreground">
                 <span className="rounded-md bg-muted px-2 py-1">H1</span>
                 <span className="rounded-md bg-muted px-2 py-1">B</span>
                 <span className="rounded-md bg-muted px-2 py-1">I</span>
-                <span className="ml-auto rounded-md bg-primary px-2 py-1 text-primary-foreground shadow-sm">Preview</span>
+                <span className="ml-auto rounded-md bg-primary px-2 py-1 text-primary-foreground shadow-sm">
+                  Preview
+                </span>
               </div>
               <article className="prose prose-sm max-w-none dark:prose-invert prose-headings:font-heading">
                 <h2>Q3 product roadmap</h2>
                 <p>
-                  Align on launch scope, edge cases, and owner notes before the customer beta.
+                  Align on launch scope, edge cases, and owner notes before the
+                  customer beta.
                 </p>
                 <ul>
                   <li>Finalize invite flow permissions</li>
@@ -286,7 +365,8 @@ function HeroEditorMockup() {
                   Changes save continuously
                 </div>
                 <p className="mt-2 text-xs leading-5 text-muted-foreground">
-                  Snapshots, WAL replay, and CRDT merges keep every draft recoverable after reconnects.
+                  Snapshots, WAL replay, and CRDT merges keep every draft
+                  recoverable after reconnects.
                 </p>
               </div>
             </div>
@@ -320,8 +400,12 @@ function FeatureCard({
       <div className="mb-5 flex size-11 items-center justify-center rounded-2xl bg-primary text-primary-foreground shadow-sm shadow-primary/25">
         {icon}
       </div>
-      <h3 className="font-heading text-lg font-semibold tracking-tight">{title}</h3>
-      <p className="mt-2 text-sm leading-6 text-muted-foreground">{description}</p>
+      <h3 className="font-heading text-lg font-semibold tracking-tight">
+        {title}
+      </h3>
+      <p className="mt-2 text-sm leading-6 text-muted-foreground">
+        {description}
+      </p>
     </div>
   );
 }
