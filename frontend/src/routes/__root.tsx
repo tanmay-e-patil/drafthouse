@@ -1,14 +1,10 @@
 import { HeadContent, Link, Outlet, Scripts, createRootRoute } from '@tanstack/react-router'
 import { buttonVariants } from '#/components/ui/button'
-import { lazy, Suspense } from 'react'
+import { Toaster } from '#/components/ui/sonner'
 import { TooltipProvider } from '#/components/ui/tooltip'
 import { ThemeProvider } from 'next-themes'
 
 import appCss from '../styles.css?url'
-
-const LazyToaster = lazy(() =>
-  import('#/components/ui/sonner').then((m) => ({ default: m.Toaster }))
-)
 
 const THEME_INIT_SCRIPT = `(function(){try{var s=window.localStorage.getItem('theme');var p=window.matchMedia('(prefers-color-scheme: dark)').matches?'dark':'light';var t=s==='light'||s==='dark'?s:p;document.documentElement.classList.add(t);document.documentElement.style.colorScheme=t}catch(e){}})();`
 const SITE_DESCRIPTION =
@@ -59,9 +55,7 @@ function RootLayout() {
             <Outlet />
           </TooltipProvider>
         </ThemeProvider>
-        <Suspense fallback={null}>
-          <LazyToaster richColors position="bottom-right" />
-        </Suspense>
+        <Toaster richColors position="bottom-right" />
         <Scripts />
       </body>
     </html>
