@@ -19,7 +19,11 @@ services:
     volumes:
       - scylla_data:/var/lib/scylla
     healthcheck:
-      test: ["CMD-SHELL", "cqlsh $(hostname -i | awk '{print $1}') 9042 -e 'DESCRIBE KEYSPACES' >/dev/null 2>&1"]
+      test:
+        [
+          "CMD-SHELL",
+          "cqlsh $(hostname -i | awk '{print $1}') 9042 -e 'DESCRIBE KEYSPACES' >/dev/null 2>&1",
+        ]
       interval: 10s
       timeout: 10s
       retries: 30
@@ -55,6 +59,7 @@ services:
       SCYLLA_NODES: scylla:9042
       SCYLLA_KEYSPACE: drafthouse
       BIND_ADDR: 0.0.0.0:8080
+      APP_ORIGIN: ${APP_ORIGIN}
     depends_on:
       migrate-pg:
         condition: service_completed_successfully
