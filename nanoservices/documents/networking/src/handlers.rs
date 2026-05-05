@@ -116,12 +116,13 @@ pub async fn get_document_presence(
         .get(&doc_id)
         .map(|entry| {
             entry
-                .awareness_peers()
+                .presence_peers()
                 .into_iter()
                 .filter(|peer| peer.last_active_ms > cutoff_ms)
                 .filter_map(|peer| {
                     awareness_last_active_to_datetime(peer.last_active_ms).map(|last_active| {
                         DocumentPresencePeer {
+                            user_id: peer.user_id,
                             name: peer.name,
                             color: peer.color,
                             last_active,

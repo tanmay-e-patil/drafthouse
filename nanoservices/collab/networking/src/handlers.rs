@@ -25,6 +25,7 @@ use yrs::updates::decoder::Decode;
 struct ConnectionMeta {
     doc_id: Uuid,
     client_id: Uuid,
+    user_id: Option<Uuid>,
     connection_id: u64,
     is_readonly: bool,
 }
@@ -103,6 +104,7 @@ pub async fn ws_handler(
         let meta = ConnectionMeta {
             doc_id,
             client_id,
+            user_id,
             connection_id,
             is_readonly,
         };
@@ -211,7 +213,7 @@ async fn handle_binary<D>(
             }
         }
         CollabMessage::Awareness(aw_bytes) => {
-            let updates = awareness_updates_from_bytes(&aw_bytes);
+            let updates = awareness_updates_from_bytes(&aw_bytes, meta.user_id);
             if !updates.is_empty() {
                 room.apply_awareness_update(meta.connection_id, updates);
             }
@@ -237,7 +239,10 @@ async fn handle_binary<D>(
     }
 }
 
-fn awareness_updates_from_bytes(data: &[u8]) -> Vec<(u64, Option<AwarenessPeer>)> {
+fn awareness_updates_from_bytes(
+    data: &[u8],
+    user_id: Option<Uuid>,
+) -> Vec<(u64, Option<AwarenessPeer>)> {
     let update = match AwarenessUpdate::decode_v1(data) {
         Ok(update) => update,
         Err(_) => return Vec::new(),
@@ -255,6 +260,7 @@ fn awareness_updates_from_bytes(data: &[u8]) -> Vec<(u64, Option<AwarenessPeer>)
             Some((
                 client_id,
                 Some(AwarenessPeer {
+                    user_id,
                     name: payload.user.name,
                     color: payload.user.color,
                     last_active_ms: payload.user.last_active,
@@ -341,10 +347,12 @@ mod tests {
         );
         let bytes = AwarenessUpdate { clients }.encode_v1();
 
-        let updates = awareness_updates_from_bytes(&bytes);
+        let authenticated_user_id = Uuid::new_v4();
+        let updates = awareness_updates_from_bytes(&bytes, Some(authenticated_user_id));
         let (client_id, peer) = &updates[0];
         let peer = peer.as_ref().unwrap();
         assert_eq!(*client_id, 7);
+        assert_eq!(peer.user_id, Some(authenticated_user_id));
         assert_eq!(peer.name, "alice");
         assert_eq!(peer.color, "#E53E3E");
         assert_eq!(peer.last_active_ms, 1_700_000_000_000);
@@ -361,7 +369,7 @@ mod tests {
             },
         );
         let bytes = AwarenessUpdate { clients }.encode_v1();
-        let updates = awareness_updates_from_bytes(&bytes);
+        let updates = awareness_updates_from_bytes(&bytes, Some(Uuid::new_v4()));
         assert_eq!(updates.len(), 1);
         assert_eq!(updates[0].0, 7);
         assert!(updates[0].1.is_none());
@@ -387,7 +395,12 @@ mod tests {
             },
         );
         let bytes = AwarenessUpdate { clients }.encode_v1();
-        let updates = awareness_updates_from_bytes(&bytes);
+        let updates = awareness_updates_from_bytes(&bytes, None);
         assert_eq!(updates.len(), 2);
+        assert!(
+            updates
+                .iter()
+                .all(|(_, peer)| peer.as_ref().unwrap().user_id.is_none())
+        );
     }
 }

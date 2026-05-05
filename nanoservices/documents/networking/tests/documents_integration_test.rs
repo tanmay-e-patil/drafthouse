@@ -370,6 +370,7 @@ async fn get_document_presence_returns_active_peers() {
     room.upsert_awareness(
         1,
         AwarenessPeer {
+            user_id: None,
             name: "alice".into(),
             color: "#E53E3E".into(),
             last_active_ms: chrono::Utc::now().timestamp_millis(),
@@ -427,6 +428,7 @@ async fn get_document_presence_excludes_expired_peers() {
     room.upsert_awareness(
         1,
         AwarenessPeer {
+            user_id: None,
             name: "ghost".into(),
             color: "#718096".into(),
             last_active_ms: chrono::Utc::now().timestamp_millis() - 6 * 60_000,

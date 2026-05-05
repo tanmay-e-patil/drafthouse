@@ -4,6 +4,7 @@ import SidebarPresence from "../SidebarPresence";
 
 function peer(name: string, lastActive = Date.now()) {
   return {
+    user_id: null,
     name,
     color: "#E53E3E",
     last_active: new Date(lastActive).toISOString(),

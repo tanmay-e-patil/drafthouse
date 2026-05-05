@@ -195,6 +195,7 @@ describe("Sidebar", () => {
           json: async () => ({
             data: [
               {
+                user_id: "user-1",
                 name: "alice",
                 color: "#E53E3E",
                 last_active: new Date().toISOString(),

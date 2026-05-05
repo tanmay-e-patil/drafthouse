@@ -52,7 +52,7 @@ export default function SidebarPresence({
         const idle = now - lastActive >= IDLE_MS;
         return (
           <Avatar
-            key={`${peer.name}-${peer.last_active}`}
+            key={peer.user_id ?? `${peer.name}-${peer.last_active}`}
             className="size-5 border border-background text-[8px] font-semibold"
             style={{
               backgroundColor: peer.color,

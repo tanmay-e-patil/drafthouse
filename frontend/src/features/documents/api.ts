@@ -21,6 +21,7 @@ export interface DocumentListResponse {
 }
 
 export interface DocumentPresencePeer {
+  user_id: string | null;
   name: string;
   color: string;
   last_active: string;

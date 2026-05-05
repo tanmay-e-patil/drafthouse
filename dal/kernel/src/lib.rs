@@ -212,6 +212,7 @@ pub struct DocumentListResponse {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct DocumentPresencePeer {
+    pub user_id: Option<Uuid>,
     pub name: String,
     pub color: String,
     pub last_active: DateTime<Utc>,

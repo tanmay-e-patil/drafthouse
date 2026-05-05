@@ -1,11 +1,14 @@
 use bytes::Bytes;
 use chrono::{DateTime, Utc};
 use dashmap::DashMap;
-use std::sync::{
-    Arc, Mutex,
-    atomic::{AtomicUsize, Ordering},
-};
 use std::time::Instant;
+use std::{
+    collections::HashMap,
+    sync::{
+        Arc, Mutex,
+        atomic::{AtomicUsize, Ordering},
+    },
+};
 use tokio::sync::broadcast;
 use uuid::Uuid;
 use yrs::Doc;
@@ -23,6 +26,7 @@ const BROADCAST_CAPACITY: usize = 256;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct AwarenessPeer {
+    pub user_id: Option<Uuid>,
     pub name: String,
     pub color: String,
     pub last_active_ms: i64,
@@ -143,6 +147,28 @@ impl DocRoom {
             .iter()
             .map(|entry| entry.value().clone())
             .collect()
+    }
+
+    pub fn presence_peers(&self) -> Vec<AwarenessPeer> {
+        let mut anonymous = Vec::new();
+        let mut by_user_id: HashMap<Uuid, AwarenessPeer> = HashMap::new();
+
+        for peer in self.awareness_peers() {
+            let Some(user_id) = peer.user_id else {
+                anonymous.push(peer);
+                continue;
+            };
+
+            match by_user_id.get(&user_id) {
+                Some(existing) if existing.last_active_ms >= peer.last_active_ms => {}
+                _ => {
+                    by_user_id.insert(user_id, peer);
+                }
+            }
+        }
+
+        anonymous.extend(by_user_id.into_values());
+        anonymous
     }
 
     pub fn apply_awareness_update(
@@ -332,6 +358,7 @@ mod tests {
         room.upsert_awareness(
             7,
             AwarenessPeer {
+                user_id: None,
                 name: "alice".into(),
                 color: "#E53E3E".into(),
                 last_active_ms: 1_700_000_000_000,
@@ -360,6 +387,7 @@ mod tests {
             vec![(
                 7,
                 Some(AwarenessPeer {
+                    user_id: None,
                     name: "alice".into(),
                     color: "#E53E3E".into(),
                     last_active_ms: 1_700_000_000_000,
@@ -371,5 +399,53 @@ mod tests {
 
         room.remove_connection_awareness(11);
         assert!(room.awareness_peers().is_empty());
+    }
+
+    #[test]
+    fn presence_peers_deduplicates_authenticated_user_by_latest_activity() {
+        let room = make_room();
+        let user_id = Uuid::new_v4();
+        room.upsert_awareness(
+            7,
+            AwarenessPeer {
+                user_id: Some(user_id),
+                name: "alice".into(),
+                color: "#E53E3E".into(),
+                last_active_ms: 1_700_000_000_000,
+            },
+        );
+        room.upsert_awareness(
+            8,
+            AwarenessPeer {
+                user_id: Some(user_id),
+                name: "alice".into(),
+                color: "#3182CE".into(),
+                last_active_ms: 1_700_000_001_000,
+            },
+        );
+
+        let peers = room.presence_peers();
+        assert_eq!(peers.len(), 1);
+        assert_eq!(peers[0].user_id, Some(user_id));
+        assert_eq!(peers[0].color, "#3182CE");
+        assert_eq!(peers[0].last_active_ms, 1_700_000_001_000);
+    }
+
+    #[test]
+    fn presence_peers_keeps_anonymous_sessions_separate() {
+        let room = make_room();
+        for client_id in [7, 8] {
+            room.upsert_awareness(
+                client_id,
+                AwarenessPeer {
+                    user_id: None,
+                    name: "Anonymous".into(),
+                    color: "#E53E3E".into(),
+                    last_active_ms: 1_700_000_000_000,
+                },
+            );
+        }
+
+        assert_eq!(room.presence_peers().len(), 2);
     }
 }
