@@ -11,7 +11,7 @@ export class ApiError extends Error {
 }
 
 export function isInaccessibleDocumentError(error: unknown): boolean {
-  return error instanceof ApiError && (error.status === 403 || error.status === 404);
+  return error instanceof ApiError && (error.status === 401 || error.status === 403 || error.status === 404);
 }
 
 export function notifyTransientError(error: unknown): void {

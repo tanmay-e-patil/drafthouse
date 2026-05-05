@@ -40,6 +40,7 @@ export const Route = createRootRoute({
   }),
   component: RootLayout,
   errorComponent: AppErrorPage,
+  notFoundComponent: NotFoundPage,
 })
 
 function RootLayout() {
@@ -73,6 +74,19 @@ function AppErrorPage() {
         <Link className={buttonVariants({ className: 'mt-6' })} to="/">
           Back to dashboard
         </Link>
+      </div>
+    </main>
+  )
+}
+
+function NotFoundPage() {
+  return (
+    <main className="flex min-h-screen items-center justify-center p-8">
+      <div className="max-w-sm text-center">
+        <h1 className="text-xl font-semibold tracking-tight">Page not found</h1>
+        <p className="mt-2 text-sm text-muted-foreground">
+          The page you're looking for doesn't exist.
+        </p>
       </div>
     </main>
   )
