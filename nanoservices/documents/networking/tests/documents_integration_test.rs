@@ -1147,6 +1147,7 @@ async fn full_invite_accept_remove_cycle() {
     assert_eq!(members_resp.status(), StatusCode::OK);
     let members_body: serde_json::Value = test::read_body_json(members_resp).await;
     assert_eq!(members_body.as_array().unwrap().len(), 1);
+    assert_eq!(members_body[0]["email"], "cycleinvitee@example.com");
     let member_user_id = members_body[0]["user_id"].as_str().unwrap();
 
     let remove_resp = test::call_service(
@@ -1341,4 +1342,5 @@ async fn update_member_role_changes_role() {
     assert_eq!(patch_resp.status(), StatusCode::OK);
     let patch_body: serde_json::Value = test::read_body_json(patch_resp).await;
     assert_eq!(patch_body["role"], "viewer");
+    assert_eq!(patch_body["email"], "roleinvitee@example.com");
 }

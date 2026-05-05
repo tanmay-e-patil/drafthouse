@@ -160,7 +160,7 @@ export function ShareModal({
                     className="flex items-center justify-between rounded-md px-2 py-1.5 transition-colors hover:bg-muted/60"
                   >
                     <span className="truncate text-xs text-muted-foreground">
-                      {m.user_id}
+                      {m.email ?? m.user_id}
                     </span>
                     <div className="flex items-center gap-1">
                       <Select

@@ -180,6 +180,7 @@ export interface InviteLink {
 export interface DocumentMember {
   doc_id: string;
   user_id: string;
+  email?: string | null;
   role: MemberRole;
 }
 

@@ -44,11 +44,16 @@ describe("ShareModal", () => {
 
   it("shows members when loaded", async () => {
     vi.mocked(api.listMembersApi).mockResolvedValue([
-      { doc_id: "doc-123", user_id: "user-abc-1234", role: "editor" },
+      {
+        doc_id: "doc-123",
+        user_id: "user-abc-1234",
+        email: "friend@example.com",
+        role: "editor",
+      },
     ]);
     render(<ShareModal {...defaultProps} />);
     await waitFor(() => {
-      expect(screen.getByText(/user-abc/)).toBeTruthy();
+      expect(screen.getByText("friend@example.com")).toBeTruthy();
     });
   });
 

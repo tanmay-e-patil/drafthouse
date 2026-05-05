@@ -235,6 +235,8 @@ pub enum MemberRole {
 pub struct DocumentMember {
     pub doc_id: Uuid,
     pub user_id: Uuid,
+    #[sqlx(default)]
+    pub email: Option<String>,
     pub role: MemberRole,
 }
 

@@ -418,10 +418,15 @@ async fn accept_invite_link(
         })?;
 
     let member: DocumentMember = sqlx::query_as::<_, DocumentMember>(
-        "INSERT INTO document_members (doc_id, user_id, role)
-         VALUES ($1, $2, $3)
-         ON CONFLICT (doc_id, user_id) DO UPDATE SET role = EXCLUDED.role
-         RETURNING doc_id, user_id, role",
+        "WITH upserted AS (
+            INSERT INTO document_members (doc_id, user_id, role)
+            VALUES ($1, $2, $3)
+            ON CONFLICT (doc_id, user_id) DO UPDATE SET role = EXCLUDED.role
+            RETURNING doc_id, user_id, role
+         )
+         SELECT upserted.doc_id, upserted.user_id, users.email, upserted.role
+         FROM upserted
+         JOIN users ON users.id = upserted.user_id",
     )
     .bind(link.doc_id)
     .bind(user_id)
@@ -451,7 +456,10 @@ async fn list_document_members(
     doc_id: uuid::Uuid,
 ) -> Result<Vec<DocumentMember>, NanoServiceError> {
     let rows = sqlx::query_as::<_, DocumentMember>(
-        "SELECT doc_id, user_id, role FROM document_members WHERE doc_id = $1",
+        "SELECT dm.doc_id, dm.user_id, u.email, dm.role
+         FROM document_members dm
+         JOIN users u ON u.id = dm.user_id
+         WHERE dm.doc_id = $1",
     )
     .bind(doc_id)
     .fetch_all(&self.pool)
@@ -517,8 +525,13 @@ async fn update_document_member_role(
     role: MemberRole,
 ) -> Result<DocumentMember, NanoServiceError> {
     let row = sqlx::query_as::<_, DocumentMember>(
-        "UPDATE document_members SET role = $3 WHERE doc_id = $1 AND user_id = $2
-         RETURNING doc_id, user_id, role",
+        "WITH updated AS (
+            UPDATE document_members SET role = $3 WHERE doc_id = $1 AND user_id = $2
+            RETURNING doc_id, user_id, role
+         )
+         SELECT updated.doc_id, updated.user_id, users.email, updated.role
+         FROM updated
+         JOIN users ON users.id = updated.user_id",
     )
     .bind(doc_id)
     .bind(user_id)

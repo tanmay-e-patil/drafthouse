@@ -596,6 +596,7 @@ mod tests {
                 let member = DocumentMember {
                     doc_id: link.doc_id,
                     user_id,
+                    email: None,
                     role: link.role,
                 };
                 members.lock().unwrap().push(member.clone());
@@ -1512,6 +1513,7 @@ mod tests {
         let member = DocumentMember {
             doc_id: doc.id,
             user_id: Uuid::new_v4(),
+            email: Some("member@example.com".to_string()),
             role: MemberRole::Editor,
         };
         let dal = MockDal::with_document_and_member(doc.clone(), member);
@@ -1545,6 +1547,7 @@ mod tests {
         let member = DocumentMember {
             doc_id: doc.id,
             user_id,
+            email: Some("member@example.com".to_string()),
             role: MemberRole::Editor,
         };
         let dal = MockDal::with_document_and_member(doc.clone(), member);
@@ -1592,6 +1595,7 @@ mod tests {
         let member = DocumentMember {
             doc_id: doc.id,
             user_id,
+            email: Some("member@example.com".to_string()),
             role: MemberRole::Editor,
         };
         let dal = MockDal::with_document_and_member(doc.clone(), member);
