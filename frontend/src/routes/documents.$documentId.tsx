@@ -1,5 +1,5 @@
 import { createFileRoute, useParams } from "@tanstack/react-router";
-import { useEffect, useState, useCallback, useRef } from "react";
+import { useEffect, useState, useCallback, useMemo, useRef } from "react";
 import {
   getDocumentApi,
   updateDocumentApi,
@@ -17,6 +17,11 @@ import { CommandPalette } from "#/features/documents/CommandPalette";
 import { useDocumentHotkeys } from "#/features/documents/useDocumentHotkeys";
 import { isInaccessibleDocumentError, notifyTransientError } from "#/shared/errors";
 import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "#/components/ui/tooltip";
+import {
   EDITOR_FONT_OPTIONS,
   usePreferencesStore,
   type EditorFont,
@@ -27,6 +32,21 @@ import { Link } from "@tanstack/react-router";
 export const Route = createFileRoute("/documents/$documentId")({
   component: DocumentEditor,
 });
+
+function getJwtSubject(token: string | null): string | null {
+  if (!token) return null;
+
+  try {
+    const payload = token.split(".")[1];
+    if (!payload) return null;
+    const normalized = payload.replace(/-/g, "+").replace(/_/g, "/");
+    const decoded = atob(normalized.padEnd(Math.ceil(normalized.length / 4) * 4, "="));
+    const claims = JSON.parse(decoded) as { sub?: unknown };
+    return typeof claims.sub === "string" ? claims.sub : null;
+  } catch {
+    return null;
+  }
+}
 
 function DocumentEditor() {
   const { documentId } = useParams({ strict: false }) as {
@@ -52,6 +72,7 @@ function DocumentEditor() {
   const toggleFocusMode = usePreferencesStore((s) => s.toggleFocusMode);
   const editorFont = usePreferencesStore((s) => s.editorFont);
   const setEditorFont = usePreferencesStore((s) => s.setEditorFont);
+  const currentUserId = useMemo(() => getJwtSubject(accessToken), [accessToken]);
   const fontClassName =
     EDITOR_FONT_OPTIONS.find((option) => option.value === editorFont)?.className ??
     "font-sans";
@@ -200,6 +221,8 @@ function DocumentEditor() {
 
   if (!document) return null;
 
+  const isOwner = currentUserId === document.owner_id;
+
   return (
     <div className="flex h-screen overflow-hidden bg-background">
       <CommandPalette
@@ -248,15 +271,23 @@ function DocumentEditor() {
                 <Maximize2 className="size-3.5" />
                 Focus
               </Button>
-              <Button
-                variant="ghost"
-                size="sm"
-                className="gap-1.5 text-muted-foreground hover:text-accent-foreground"
-                onClick={() => setShareOpen(true)}
-              >
-                <Share2 className="size-3.5" />
-                Share
-              </Button>
+              <Tooltip>
+                <TooltipTrigger render={<span />}>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="gap-1.5 text-muted-foreground hover:text-accent-foreground"
+                    onClick={() => setShareOpen(true)}
+                    disabled={!isOwner}
+                  >
+                    <Share2 className="size-3.5" />
+                    Share
+                  </Button>
+                </TooltipTrigger>
+                {!isOwner && (
+                  <TooltipContent>Only owners can share documents</TooltipContent>
+                )}
+              </Tooltip>
             </div>
           </div>
         )}
