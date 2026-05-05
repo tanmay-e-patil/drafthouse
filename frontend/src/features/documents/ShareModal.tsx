@@ -31,6 +31,8 @@ import {
 import { Copy, Check, Trash2, Link as LinkIcon, Globe } from "lucide-react";
 import { toast } from "sonner";
 
+const INVITE_ROLES: MemberRole[] = ["editor", "viewer"];
+
 interface ShareModalProps {
   docId: string;
   docTitle: string;
@@ -48,9 +50,10 @@ export function ShareModal({
 }: ShareModalProps) {
   const [members, setMembers] = useState<DocumentMember[]>([]);
   const [links, setLinks] = useState<InviteLink[]>([]);
-  const [newRole, setNewRole] = useState<MemberRole>("editor");
   const [loading, setLoading] = useState(false);
   const [copiedToken, setCopiedToken] = useState<string | null>(null);
+  const APP_ORIGIN =
+    import.meta.env.VITE_APP_ORIGIN ?? window.location.origin;
 
   useEffect(() => {
     loadData();
@@ -69,10 +72,16 @@ export function ShareModal({
     }
   }
 
-  async function handleGenerateLink() {
+  async function handleGenerateLink(role: MemberRole) {
+    const existingLink = links.find((link) => link.role === role);
+    if (existingLink) {
+      copyToClipboard(existingLink.token);
+      return;
+    }
+
     setLoading(true);
     try {
-      const link = await createInviteLinkApi(docId, { role: newRole });
+      const link = await createInviteLinkApi(docId, { role });
       setLinks((prev) => [link, ...prev]);
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Failed to create link");
@@ -125,15 +134,12 @@ export function ShareModal({
   }
 
   function copyToClipboard(token: string) {
-    const url = `${window.location.origin}/invite/${token}`;
+    const url = `${APP_ORIGIN}/invite/${token}`;
     navigator.clipboard.writeText(url);
     setCopiedToken(token);
     toast.success("Link copied");
     setTimeout(() => setCopiedToken(null), 2000);
   }
-
-  const APP_ORIGIN =
-    import.meta.env.VITE_APP_ORIGIN ?? window.location.origin;
 
   return (
     <Dialog open onOpenChange={(open) => !open && onClose()}>
@@ -198,46 +204,34 @@ export function ShareModal({
             <h3 className="text-xs font-medium text-muted-foreground">
               Invite link
             </h3>
-            <div className="flex items-center gap-2">
-              <Select
-                value={newRole}
-                onValueChange={(v) => setNewRole(v as MemberRole)}
-              >
-                <SelectTrigger className="h-7 w-24 text-xs">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="editor">Editor</SelectItem>
-                  <SelectItem value="viewer">Viewer</SelectItem>
-                </SelectContent>
-              </Select>
-              <Button
-                size="sm"
-                className="text-xs"
-                onClick={handleGenerateLink}
-                disabled={loading}
-              >
-                <LinkIcon className="size-3" />
-                Generate
-              </Button>
-            </div>
-            {links.length > 0 && (
-              <div className="space-y-1">
-                {links.map((link) => {
-                  const url = `${APP_ORIGIN}/invite/${link.token}`;
-                  return (
-                    <div
-                      key={link.token}
-                      className="flex items-center justify-between rounded-md border border-border/70 bg-muted/50 px-2 py-1.5"
-                    >
-                      <span className="truncate font-mono text-[11px] text-muted-foreground">
-                        {url}
-                      </span>
-                      <div className="flex items-center gap-0.5 ml-2 shrink-0">
+            <div className="space-y-1">
+              {INVITE_ROLES.map((role) => {
+                const link = links.find((candidate) => candidate.role === role);
+                const label = role === "editor" ? "Editor" : "Viewer";
+                return (
+                  <div
+                    key={role}
+                    className="flex items-center justify-between rounded-md border border-border/70 bg-muted/50 px-2 py-1.5"
+                  >
+                    <div className="min-w-0">
+                      <div className="text-xs font-medium">{label} link</div>
+                      {link ? (
+                        <span className="block truncate font-mono text-[11px] text-muted-foreground">
+                          {`${APP_ORIGIN}/invite/${link.token}`}
+                        </span>
+                      ) : (
+                        <span className="block text-[11px] text-muted-foreground">
+                          No active link
+                        </span>
+                      )}
+                    </div>
+                    {link ? (
+                      <div className="ml-2 flex shrink-0 items-center gap-0.5">
                         <Button
                           variant="ghost"
                           size="icon-xs"
                           onClick={() => copyToClipboard(link.token)}
+                          aria-label={`Copy ${label.toLowerCase()} link`}
                         >
                           {copiedToken === link.token ? (
                             <Check className="size-3 text-accent-foreground" />
@@ -250,15 +244,27 @@ export function ShareModal({
                           size="icon-xs"
                           onClick={() => handleRevokeLink(link.token)}
                           className="text-muted-foreground hover:text-destructive"
+                          aria-label={`Revoke ${label.toLowerCase()} link`}
                         >
                           <Trash2 className="size-3" />
                         </Button>
                       </div>
-                    </div>
-                  );
-                })}
-              </div>
-            )}
+                    ) : (
+                      <Button
+                        size="sm"
+                        className="ml-2 shrink-0 text-xs"
+                        onClick={() => handleGenerateLink(role)}
+                        disabled={loading}
+                        aria-label={`Generate ${label.toLowerCase()} link`}
+                      >
+                        <LinkIcon className="size-3" />
+                        Generate
+                      </Button>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
           </section>
 
           <Separator />

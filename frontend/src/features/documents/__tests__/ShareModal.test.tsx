@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, afterEach } from "vitest";
+import { describe, it, expect, vi, afterEach, beforeEach } from "vitest";
 import { render, screen, fireEvent, waitFor } from "@testing-library/react";
 import { ShareModal } from "../ShareModal";
 import * as api from "../api";
@@ -24,6 +24,11 @@ const defaultProps = {
   onClose: vi.fn(),
   onPublicToggle: vi.fn(),
 };
+
+beforeEach(() => {
+  vi.mocked(api.listMembersApi).mockResolvedValue([]);
+  vi.mocked(api.listInviteLinksApi).mockResolvedValue([]);
+});
 
 afterEach(() => {
   vi.clearAllMocks();
@@ -57,7 +62,41 @@ describe("ShareModal", () => {
     });
   });
 
-  it("calls createInviteLinkApi on generate button click", async () => {
+  it("shows one labeled invite slot per role", async () => {
+    vi.mocked(api.listInviteLinksApi).mockResolvedValue([
+      {
+        token: "editortoken123",
+        doc_id: "doc-123",
+        role: "editor",
+        created_by: "owner-id",
+        max_uses: null,
+        use_count: 0,
+        expires_at: null,
+        revoked_at: null,
+      },
+      {
+        token: "viewertoken123",
+        doc_id: "doc-123",
+        role: "viewer",
+        created_by: "owner-id",
+        max_uses: null,
+        use_count: 0,
+        expires_at: null,
+        revoked_at: null,
+      },
+    ]);
+
+    render(<ShareModal {...defaultProps} />);
+
+    await waitFor(() => {
+      expect(screen.getByText("Editor link")).toBeTruthy();
+      expect(screen.getByText("Viewer link")).toBeTruthy();
+      expect(screen.getByText(/editortoken123/)).toBeTruthy();
+      expect(screen.getByText(/viewertoken123/)).toBeTruthy();
+    });
+  });
+
+  it("calls createInviteLinkApi for a missing role", async () => {
     vi.mocked(api.createInviteLinkApi).mockResolvedValue({
       token: "newtoken123",
       doc_id: "doc-123",
@@ -69,12 +108,47 @@ describe("ShareModal", () => {
       revoked_at: null,
     });
     render(<ShareModal {...defaultProps} />);
-    fireEvent.click(screen.getByRole("button", { name: "Generate" }));
+    fireEvent.click(
+      screen.getByRole("button", { name: "Generate editor link" }),
+    );
     await waitFor(() => {
       expect(api.createInviteLinkApi).toHaveBeenCalledWith("doc-123", {
         role: "editor",
       });
     });
+  });
+
+  it("does not create a second invite link for an existing role", async () => {
+    const writeText = vi.fn();
+    Object.assign(navigator, { clipboard: { writeText } });
+    vi.mocked(api.listInviteLinksApi).mockResolvedValue([
+      {
+        token: "editortoken123",
+        doc_id: "doc-123",
+        role: "editor",
+        created_by: "owner-id",
+        max_uses: null,
+        use_count: 0,
+        expires_at: null,
+        revoked_at: null,
+      },
+    ]);
+
+    render(<ShareModal {...defaultProps} />);
+
+    await waitFor(() => {
+      expect(screen.getByText(/editortoken123/)).toBeTruthy();
+    });
+
+    expect(
+      screen.queryByRole("button", { name: "Generate editor link" }),
+    ).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "Copy editor link" }));
+
+    expect(api.createInviteLinkApi).not.toHaveBeenCalled();
+    expect(writeText).toHaveBeenCalledWith(
+      "http://localhost:3000/invite/editortoken123",
+    );
   });
 
   it("calls onClose when close button clicked", async () => {
