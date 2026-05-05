@@ -30,6 +30,7 @@ export interface UseCollabEditorOptions {
   container: HTMLElement;
   extensions?: Extension[];
   initialContent?: string;
+  readOnly?: boolean;
   /** Called when a remote title_update message (type 3) arrives. */
   onTitleUpdate?: (title: string) => void;
   onViewChange?: (view: EditorView | null) => void;
@@ -56,6 +57,7 @@ export function useCollabEditor(
       container,
       extensions = [],
       initialContent,
+      readOnly = false,
       onTitleUpdate,
       onViewChange,
     } = options;
@@ -106,9 +108,8 @@ export function useCollabEditor(
           const { ticket } = await issueWsTicket(docId);
           ticketParam = { ticket };
         } catch {
-          // unauthenticated viewer — connect without ticket
+          // Public viewers can connect without a ticket.
         }
-
       }
 
       provider = new WebsocketProvider(`${WS_BASE}/collab`, docId, ydoc, {
@@ -194,6 +195,7 @@ export function useCollabEditor(
           doc: ytext.toString(),
           extensions: [
             ...extensions,
+            EditorView.editable.of(!readOnly),
             activityTracker,
             yCollab(ytext, awareness),
           ],
@@ -232,7 +234,7 @@ export function useCollabEditor(
       handleRef.current?.destroy();
       handleRef.current = null;
     };
-  }, [options?.docId, accessToken, storedEmail]);
+  }, [options?.docId, options?.readOnly, accessToken, storedEmail]);
 
   return handleRef;
 }

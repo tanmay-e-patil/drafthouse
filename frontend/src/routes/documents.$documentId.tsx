@@ -107,10 +107,10 @@ function DocumentEditor() {
   }, [documentId, upsertDocument]);
 
   useEffect(() => {
-    if (hydrated && accessToken) {
+    if (hydrated) {
       fetchDocument();
     }
-  }, [hydrated, accessToken, fetchDocument]);
+  }, [hydrated, fetchDocument]);
 
   useEffect(() => {
     if (!loading && !contentLoading && titleRef.current) {
@@ -119,7 +119,7 @@ function DocumentEditor() {
   }, [loading, contentLoading]);
 
   async function handleTitleBlur() {
-    if (!document || saving) return;
+    if (!document || saving || document.access_role === "viewer") return;
     const trimmed = title.trim();
     if (trimmed === document.title) return;
     setSaving(true);
@@ -222,6 +222,9 @@ function DocumentEditor() {
   if (!document) return null;
 
   const isOwner = currentUserId === document.owner_id;
+  const isReadOnly = document.access_role
+    ? document.access_role === "viewer"
+    : !isOwner;
 
   return (
     <div className="flex h-screen overflow-hidden bg-background">
@@ -242,7 +245,7 @@ function DocumentEditor() {
               value={title}
               onChange={(e) => setTitle(e.target.value)}
               onBlur={handleTitleBlur}
-              disabled={saving}
+              disabled={saving || isReadOnly}
               placeholder="Untitled"
             />
             <div className="flex items-center gap-2">
@@ -314,6 +317,17 @@ function DocumentEditor() {
             }}
           />
         )}
+        {isReadOnly && !accessToken && (
+          <div className="border-b border-border/80 bg-primary/10 px-4 py-2 text-sm text-foreground">
+            <span className="font-medium">Sign up to edit</span>
+            <span className="ml-2 text-muted-foreground">
+              Public documents are read-only without an account.
+            </span>
+            <Link className={buttonVariants({ variant: "link", className: "ml-2 h-auto p-0" })} to="/register">
+              Create account
+            </Link>
+          </div>
+        )}
         {contentLoading ? (
           <div className="flex flex-1 items-center justify-center text-muted-foreground">
             <p className="text-sm">Loading editor...</p>
@@ -327,6 +341,7 @@ function DocumentEditor() {
             onTitleUpdate={handleRemoteTitleUpdate}
             focusMode={focusMode}
             fontClassName={fontClassName}
+            readOnly={isReadOnly}
           />
         )}
       </main>

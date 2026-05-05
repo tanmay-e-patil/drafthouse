@@ -10,6 +10,7 @@ export interface Document {
   owner_id: string;
   title: string;
   is_public: boolean;
+  access_role?: "owner" | MemberRole;
   created_at: string;
   updated_at: string;
 }

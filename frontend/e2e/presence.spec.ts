@@ -109,4 +109,39 @@ test.describe("Presence & Awareness", () => {
       pageA.locator(".cm-ySelectionCaret, .cm-ySelection")
     ).toBeVisible({ timeout: 10_000 });
   });
+
+  test("anonymous public viewer sees live editor updates", async ({ browser }) => {
+    const docId = await createDoc(ctxA);
+    const docUrl = `/documents/${docId}`;
+    const pageA = await ctxA.newPage();
+    const publicContext = await browser.newContext();
+    const publicPage = await publicContext.newPage();
+
+    await pageA.goto(docUrl);
+    await expect(pageA.getByText("Synced")).toBeVisible({ timeout: 15_000 });
+
+    const editorA = pageA.locator(".cm-editor-container .cm-editor");
+    await editorA.click();
+    await pageA.keyboard.type("Public live draft");
+
+    await pageA.getByRole("button", { name: /share/i }).click();
+    await pageA.locator("section", { hasText: "Public access" }).getByRole("switch").click();
+    await expect(pageA.getByText("Anyone with link")).toBeVisible();
+
+    await publicPage.goto(docUrl);
+    await expect(publicPage.getByText("Sign up to edit")).toBeVisible();
+    await expect(publicPage.getByTestId("editor-toolbar")).toHaveCount(0);
+    await expect(publicPage.locator(".cm-content")).toContainText("Public live draft", {
+      timeout: 15_000,
+    });
+
+    await editorA.click();
+    await pageA.keyboard.type(" updated");
+
+    await expect(publicPage.locator(".cm-content")).toContainText("Public live draft updated", {
+      timeout: 15_000,
+    });
+
+    await publicContext.close();
+  });
 });

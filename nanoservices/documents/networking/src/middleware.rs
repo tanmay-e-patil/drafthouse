@@ -26,3 +26,12 @@ pub async fn extract_verified_jwt(req: &HttpRequest) -> Result<JwtClaims, NanoSe
     auth_core::jwt::require_verified(&claims)?;
     Ok(claims)
 }
+
+pub async fn extract_optional_verified_jwt(
+    req: &HttpRequest,
+) -> Result<Option<JwtClaims>, NanoServiceError> {
+    match req.headers().get("Authorization") {
+        Some(_) => extract_verified_jwt(req).await.map(Some),
+        None => Ok(None),
+    }
+}

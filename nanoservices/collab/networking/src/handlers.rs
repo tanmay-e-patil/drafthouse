@@ -9,11 +9,12 @@ use collab_core::{
     encode_update,
 };
 use dal::{
-    DeleteSnapshot, DeleteWsTicket, GetWsTicketByHash, ReadLatestSnapshot, ScyllaDescriptor,
-    WriteOp, WriteSnapshot, postgres_txs::SqlxPostGresDescriptor,
+    DeleteSnapshot, DeleteWsTicket, GetDocumentById, GetDocumentMember, GetWsTicketByHash,
+    ReadLatestSnapshot, ScyllaDescriptor, WriteOp, WriteSnapshot,
+    postgres_txs::SqlxPostGresDescriptor,
 };
 use futures_util::StreamExt;
-use kernel::NewCollabOp;
+use kernel::{MemberRole, NewCollabOp};
 use serde::Deserialize;
 use serde_json::Value;
 use tracing::{info, warn};
@@ -38,12 +39,13 @@ pub async fn ws_handler(
 ) -> Result<HttpResponse, actix_web::Error> {
     let doc_id = *path;
 
-    // Validate ticket against Postgres (optional — public docs have no ticket)
-    let user_id = if let Some(raw_token) = &query.ticket {
-        let pg_dal = req
-            .app_data::<web::Data<SqlxPostGresDescriptor>>()
-            .ok_or_else(|| actix_web::error::ErrorInternalServerError("DAL not configured"))?;
+    let pg_dal = req
+        .app_data::<web::Data<SqlxPostGresDescriptor>>()
+        .ok_or_else(|| actix_web::error::ErrorInternalServerError("DAL not configured"))?;
 
+    // Validate ticket against Postgres (optional — public docs have no ticket).
+    // Connections without an editor ticket are public viewers and remain read-only.
+    let (user_id, is_readonly) = if let Some(raw_token) = &query.ticket {
         let token_hash = hash_token(raw_token);
 
         let ticket = pg_dal
@@ -66,12 +68,23 @@ pub async fn ws_handler(
             Some(t) => {
                 // burn single-use ticket
                 let _ = pg_dal.delete_ws_ticket(token_hash).await;
-                Some(t.user_id)
+                let is_readonly = is_viewer_connection(pg_dal.get_ref(), doc_id, t.user_id)
+                    .await
+                    .map_err(|e| actix_web::error::ErrorInternalServerError(e.to_string()))?;
+                (Some(t.user_id), is_readonly)
             }
         }
     } else {
-        // Unauthenticated — viewer only; check later if doc is public
-        None
+        let doc = pg_dal
+            .get_document_by_id(doc_id)
+            .await
+            .map_err(|e| actix_web::error::ErrorInternalServerError(e.to_string()))?;
+
+        match doc {
+            Some(doc) if doc.is_public => (None, true),
+            Some(_) => return Ok(HttpResponse::Unauthorized().body("Document is not public")),
+            None => return Ok(HttpResponse::NotFound().body("Document not found")),
+        }
     };
 
     let scylla_dal = req
@@ -96,7 +109,6 @@ pub async fn ws_handler(
 
     let room_clone = room.clone();
     let mut broadcast_rx = room.tx.subscribe();
-    let is_readonly = user_id.is_none();
     let connection_id = Uuid::new_v4().as_u128() as u64;
 
     actix_web::rt::spawn(async move {
@@ -162,6 +174,29 @@ pub async fn ws_handler(
     Ok(response)
 }
 
+async fn is_viewer_connection<D>(
+    dal: &D,
+    doc_id: Uuid,
+    user_id: Uuid,
+) -> Result<bool, utils::errors::NanoServiceError>
+where
+    D: GetDocumentById + GetDocumentMember,
+{
+    let doc = dal.get_document_by_id(doc_id).await?.ok_or_else(|| {
+        utils::errors::NanoServiceError::new(
+            "Document not found",
+            utils::errors::NanoServiceErrorStatus::NotFound,
+        )
+    })?;
+
+    if doc.owner_id == user_id {
+        return Ok(false);
+    }
+
+    let member = dal.get_document_member(doc_id, user_id).await?;
+    Ok(!matches!(member.map(|m| m.role), Some(MemberRole::Editor)))
+}
+
 async fn handle_binary<D>(
     data: &[u8],
     meta: ConnectionMeta,
@@ -181,6 +216,13 @@ async fn handle_binary<D>(
         }
         CollabMessage::Update(update_bytes) | CollabMessage::SyncStep2(update_bytes) => {
             if meta.is_readonly {
+                let _ = session
+                    .clone()
+                    .close(Some(actix_ws::CloseReason {
+                        code: actix_ws::CloseCode::Policy,
+                        description: Some("Read-only viewers cannot edit".to_string()),
+                    }))
+                    .await;
                 return;
             }
             let applied = {
