@@ -29,6 +29,7 @@ interface EditorProps {
   onTitleUpdate?: (title: string) => void;
   focusMode?: boolean;
   fontClassName?: string;
+  readOnly?: boolean;
 }
 
 const DEBOUNCE_MS = 500;
@@ -77,10 +78,13 @@ export default function Editor({
   onTitleUpdate,
   focusMode = false,
   fontClassName = "font-sans",
+  readOnly = false,
 }: EditorProps) {
   const collabStatus = useCollabStore((s) => s.status);
   const [container, setContainer] = useState<HTMLElement | null>(null);
-  const [mode, setMode] = useState<"edit" | "preview">("edit");
+  const [mode, setMode] = useState<"edit" | "preview">(
+    readOnly ? "preview" : "edit",
+  );
   const [content, setContent] = useState(initialContent);
   const [saving, setSaving] = useState(false);
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
@@ -108,9 +112,10 @@ export default function Editor({
   }, DEBOUNCE_MS);
 
   const handleChange = useCallback(
-    (view: EditorView) => {
+    (view: EditorView, shouldSave: boolean) => {
       const newContent = view.state.doc.toString();
       setContent(newContent);
+      if (!shouldSave) return;
       setHasUnsavedChanges(true);
       debouncedSave(newContent);
     },
@@ -119,7 +124,7 @@ export default function Editor({
 
   const updateSelectionToolbar = useCallback((view: EditorView) => {
     const selection = view.state.selection.main;
-    if (mode !== "edit" || selection.empty || !container) {
+    if (readOnly || mode !== "edit" || selection.empty || !container) {
       setSelectionToolbar({ open: false, left: 0, top: 0 });
       return;
     }
@@ -140,17 +145,17 @@ export default function Editor({
       left,
       top,
     });
-  }, [container, mode]);
+  }, [container, mode, readOnly]);
 
   const updateListener = useMemo(
     () =>
       EditorView.updateListener.of((update: ViewUpdate) => {
-        if (update.docChanged) handleChange(update.view);
+        if (update.docChanged) handleChange(update.view, !readOnly);
         if (update.docChanged || update.selectionSet || update.focusChanged) {
           updateSelectionToolbar(update.view);
         }
       }),
-    [handleChange, updateSelectionToolbar],
+    [handleChange, readOnly, updateSelectionToolbar],
   );
 
   const editorKeymap = useMemo(
@@ -193,10 +198,24 @@ export default function Editor({
   );
 
   useCollabEditor(
-    container && mode === "edit"
-      ? { docId, container, extensions, initialContent, onTitleUpdate, onViewChange: setEditorView }
+    container && (mode === "edit" || readOnly)
+      ? {
+          docId,
+          container,
+          extensions,
+          initialContent,
+          readOnly,
+          onTitleUpdate,
+          onViewChange: setEditorView,
+        }
       : null,
   );
+
+  useEffect(() => {
+    if (readOnly) {
+      setMode("preview");
+    }
+  }, [readOnly]);
 
   useEffect(() => {
     if (mode === "preview") {
@@ -263,7 +282,7 @@ export default function Editor({
             </Tooltip>
           </div>
 
-          {mode === "edit" && (
+          {mode === "edit" && !readOnly && (
             <div
               className="flex flex-wrap items-center gap-1 border-l border-border/80 pl-2"
               data-testid="editor-toolbar"
@@ -321,10 +340,19 @@ export default function Editor({
       )}
 
       {mode === "preview" ? (
-        <div
-          className="prose prose-sm dark:prose-invert prose-headings:font-heading max-w-none flex-1 overflow-y-auto bg-card/65 p-6"
-          dangerouslySetInnerHTML={{ __html: previewHtml }}
-        />
+        <>
+          <div
+            className="prose prose-sm dark:prose-invert prose-headings:font-heading max-w-none flex-1 overflow-y-auto bg-card/65 p-6"
+            dangerouslySetInnerHTML={{ __html: previewHtml }}
+          />
+          {readOnly && (
+            <div
+              ref={setContainer}
+              className={cn("hidden", fontClassName)}
+              data-testid="editor-container"
+            />
+          )}
+        </>
       ) : (
         <div className="relative flex-1 overflow-hidden bg-card/65">
           {selectionToolbar.open && (

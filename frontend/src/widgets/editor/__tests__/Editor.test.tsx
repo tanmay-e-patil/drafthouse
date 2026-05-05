@@ -5,6 +5,7 @@ class MockEditorView {
   focus = vi.fn();
   destroy = vi.fn();
   static updateListener = { of: vi.fn().mockReturnValue([]) };
+  static editable = { of: vi.fn().mockReturnValue([]) };
   static theme = vi.fn().mockReturnValue([]);
   state = { doc: { toString: () => "# Hello" } };
 
@@ -180,6 +181,26 @@ describe("Editor", () => {
 
     await waitFor(() => {
       expect(screen.getByTestId("editor-container").className).toContain("font-serif");
+    });
+  });
+
+  it("hides formatting controls in read-only mode", async () => {
+    const { default: Editor } = await import("../Editor");
+    const onSave = vi.fn().mockResolvedValue(undefined);
+
+    render(
+      <Editor
+        docId="test-doc-id"
+        initialContent="# Hello"
+        onSave={onSave}
+        readOnly
+      />
+    );
+
+    await waitFor(() => {
+      expect(screen.getByText("Edit")).toBeDefined();
+      expect(screen.getByText("Hello")).toBeDefined();
+      expect(screen.queryByTestId("editor-toolbar")).toBeNull();
     });
   });
 });

@@ -9,7 +9,7 @@ use dal::{
 };
 use kernel::{
     CreateInviteLinkRequest, Document, DocumentContentResponse, DocumentListResponse,
-    DocumentMember, InviteLink, NewDocument, NewInviteLink, NewWsTicket, TitleUpdated,
+    DocumentMember, InviteLink, MemberRole, NewDocument, NewInviteLink, NewWsTicket, TitleUpdated,
     UpdateDocumentContentRequest, UpdateDocumentRequest, UpdateMemberRoleRequest, WsTicketResponse,
 };
 use nan_serve_publish_event::publish_event;
@@ -23,6 +23,93 @@ pub mod tokio_event_adapter_runtime {
 }
 
 const DEFAULT_PAGE_LIMIT: i64 = 20;
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum DocumentAccessRole {
+    Owner,
+    Editor,
+    Viewer,
+    PublicViewer,
+}
+
+impl DocumentAccessRole {
+    pub fn as_response_role(self) -> &'static str {
+        match self {
+            Self::Owner => "owner",
+            Self::Editor => "editor",
+            Self::Viewer | Self::PublicViewer => "viewer",
+        }
+    }
+
+    fn can_edit(self) -> bool {
+        matches!(self, Self::Owner | Self::Editor)
+    }
+}
+
+pub async fn resolve_document_access<D>(
+    dal: &D,
+    doc_id: uuid::Uuid,
+    user_id: Option<uuid::Uuid>,
+) -> Result<(Document, DocumentAccessRole), NanoServiceError>
+where
+    D: GetDocumentById + GetDocumentMember,
+{
+    let doc = dal.get_document_by_id(doc_id).await?.ok_or_else(|| {
+        NanoServiceError::new("Document not found", NanoServiceErrorStatus::NotFound)
+    })?;
+
+    if let Some(user_id) = user_id {
+        if doc.owner_id == user_id {
+            return Ok((doc, DocumentAccessRole::Owner));
+        }
+
+        if let Some(member) = dal.get_document_member(doc_id, user_id).await? {
+            let role = match member.role {
+                MemberRole::Editor => DocumentAccessRole::Editor,
+                MemberRole::Viewer => DocumentAccessRole::Viewer,
+            };
+            return Ok((doc, role));
+        }
+    }
+
+    if doc.is_public {
+        return Ok((doc, DocumentAccessRole::PublicViewer));
+    }
+
+    let (message, status) = if user_id.is_some() {
+        (
+            "You do not have access to this document",
+            NanoServiceErrorStatus::Forbidden,
+        )
+    } else {
+        (
+            "Authentication required to access this document",
+            NanoServiceErrorStatus::Unauthorized,
+        )
+    };
+
+    Err(NanoServiceError::new(message, status))
+}
+
+pub async fn ensure_document_editor_access<D>(
+    dal: &D,
+    doc_id: uuid::Uuid,
+    user_id: uuid::Uuid,
+) -> Result<Document, NanoServiceError>
+where
+    D: GetDocumentById + GetDocumentMember,
+{
+    let (doc, role) = resolve_document_access(dal, doc_id, Some(user_id)).await?;
+
+    if role.can_edit() {
+        Ok(doc)
+    } else {
+        Err(NanoServiceError::new(
+            "Only editors can update this document",
+            NanoServiceErrorStatus::Forbidden,
+        ))
+    }
+}
 
 pub async fn ensure_document_access<D>(
     dal: &D,
@@ -175,13 +262,12 @@ where
 pub async fn get_document_content<D>(
     dal: &D,
     id: uuid::Uuid,
+    user_id: Option<uuid::Uuid>,
 ) -> Result<DocumentContentResponse, NanoServiceError>
 where
-    D: GetDocumentById + GetDocumentContent,
+    D: GetDocumentById + GetDocumentMember + GetDocumentContent,
 {
-    dal.get_document_by_id(id).await?.ok_or_else(|| {
-        NanoServiceError::new("Document not found", NanoServiceErrorStatus::NotFound)
-    })?;
+    resolve_document_access(dal, id, user_id).await?;
 
     let content = dal.get_document_content(id).await?.unwrap_or_default();
     Ok(DocumentContentResponse { content })
@@ -190,14 +276,13 @@ where
 pub async fn update_document_content<D>(
     dal: &D,
     id: uuid::Uuid,
+    user_id: uuid::Uuid,
     request: &UpdateDocumentContentRequest,
 ) -> Result<(), NanoServiceError>
 where
-    D: GetDocumentById + UpdateDocumentContent,
+    D: GetDocumentById + GetDocumentMember + UpdateDocumentContent,
 {
-    dal.get_document_by_id(id).await?.ok_or_else(|| {
-        NanoServiceError::new("Document not found", NanoServiceErrorStatus::NotFound)
-    })?;
+    ensure_document_editor_access(dal, id, user_id).await?;
 
     dal.update_document_content(id, request.content.clone())
         .await
@@ -211,11 +296,9 @@ pub async fn issue_ws_ticket<D>(
     user_id: uuid::Uuid,
 ) -> Result<WsTicketResponse, NanoServiceError>
 where
-    D: GetDocumentById + CreateWsTicket,
+    D: GetDocumentById + GetDocumentMember + CreateWsTicket,
 {
-    dal.get_document_by_id(doc_id).await?.ok_or_else(|| {
-        NanoServiceError::new("Document not found", NanoServiceErrorStatus::NotFound)
-    })?;
+    resolve_document_access(dal, doc_id, Some(user_id)).await?;
 
     let raw_token: String = rand::thread_rng()
         .sample_iter(&rand::distributions::Alphanumeric)
@@ -579,13 +662,13 @@ mod tests {
                         NanoServiceErrorStatus::Gone,
                     ));
                 }
-                if link.expires_at.map_or(false, |e| e < Utc::now()) {
+                if link.expires_at.is_some_and(|e| e < Utc::now()) {
                     return Err(NanoServiceError::new(
                         "Invite link has expired",
                         NanoServiceErrorStatus::Gone,
                     ));
                 }
-                if link.max_uses.map_or(false, |m| link.use_count >= m) {
+                if link.max_uses.is_some_and(|m| link.use_count >= m) {
                     return Err(NanoServiceError::new(
                         "Invite link has reached its maximum uses",
                         NanoServiceErrorStatus::Gone,
@@ -663,7 +746,7 @@ mod tests {
                     .filter(|l| {
                         l.doc_id == doc_id
                             && l.revoked_at.is_none()
-                            && l.expires_at.map_or(true, |e| e > now)
+                            && l.expires_at.is_none_or(|e| e > now)
                     })
                     .cloned()
                     .collect())
@@ -702,6 +785,25 @@ mod tests {
                     .filter(|m| m.doc_id == doc_id)
                     .cloned()
                     .collect())
+            }
+        }
+    }
+
+    impl GetDocumentMember for MockDal {
+        fn get_document_member(
+            &self,
+            doc_id: Uuid,
+            user_id: Uuid,
+        ) -> impl std::future::Future<Output = Result<Option<DocumentMember>, NanoServiceError>> + Send
+        {
+            let members = Arc::clone(&self.members);
+            async move {
+                Ok(members
+                    .lock()
+                    .unwrap()
+                    .iter()
+                    .find(|m| m.doc_id == doc_id && m.user_id == user_id)
+                    .cloned())
             }
         }
     }
@@ -1198,7 +1300,7 @@ mod tests {
         let owner_id = Uuid::new_v4();
         let doc = test_document(owner_id);
         let dal = MockDal::with_document_and_content(doc.clone(), "# Hello");
-        let result = get_document_content(&dal, doc.id).await;
+        let result = get_document_content(&dal, doc.id, Some(owner_id)).await;
         assert!(result.is_ok());
         assert_eq!(result.unwrap().content, "# Hello");
     }
@@ -1208,15 +1310,39 @@ mod tests {
         let owner_id = Uuid::new_v4();
         let doc = test_document(owner_id);
         let dal = MockDal::with_document(doc.clone());
-        let result = get_document_content(&dal, doc.id).await;
+        let result = get_document_content(&dal, doc.id, Some(owner_id)).await;
         assert!(result.is_ok());
         assert_eq!(result.unwrap().content, "");
     }
 
     #[tokio::test]
+    async fn get_document_content_allows_public_unauthenticated_reader() {
+        let owner_id = Uuid::new_v4();
+        let mut doc = test_document(owner_id);
+        doc.is_public = true;
+        let dal = MockDal::with_document_and_content(doc.clone(), "# Public");
+        let result = get_document_content(&dal, doc.id, None).await;
+        assert!(result.is_ok());
+        assert_eq!(result.unwrap().content, "# Public");
+    }
+
+    #[tokio::test]
+    async fn get_document_content_private_unauthenticated_returns_401() {
+        let owner_id = Uuid::new_v4();
+        let doc = test_document(owner_id);
+        let dal = MockDal::with_document(doc.clone());
+        let result = get_document_content(&dal, doc.id, None).await;
+        assert!(result.is_err());
+        assert_eq!(
+            result.unwrap_err().status,
+            NanoServiceErrorStatus::Unauthorized
+        );
+    }
+
+    #[tokio::test]
     async fn get_document_content_not_found_returns_404() {
         let dal = MockDal::new();
-        let result = get_document_content(&dal, Uuid::new_v4()).await;
+        let result = get_document_content(&dal, Uuid::new_v4(), Some(Uuid::new_v4())).await;
         assert!(result.is_err());
         assert_eq!(result.unwrap_err().status, NanoServiceErrorStatus::NotFound);
     }
@@ -1231,6 +1357,7 @@ mod tests {
         let result = update_document_content(
             &dal,
             doc.id,
+            owner_id,
             &UpdateDocumentContentRequest {
                 content: "# New Content".to_string(),
             },
@@ -1242,10 +1369,63 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn update_document_content_viewer_returns_403() {
+        let owner_id = Uuid::new_v4();
+        let viewer_id = Uuid::new_v4();
+        let doc = test_document(owner_id);
+        let member = DocumentMember {
+            doc_id: doc.id,
+            user_id: viewer_id,
+            email: None,
+            role: MemberRole::Viewer,
+        };
+        let dal = MockDal::with_document_and_member(doc.clone(), member);
+        let result = update_document_content(
+            &dal,
+            doc.id,
+            viewer_id,
+            &UpdateDocumentContentRequest {
+                content: "# Viewer edit".to_string(),
+            },
+        )
+        .await;
+        assert!(result.is_err());
+        assert_eq!(
+            result.unwrap_err().status,
+            NanoServiceErrorStatus::Forbidden
+        );
+    }
+
+    #[tokio::test]
+    async fn update_document_content_editor_member_succeeds() {
+        let owner_id = Uuid::new_v4();
+        let editor_id = Uuid::new_v4();
+        let doc = test_document(owner_id);
+        let member = DocumentMember {
+            doc_id: doc.id,
+            user_id: editor_id,
+            email: None,
+            role: MemberRole::Editor,
+        };
+        let dal = MockDal::with_document_and_member(doc.clone(), member);
+        let result = update_document_content(
+            &dal,
+            doc.id,
+            editor_id,
+            &UpdateDocumentContentRequest {
+                content: "# Editor edit".to_string(),
+            },
+        )
+        .await;
+        assert!(result.is_ok());
+    }
+
+    #[tokio::test]
     async fn update_document_content_not_found_returns_404() {
         let dal = MockDal::new();
         let result = update_document_content(
             &dal,
+            Uuid::new_v4(),
             Uuid::new_v4(),
             &UpdateDocumentContentRequest {
                 content: "content".to_string(),
@@ -1267,6 +1447,23 @@ mod tests {
         assert!(result.is_ok());
         let resp = result.unwrap();
         assert!(!resp.ticket.is_empty());
+        assert_eq!(dal.tickets.lock().unwrap().len(), 1);
+    }
+
+    #[tokio::test]
+    async fn issue_ws_ticket_viewer_returns_ticket() {
+        let owner_id = Uuid::new_v4();
+        let viewer_id = Uuid::new_v4();
+        let doc = test_document(owner_id);
+        let member = DocumentMember {
+            doc_id: doc.id,
+            user_id: viewer_id,
+            email: None,
+            role: MemberRole::Viewer,
+        };
+        let dal = MockDal::with_document_and_member(doc.clone(), member);
+        let result = issue_ws_ticket(&dal, doc.id, viewer_id).await;
+        assert!(result.is_ok());
         assert_eq!(dal.tickets.lock().unwrap().len(), 1);
     }
 

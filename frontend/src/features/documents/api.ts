@@ -10,6 +10,7 @@ export interface Document {
   owner_id: string;
   title: string;
   is_public: boolean;
+  access_role?: "owner" | MemberRole;
   created_at: string;
   updated_at: string;
 }
@@ -49,10 +50,16 @@ function getAuthHeaders(): Record<string, string> {
 
 function handleResponse<T>(res: Response, fallbackError: string): Promise<T> {
   if (!res.ok) {
-    return res.json().then((data) => {
-      const err = data as ApiErrorResponse;
-      throw new ApiError(err.detail ?? fallbackError, res.status);
-    });
+    return res
+      .json()
+      .then((data) => {
+        const err = data as ApiErrorResponse;
+        throw new ApiError(err.detail ?? fallbackError, res.status);
+      })
+      .catch((e) => {
+        if (e instanceof ApiError) throw e;
+        throw new ApiError(fallbackError, res.status);
+      });
   }
   return res.json() as Promise<T>;
 }

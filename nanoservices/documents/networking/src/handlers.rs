@@ -73,8 +73,10 @@ pub async fn get_document(
     path: web::Path<Uuid>,
 ) -> Result<HttpResponse, NanoServiceError> {
     let dal = get_dal(&req)?;
-    let doc = documents_core::get_document(dal, *path).await?;
-    Ok(HttpResponse::Ok().json(doc))
+    let claims = crate::middleware::extract_optional_verified_jwt(&req).await?;
+    let (doc, role) =
+        documents_core::resolve_document_access(dal, *path, claims.map(|c| c.sub)).await?;
+    Ok(HttpResponse::Ok().json(DocumentResponse::from_doc(doc, role.as_response_role())))
 }
 
 pub async fn update_document(
@@ -142,12 +144,38 @@ pub struct ListDocumentsQuery {
     pub limit: Option<i32>,
 }
 
+#[derive(serde::Serialize)]
+struct DocumentResponse {
+    id: Uuid,
+    owner_id: Uuid,
+    title: String,
+    is_public: bool,
+    created_at: chrono::DateTime<chrono::Utc>,
+    updated_at: chrono::DateTime<chrono::Utc>,
+    access_role: &'static str,
+}
+
+impl DocumentResponse {
+    fn from_doc(doc: kernel::Document, access_role: &'static str) -> Self {
+        Self {
+            id: doc.id,
+            owner_id: doc.owner_id,
+            title: doc.title,
+            is_public: doc.is_public,
+            created_at: doc.created_at,
+            updated_at: doc.updated_at,
+            access_role,
+        }
+    }
+}
+
 pub async fn get_document_content(
     req: HttpRequest,
     path: web::Path<Uuid>,
 ) -> Result<HttpResponse, NanoServiceError> {
     let dal = get_dal(&req)?;
-    let result = documents_core::get_document_content(dal, *path).await?;
+    let claims = crate::middleware::extract_optional_verified_jwt(&req).await?;
+    let result = documents_core::get_document_content(dal, *path, claims.map(|c| c.sub)).await?;
     Ok(HttpResponse::Ok().json(result))
 }
 
@@ -157,7 +185,8 @@ pub async fn update_document_content(
     body: web::Json<UpdateDocumentContentRequest>,
 ) -> Result<HttpResponse, NanoServiceError> {
     let dal = get_dal(&req)?;
-    documents_core::update_document_content(dal, *path, &body).await?;
+    let claims = crate::middleware::extract_verified_jwt(&req).await?;
+    documents_core::update_document_content(dal, *path, claims.sub, &body).await?;
     Ok(HttpResponse::Ok().finish())
 }
 
