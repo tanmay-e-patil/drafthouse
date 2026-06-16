@@ -120,17 +120,17 @@ function LandingPage() {
           <div className="max-w-3xl">
             <div className="mb-6 inline-flex items-center gap-2 rounded-full border border-primary/20 bg-card/70 px-3 py-1 text-xs font-medium text-muted-foreground shadow-sm backdrop-blur">
               <Radio className="size-3.5 text-accent-foreground" />
-              Real-time markdown collaboration
+              Real-time Markdown, built for teams
             </div>
             <h1 className="font-heading text-balance text-5xl font-bold tracking-tight sm:text-6xl lg:text-7xl">
-              A focused writing room for teams that think in Markdown.
+              Collaborative Markdown docs for product and engineering teams.
             </h1>
             <p className="mt-6 max-w-2xl text-pretty text-lg leading-8 text-muted-foreground">
-              Drafthouse gives your team live cursors, resilient CRDT sync, sharing controls, and a clean editor built for product notes, specs, research, and long-form work.
+              Write specs, launch notes, research, and technical plans together — with live cursors, autosave, and conflict-free editing.
             </p>
             <div className="mt-8 flex flex-col gap-3 sm:flex-row">
               <Button size="lg" nativeButton={false} render={<Link to="/register" />}>
-                Create your first draft
+                Create a shared draft
                 <ArrowRight className="size-4" />
               </Button>
               <Button variant="outline" size="lg" nativeButton={false} render={<Link to="/login" />}>
@@ -138,9 +138,9 @@ function LandingPage() {
               </Button>
             </div>
             <dl className="mt-10 grid max-w-xl grid-cols-3 gap-4 text-sm">
-              <Metric value="100" label="editors per doc" />
-              <Metric value="100ms" label="WAL buffer" />
-              <Metric value="1MB" label="doc cap" />
+              <Metric value="Live" label="team cursors" />
+              <Metric value="Auto" label="saved drafts" />
+              <Metric value="Private" label="sharing controls" />
             </dl>
           </div>
 
@@ -158,18 +158,18 @@ function LandingPage() {
         <div className="mt-10 grid gap-4 md:grid-cols-3">
           <FeatureCard
             icon={<Users className="size-5" />}
-            title="Live presence"
-            description="See active editors, cursors, idle state, and document title changes as they happen."
+            title="Know who’s editing"
+            description="See active teammates, cursors, idle state, and title changes as they happen."
           />
           <FeatureCard
             icon={<GitBranch className="size-5" />}
-            title="Conflict-free editing"
-            description="Yrs CRDT sync merges concurrent edits cleanly across reconnects and offline moments."
+            title="Never overwrite a teammate"
+            description="Concurrent edits merge cleanly across reconnects and offline moments."
           />
           <FeatureCard
             icon={<ShieldCheck className="size-5" />}
-            title="Secure sharing"
-            description="Invite links, public read-only docs, one-time WebSocket tickets, and owner controls are built in."
+            title="Share drafts safely"
+            description="Invite links, public read-only docs, one-time session tickets, and owner controls are built in."
           />
         </div>
       </section>
@@ -209,11 +209,11 @@ function LandingPage() {
             </div>
             <h2 className="font-heading text-3xl font-bold tracking-tight">Start with a blank page. Keep the whole team in sync.</h2>
             <p className="mt-3 text-muted-foreground">
-              Create an account, verify your email, and Drafthouse creates a welcome document with shortcuts and examples.
+              Create an account and start a shared Markdown draft without losing decisions in chat threads, bloated workspaces, or local files.
             </p>
           </div>
           <Button size="lg" className="mt-8 lg:mt-0" nativeButton={false} render={<Link to="/register" />}>
-            Get started
+            Start a team draft
             <ArrowRight className="size-4" />
           </Button>
         </div>
