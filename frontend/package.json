@@ -2,6 +2,7 @@
   "name": "frontend",
   "private": true,
   "type": "module",
+  "packageManager": "pnpm@10.15.0",
   "imports": {
     "#/*": "./src/*"
   },
@@ -73,7 +74,8 @@
   "pnpm": {
     "onlyBuiltDependencies": [
       "esbuild",
-      "lightningcss"
+      "lightningcss",
+      "msw"
     ]
   }
 }
