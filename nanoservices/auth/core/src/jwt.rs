@@ -4,7 +4,7 @@ use kernel::JwtClaims;
 use std::env;
 use utils::errors::{NanoServiceError, NanoServiceErrorStatus};
 
-fn jwt_secret() -> String {
+pub(crate) fn jwt_secret() -> String {
     env::var("JWT_SECRET").unwrap_or_else(|_| "dev-secret-change-in-production".into())
 }
 

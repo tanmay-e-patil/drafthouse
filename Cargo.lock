@@ -698,11 +698,9 @@ dependencies = [
  "collab-dal",
  "dal",
  "futures-util",
- "hex",
  "kernel",
  "serde",
  "serde_json",
- "sha2",
  "tokio",
  "tracing",
  "utils",
@@ -1134,15 +1132,14 @@ dependencies = [
 name = "documents-core"
 version = "0.1.0"
 dependencies = [
+ "auth-core",
  "bincode",
  "chrono",
  "dal",
- "hex",
  "kernel",
  "nan-serve-publish-event",
  "rand 0.8.6",
  "serde",
- "sha2",
  "tokio",
  "tracing",
  "utils",

@@ -8,6 +8,7 @@ pub mod register;
 pub mod resend;
 pub mod token;
 pub mod verify;
+pub mod ws_capability;
 
 pub mod tokio_event_adapter_runtime {
     pub use utils::event_runtime::*;

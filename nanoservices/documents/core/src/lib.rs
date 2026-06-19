@@ -1,15 +1,14 @@
 pub mod welcome;
 
-use chrono::Utc;
 use dal::{
-    AcceptInviteLink, CountDocumentsByOwner, CreateDocument, CreateInviteLink, CreateWsTicket,
-    DeleteDocument, DeleteDocumentMember, GetDocumentById, GetDocumentContent, GetDocumentMember,
+    AcceptInviteLink, CountDocumentsByOwner, CreateDocument, CreateInviteLink, DeleteDocument,
+    DeleteDocumentMember, GetDocumentById, GetDocumentContent, GetDocumentMember,
     GetInviteLinkByToken, ListActiveInviteLinks, ListDocumentMembers, ListDocumentsByOwner,
     RevokeInviteLink, UpdateDocument, UpdateDocumentContent, UpdateDocumentMemberRole,
 };
 use kernel::{
     CreateInviteLinkRequest, Document, DocumentContentResponse, DocumentListResponse,
-    DocumentMember, InviteLink, MemberRole, NewDocument, NewInviteLink, NewWsTicket, TitleUpdated,
+    DocumentMember, InviteLink, MemberRole, NewDocument, NewInviteLink, TitleUpdated,
     UpdateDocumentContentRequest, UpdateDocumentRequest, UpdateMemberRoleRequest, WsTicketResponse,
 };
 use nan_serve_publish_event::publish_event;
@@ -288,42 +287,19 @@ where
         .await
 }
 
-const WS_TICKET_EXPIRY_SECS: i64 = 30;
-
 pub async fn issue_ws_ticket<D>(
     dal: &D,
     doc_id: uuid::Uuid,
     user_id: uuid::Uuid,
 ) -> Result<WsTicketResponse, NanoServiceError>
 where
-    D: GetDocumentById + GetDocumentMember + CreateWsTicket,
+    D: GetDocumentById + GetDocumentMember,
 {
-    resolve_document_access(dal, doc_id, Some(user_id)).await?;
+    let (_, role) = resolve_document_access(dal, doc_id, Some(user_id)).await?;
+    let readonly = !role.can_edit();
+    let ticket = auth_core::ws_capability::create_ws_capability(user_id, doc_id, readonly)?;
 
-    let raw_token: String = rand::thread_rng()
-        .sample_iter(&rand::distributions::Alphanumeric)
-        .take(32)
-        .map(char::from)
-        .collect();
-
-    let token_hash = {
-        use sha2::{Digest, Sha256};
-        let mut hasher = Sha256::new();
-        hasher.update(raw_token.as_bytes());
-        hex::encode(hasher.finalize())
-    };
-
-    let expires_at = Utc::now() + chrono::Duration::seconds(WS_TICKET_EXPIRY_SECS);
-
-    dal.create_ws_ticket(NewWsTicket {
-        token_hash,
-        doc_id,
-        user_id,
-        expires_at,
-    })
-    .await?;
-
-    Ok(WsTicketResponse { ticket: raw_token })
+    Ok(WsTicketResponse { ticket })
 }
 
 const INVITE_TOKEN_LEN: usize = 32;
@@ -546,7 +522,6 @@ mod tests {
         documents: Arc<Mutex<Vec<Document>>>,
         next_id: Arc<Mutex<Uuid>>,
         content: Arc<Mutex<std::collections::HashMap<Uuid, String>>>,
-        tickets: Arc<Mutex<Vec<kernel::WsTicket>>>,
         invite_links: Arc<Mutex<Vec<InviteLink>>>,
         members: Arc<Mutex<Vec<DocumentMember>>>,
     }
@@ -557,7 +532,6 @@ mod tests {
                 documents: Arc::new(Mutex::new(vec![])),
                 next_id: Arc::new(Mutex::new(Uuid::new_v4())),
                 content: Arc::new(Mutex::new(std::collections::HashMap::new())),
-                tickets: Arc::new(Mutex::new(vec![])),
                 invite_links: Arc::new(Mutex::new(vec![])),
                 members: Arc::new(Mutex::new(vec![])),
             }
@@ -568,7 +542,6 @@ mod tests {
                 documents: Arc::new(Mutex::new(vec![doc])),
                 next_id: Arc::new(Mutex::new(Uuid::new_v4())),
                 content: Arc::new(Mutex::new(std::collections::HashMap::new())),
-                tickets: Arc::new(Mutex::new(vec![])),
                 invite_links: Arc::new(Mutex::new(vec![])),
                 members: Arc::new(Mutex::new(vec![])),
             }
@@ -579,7 +552,6 @@ mod tests {
                 documents: Arc::new(Mutex::new(docs)),
                 next_id: Arc::new(Mutex::new(Uuid::new_v4())),
                 content: Arc::new(Mutex::new(std::collections::HashMap::new())),
-                tickets: Arc::new(Mutex::new(vec![])),
                 invite_links: Arc::new(Mutex::new(vec![])),
                 members: Arc::new(Mutex::new(vec![])),
             }
@@ -592,7 +564,6 @@ mod tests {
                 documents: Arc::new(Mutex::new(vec![doc])),
                 next_id: Arc::new(Mutex::new(Uuid::new_v4())),
                 content: Arc::new(Mutex::new(map)),
-                tickets: Arc::new(Mutex::new(vec![])),
                 invite_links: Arc::new(Mutex::new(vec![])),
                 members: Arc::new(Mutex::new(vec![])),
             }
@@ -603,7 +574,6 @@ mod tests {
                 documents: Arc::new(Mutex::new(vec![doc])),
                 next_id: Arc::new(Mutex::new(Uuid::new_v4())),
                 content: Arc::new(Mutex::new(std::collections::HashMap::new())),
-                tickets: Arc::new(Mutex::new(vec![])),
                 invite_links: Arc::new(Mutex::new(vec![link])),
                 members: Arc::new(Mutex::new(vec![])),
             }
@@ -614,7 +584,6 @@ mod tests {
                 documents: Arc::new(Mutex::new(vec![doc])),
                 next_id: Arc::new(Mutex::new(Uuid::new_v4())),
                 content: Arc::new(Mutex::new(std::collections::HashMap::new())),
-                tickets: Arc::new(Mutex::new(vec![])),
                 invite_links: Arc::new(Mutex::new(vec![])),
                 members: Arc::new(Mutex::new(vec![member])),
             }
@@ -847,26 +816,6 @@ mod tests {
                     "Member not found",
                     NanoServiceErrorStatus::NotFound,
                 ))
-            }
-        }
-    }
-
-    impl CreateWsTicket for MockDal {
-        fn create_ws_ticket(
-            &self,
-            new_ticket: NewWsTicket,
-        ) -> impl std::future::Future<Output = Result<kernel::WsTicket, NanoServiceError>> + Send
-        {
-            let tickets = Arc::clone(&self.tickets);
-            async move {
-                let ticket = kernel::WsTicket {
-                    token_hash: new_ticket.token_hash,
-                    doc_id: new_ticket.doc_id,
-                    user_id: new_ticket.user_id,
-                    expires_at: new_ticket.expires_at,
-                };
-                tickets.lock().unwrap().push(ticket.clone());
-                Ok(ticket)
             }
         }
     }
@@ -1446,8 +1395,10 @@ mod tests {
         let result = issue_ws_ticket(&dal, doc.id, owner_id).await;
         assert!(result.is_ok());
         let resp = result.unwrap();
-        assert!(!resp.ticket.is_empty());
-        assert_eq!(dal.tickets.lock().unwrap().len(), 1);
+        let claims = auth_core::ws_capability::verify_ws_capability(&resp.ticket).unwrap();
+        assert_eq!(claims.sub, owner_id);
+        assert_eq!(claims.doc_id, doc.id);
+        assert!(!claims.readonly);
     }
 
     #[tokio::test]
@@ -1463,31 +1414,11 @@ mod tests {
         };
         let dal = MockDal::with_document_and_member(doc.clone(), member);
         let result = issue_ws_ticket(&dal, doc.id, viewer_id).await;
-        assert!(result.is_ok());
-        assert_eq!(dal.tickets.lock().unwrap().len(), 1);
-    }
-
-    #[tokio::test]
-    async fn issue_ws_ticket_ticket_is_alphanumeric_32_chars() {
-        let owner_id = Uuid::new_v4();
-        let doc = test_document(owner_id);
-        let dal = MockDal::with_document(doc.clone());
-        let resp = issue_ws_ticket(&dal, doc.id, owner_id).await.unwrap();
-        assert_eq!(resp.ticket.len(), 32);
-        assert!(resp.ticket.chars().all(|c| c.is_alphanumeric()));
-    }
-
-    #[tokio::test]
-    async fn issue_ws_ticket_token_hash_stored_not_raw() {
-        let owner_id = Uuid::new_v4();
-        let doc = test_document(owner_id);
-        let dal = MockDal::with_document(doc.clone());
-        let resp = issue_ws_ticket(&dal, doc.id, owner_id).await.unwrap();
-        let stored = dal.tickets.lock().unwrap()[0].clone();
-        assert_ne!(
-            stored.token_hash, resp.ticket,
-            "raw token must not be stored"
-        );
+        let resp = result.unwrap();
+        let claims = auth_core::ws_capability::verify_ws_capability(&resp.ticket).unwrap();
+        assert_eq!(claims.sub, viewer_id);
+        assert_eq!(claims.doc_id, doc.id);
+        assert!(claims.readonly);
     }
 
     #[tokio::test]

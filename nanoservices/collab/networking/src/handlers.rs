@@ -9,12 +9,11 @@ use collab_core::{
     encode_update,
 };
 use dal::{
-    DeleteSnapshot, DeleteWsTicket, GetDocumentById, GetDocumentMember, GetWsTicketByHash,
-    ReadLatestSnapshot, ScyllaDescriptor, WriteOp, WriteSnapshot,
+    DeleteSnapshot, GetDocumentById, ReadLatestSnapshot, ScyllaDescriptor, WriteOp, WriteSnapshot,
     postgres_txs::SqlxPostGresDescriptor,
 };
 use futures_util::StreamExt;
-use kernel::{MemberRole, NewCollabOp};
+use kernel::NewCollabOp;
 use serde::Deserialize;
 use serde_json::Value;
 use tracing::{info, warn};
@@ -43,37 +42,17 @@ pub async fn ws_handler(
         .app_data::<web::Data<SqlxPostGresDescriptor>>()
         .ok_or_else(|| actix_web::error::ErrorInternalServerError("DAL not configured"))?;
 
-    // Validate ticket against Postgres (optional — public docs have no ticket).
-    // Connections without an editor ticket are public viewers and remain read-only.
+    // Authenticated connections use signed short-lived capability tokens.
+    // Public no-ticket viewers still hit Postgres once to confirm the doc is public.
     let (user_id, is_readonly) = if let Some(raw_token) = &query.ticket {
-        let token_hash = hash_token(raw_token);
+        let claims = auth_core::ws_capability::verify_ws_capability(raw_token)
+            .map_err(|_| actix_web::error::ErrorUnauthorized("Invalid or expired ticket"))?;
 
-        let ticket = pg_dal
-            .get_ws_ticket_by_hash(token_hash.clone())
-            .await
-            .map_err(|e| actix_web::error::ErrorInternalServerError(e.to_string()))?;
-
-        match ticket {
-            None => {
-                return Ok(HttpResponse::Unauthorized().body("Invalid or expired ticket"));
-            }
-            Some(t) if t.expires_at < Utc::now() => {
-                // burn expired ticket
-                let _ = pg_dal.delete_ws_ticket(token_hash).await;
-                return Ok(HttpResponse::Unauthorized().body("Ticket expired"));
-            }
-            Some(t) if t.doc_id != doc_id => {
-                return Ok(HttpResponse::Unauthorized().body("Ticket doc mismatch"));
-            }
-            Some(t) => {
-                // burn single-use ticket
-                let _ = pg_dal.delete_ws_ticket(token_hash).await;
-                let is_readonly = is_viewer_connection(pg_dal.get_ref(), doc_id, t.user_id)
-                    .await
-                    .map_err(|e| actix_web::error::ErrorInternalServerError(e.to_string()))?;
-                (Some(t.user_id), is_readonly)
-            }
+        if claims.doc_id != doc_id {
+            return Ok(HttpResponse::Unauthorized().body("Ticket doc mismatch"));
         }
+
+        (Some(claims.sub), claims.readonly)
     } else {
         let doc = pg_dal
             .get_document_by_id(doc_id)
@@ -172,29 +151,6 @@ pub async fn ws_handler(
     });
 
     Ok(response)
-}
-
-async fn is_viewer_connection<D>(
-    dal: &D,
-    doc_id: Uuid,
-    user_id: Uuid,
-) -> Result<bool, utils::errors::NanoServiceError>
-where
-    D: GetDocumentById + GetDocumentMember,
-{
-    let doc = dal.get_document_by_id(doc_id).await?.ok_or_else(|| {
-        utils::errors::NanoServiceError::new(
-            "Document not found",
-            utils::errors::NanoServiceErrorStatus::NotFound,
-        )
-    })?;
-
-    if doc.owner_id == user_id {
-        return Ok(false);
-    }
-
-    let member = dal.get_document_member(doc_id, user_id).await?;
-    Ok(!matches!(member.map(|m| m.role), Some(MemberRole::Editor)))
 }
 
 async fn handle_binary<D>(
@@ -342,13 +298,6 @@ where
     }
 }
 
-fn hash_token(raw: &str) -> String {
-    use sha2::{Digest, Sha256};
-    let mut h = Sha256::new();
-    h.update(raw.as_bytes());
-    hex::encode(h.finalize())
-}
-
 #[derive(serde::Deserialize)]
 pub struct WsQuery {
     pub ticket: Option<String>,
@@ -360,21 +309,6 @@ mod tests {
     use yrs::sync::AwarenessUpdate;
     use yrs::sync::awareness::AwarenessUpdateEntry;
     use yrs::updates::encoder::Encode;
-
-    #[test]
-    fn hash_token_is_deterministic() {
-        let h1 = hash_token("abc123");
-        let h2 = hash_token("abc123");
-        assert_eq!(h1, h2);
-    }
-
-    #[test]
-    fn hash_token_is_not_plaintext() {
-        let raw = "mysecrettoken";
-        let hashed = hash_token(raw);
-        assert_ne!(hashed, raw);
-        assert_eq!(hashed.len(), 64); // SHA256 hex = 64 chars
-    }
 
     #[test]
     fn awareness_updates_from_bytes_reads_user_payload() {
