@@ -30,6 +30,7 @@ pub async fn send_verification_email(to_email: &str, token: &str) -> Result<(), 
     let app_origin = env::var("APP_ORIGIN").unwrap_or_else(|_| "http://localhost:3000".into());
 
     let verify_url = format!("{}/verify-email?token={}", app_origin, token);
+    let logo_url = format!("{}/logo192.png", app_origin);
 
     let html = format!(
         r#"<!DOCTYPE html>
@@ -41,7 +42,7 @@ pub async fn send_verification_email(to_email: &str, token: &str) -> Result<(), 
     <section style="max-width:560px;margin:0 auto;border:1px solid #ddd0b2;border-radius:24px;background:#fffaf0cc;box-shadow:0 18px 60px #6b4f1d24;overflow:hidden;">
       <div style="padding:28px 28px 18px;">
         <div style="display:inline-flex;align-items:center;gap:8px;margin-bottom:24px;font-weight:700;letter-spacing:-0.02em;">
-          <span style="display:inline-grid;place-items:center;width:34px;height:34px;border-radius:12px;background:#328f97;color:#fff;">D</span>
+          <img src="{logo_url}" width="34" height="34" alt="Drafthouse" style="display:block;width:34px;height:34px;border-radius:12px;">
           Drafthouse
         </div>
         <p style="display:inline-block;margin:0 0 14px;padding:5px 10px;border:1px solid #328f9733;border-radius:999px;background:#ffffff99;color:#6d6252;font-size:12px;font-weight:600;">Verified writers only</p>
