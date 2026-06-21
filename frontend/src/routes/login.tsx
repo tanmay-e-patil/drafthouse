@@ -64,11 +64,14 @@ function Login() {
 
   return (
     <AuthLayout>
-      <Card className="w-full max-w-sm">
-        <CardHeader>
-          <CardTitle className="text-lg">Sign in</CardTitle>
+      <Card className="w-full overflow-hidden rounded-[2rem] border-border/80 bg-card/80 shadow-2xl shadow-primary/10 backdrop-blur">
+        <CardHeader className="space-y-3 pb-4">
+          <div className="inline-flex w-fit items-center rounded-full border border-primary/20 bg-primary/10 px-3 py-1 text-xs font-medium text-primary">
+            Welcome back
+          </div>
+          <CardTitle className="font-heading text-3xl tracking-tight">Open your team room.</CardTitle>
           <CardDescription>
-            Enter your credentials to access Drafthouse
+            Continue the specs, notes, and launch plans already in motion.
           </CardDescription>
         </CardHeader>
         <form onSubmit={handleSubmit} className="space-y-4">
@@ -121,8 +124,8 @@ function Login() {
               />
             </div>
           </CardContent>
-          <CardFooter className="flex-col gap-3">
-            <Button type="submit" className="w-full" size="sm" disabled={loading}>
+          <CardFooter className="flex-col gap-3 pt-2">
+            <Button type="submit" className="h-10 w-full" disabled={loading}>
               {loading ? "Signing in..." : "Sign in"}
             </Button>
             <Link
@@ -137,7 +140,7 @@ function Login() {
                 to="/register"
                 className="font-medium text-foreground underline-offset-4 hover:underline"
               >
-                Sign up
+                Start writing
               </Link>
             </p>
           </CardFooter>
