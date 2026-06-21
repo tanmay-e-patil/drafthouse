@@ -18,14 +18,19 @@ import {
 export const Route = createFileRoute("/login")({ component: Login });
 
 function Login() {
-  const [email, setEmail] = useState("");
+  const search = useSearch({ strict: false });
+  const searchEmail =
+    typeof search === "object" && search !== null && "email" in search
+      ? String((search as Record<string, string>).email)
+      : "";
+  const verified = typeof search === "object" && search !== null && "verified" in search;
+  const [email, setEmail] = useState(searchEmail);
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const setAccessToken = useAuthStore((s) => s.setAccessToken);
   const storeEmail = useAuthStore((s) => s.setEmail);
   const navigate = useNavigate();
-  const search = useSearch({ strict: false });
   const redirectTo =
     typeof search === "object" && search !== null && "redirect" in search
       ? (search as Record<string, string>).redirect
@@ -68,10 +73,24 @@ function Login() {
         </CardHeader>
         <form onSubmit={handleSubmit} className="space-y-4">
           <CardContent className="space-y-3">
-            {error && (
-              <p className="rounded-md bg-destructive/10 px-3 py-2 text-xs text-destructive">
-                {error}
+            {verified && (
+              <p className="rounded-md bg-primary/10 px-3 py-2 text-xs text-primary">
+                Email verified. Sign in to continue.
               </p>
+            )}
+            {error && (
+              <div className="space-y-2 rounded-md bg-destructive/10 px-3 py-2 text-xs text-destructive">
+                <p>{error}</p>
+                {error.toLowerCase().includes("not verified") && (
+                  <Link
+                    to="/resend-verification"
+                    search={{ email }}
+                    className="font-medium underline-offset-4 hover:underline"
+                  >
+                    Resend verification email
+                  </Link>
+                )}
+              </div>
             )}
             <div className="space-y-1.5">
               <Label htmlFor="email" className="text-xs">

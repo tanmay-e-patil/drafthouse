@@ -53,8 +53,20 @@ macro_rules! make_app {
 // ── register ─────────────────────────────────────────────────────────────────
 
 #[tokio::test]
+#[serial]
 async fn register_success() {
     let env = TestEnv::new().await;
+    let mock_server = MockServer::start().await;
+    Mock::given(method("POST"))
+        .and(path("/emails"))
+        .respond_with(
+            ResponseTemplate::new(200).set_body_json(serde_json::json!({"id": "test-id"})),
+        )
+        .mount(&mock_server)
+        .await;
+    unsafe {
+        std::env::set_var("RESEND_API_BASE_URL", mock_server.uri());
+    }
     let app = make_app!(env);
 
     let req = test::TestRequest::post()
@@ -71,11 +83,26 @@ async fn register_success() {
     let body: serde_json::Value = test::read_body_json(resp).await;
     assert_eq!(body["email"], "new@example.com");
     assert!(body["user_id"].is_string());
+    unsafe {
+        std::env::remove_var("RESEND_API_BASE_URL");
+    }
 }
 
 #[tokio::test]
+#[serial]
 async fn register_duplicate_email_returns_409() {
     let env = TestEnv::new().await;
+    let mock_server = MockServer::start().await;
+    Mock::given(method("POST"))
+        .and(path("/emails"))
+        .respond_with(
+            ResponseTemplate::new(200).set_body_json(serde_json::json!({"id": "test-id"})),
+        )
+        .mount(&mock_server)
+        .await;
+    unsafe {
+        std::env::set_var("RESEND_API_BASE_URL", mock_server.uri());
+    }
     let app = make_app!(env);
 
     let payload = RegisterRequest {
@@ -95,6 +122,9 @@ async fn register_duplicate_email_returns_409() {
         .to_request();
     let resp = test::call_service(&app, second).await;
     assert_eq!(resp.status(), StatusCode::CONFLICT);
+    unsafe {
+        std::env::remove_var("RESEND_API_BASE_URL");
+    }
 }
 
 #[tokio::test]

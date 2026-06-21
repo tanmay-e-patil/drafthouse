@@ -1,4 +1,4 @@
-import { createFileRoute, useSearch } from "@tanstack/react-router";
+import { createFileRoute, useNavigate, useSearch } from "@tanstack/react-router";
 import { useState, useEffect } from "react";
 import { Link } from "@tanstack/react-router";
 import { AuthLayout } from "#/features/auth/AuthLayout";
@@ -22,6 +22,8 @@ function VerifyEmail() {
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [success, setSuccess] = useState(false);
+  const [verifiedEmail, setVerifiedEmail] = useState("");
+  const navigate = useNavigate();
   const search = useSearch({ strict: false });
   const token =
     typeof search === "object" && search !== null && "token" in search
@@ -46,6 +48,9 @@ function VerifyEmail() {
           const err = data as ApiError;
           setError(err.detail ?? "Verification failed");
         } else {
+          const pendingEmail = localStorage.getItem("dh_pending_verification_email") ?? "";
+          localStorage.removeItem("dh_pending_verification_email");
+          setVerifiedEmail(pendingEmail);
           setSuccess(true);
         }
       })
@@ -56,6 +61,14 @@ function VerifyEmail() {
         setLoading(false);
       });
   }, [token]);
+
+  useEffect(() => {
+    if (!success) return;
+    const timer = window.setTimeout(() => {
+      navigate({ to: "/login", search: { verified: "1", email: verifiedEmail } });
+    }, 2500);
+    return () => window.clearTimeout(timer);
+  }, [success, verifiedEmail, navigate]);
 
   if (loading) {
     return (
@@ -93,9 +106,10 @@ function VerifyEmail() {
           <CardFooter>
             <Link
               to="/login"
-              className="text-xs font-medium text-foreground underline-offset-4 hover:underline"
+              search={{ verified: "1", email: verifiedEmail }}
+              className="inline-flex h-7 w-full items-center justify-center rounded-lg bg-primary px-2.5 text-[0.8rem] font-medium text-primary-foreground shadow-sm shadow-primary/25 transition-all hover:-translate-y-0.5 hover:bg-primary/90"
             >
-              Sign in to your account
+              Continue to Drafthouse
             </Link>
           </CardFooter>
         </Card>

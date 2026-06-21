@@ -34,13 +34,26 @@ pub async fn send_verification_email(to_email: &str, token: &str) -> Result<(), 
     let html = format!(
         r#"<!DOCTYPE html>
 <html>
-<head><meta charset="utf-8"></head>
-<body style="font-family: sans-serif; max-width: 600px; margin: 0 auto; padding: 20px;">
-  <h2>Welcome to Drafthouse</h2>
-  <p>Please verify your email address by clicking the link below:</p>
-  <p><a href="{verify_url}" style="background-color: #328f97; color: white; padding: 12px 24px; text-decoration: none; border-radius: 6px; display: inline-block;">Verify Email</a></p>
-  <p>This link will expire in 24 hours.</p>
-  <p>If you didn't create an account, you can safely ignore this email.</p>
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"></head>
+<body style="margin:0;background:#f7f1df;color:#241f18;font-family:Inter,-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;">
+  <div style="display:none;max-height:0;overflow:hidden;">Confirm your Drafthouse email to open your private writing room.</div>
+  <main style="padding:32px 16px;background:radial-gradient(circle at 15% 18%,#f2cf87 0,#f2cf8700 34%),radial-gradient(circle at 82% 6%,#b8db9b 0,#b8db9b00 30%),linear-gradient(135deg,#fffaf0,#f3ead2);">
+    <section style="max-width:560px;margin:0 auto;border:1px solid #ddd0b2;border-radius:24px;background:#fffaf0cc;box-shadow:0 18px 60px #6b4f1d24;overflow:hidden;">
+      <div style="padding:28px 28px 18px;">
+        <div style="display:inline-flex;align-items:center;gap:8px;margin-bottom:24px;font-weight:700;letter-spacing:-0.02em;">
+          <span style="display:inline-grid;place-items:center;width:34px;height:34px;border-radius:12px;background:#328f97;color:#fff;">D</span>
+          Drafthouse
+        </div>
+        <p style="display:inline-block;margin:0 0 14px;padding:5px 10px;border:1px solid #328f9733;border-radius:999px;background:#ffffff99;color:#6d6252;font-size:12px;font-weight:600;">Verified writers only</p>
+        <h1 style="margin:0;font-size:30px;line-height:1.12;letter-spacing:-0.04em;">Confirm your email to start drafting.</h1>
+        <p style="margin:16px 0 24px;color:#6d6252;font-size:15px;line-height:1.7;">One click opens private Markdown workspaces, live collaboration, and secure sharing for your Drafthouse account.</p>
+        <a href="{verify_url}" style="display:inline-block;border-radius:12px;background:#328f97;color:#fff;padding:13px 20px;text-decoration:none;font-size:14px;font-weight:700;box-shadow:0 8px 22px #328f9740;">Confirm email</a>
+        <p style="margin:22px 0 0;color:#6d6252;font-size:13px;line-height:1.6;">This link expires in 24 hours. If the button does not work, copy and paste this URL into your browser:</p>
+        <p style="word-break:break-all;margin:8px 0 0;font-size:12px;line-height:1.6;"><a href="{verify_url}" style="color:#28777e;">{verify_url}</a></p>
+      </div>
+      <div style="border-top:1px solid #e4d8bd;padding:16px 28px;background:#fff7e8;color:#7a6f5f;font-size:12px;line-height:1.6;">If you did not create a Drafthouse account, you can ignore this email.</div>
+    </section>
+  </main>
 </body>
 </html>"#
     );
@@ -51,7 +64,7 @@ pub async fn send_verification_email(to_email: &str, token: &str) -> Result<(), 
     let payload = ResendEmailPayload {
         from,
         to: vec![to_email.to_string()],
-        subject: "Verify your email - Drafthouse".to_string(),
+        subject: "Confirm your Drafthouse email".to_string(),
         html,
         attachments: vec![],
     };

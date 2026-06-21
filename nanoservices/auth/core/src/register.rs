@@ -55,6 +55,10 @@ where
 
     if let Err(e) = email::send_verification_email(email, &verification_token).await {
         tracing::warn!("Failed to send verification email: {}", e);
+        return Err(NanoServiceError::new(
+            "Account created, but we couldn't send the verification email. Please request a new verification email.",
+            NanoServiceErrorStatus::InternalServerError,
+        ));
     }
 
     Ok(RegisterResponse {

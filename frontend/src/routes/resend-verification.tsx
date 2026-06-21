@@ -1,4 +1,4 @@
-import { createFileRoute, Link } from "@tanstack/react-router";
+import { createFileRoute, Link, useSearch } from "@tanstack/react-router";
 import { useState, type FormEvent } from "react";
 import { Button } from "#/components/ui/button";
 import { Input } from "#/components/ui/input";
@@ -24,7 +24,12 @@ interface ApiError {
 }
 
 function ResendVerification() {
-  const [email, setEmail] = useState("");
+  const search = useSearch({ strict: false });
+  const initialEmail =
+    typeof search === "object" && search !== null && "email" in search
+      ? String((search as Record<string, string>).email)
+      : "";
+  const [email, setEmail] = useState(initialEmail);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [success, setSuccess] = useState(false);
@@ -73,10 +78,17 @@ function ResendVerification() {
               verification email has been sent.
             </CardDescription>
           </CardHeader>
-          <CardFooter>
+          <CardFooter className="flex-col gap-3">
+            <Link
+              to="/login"
+              search={{ email }}
+              className="inline-flex h-7 w-full items-center justify-center rounded-lg bg-primary px-2.5 text-[0.8rem] font-medium text-primary-foreground shadow-sm shadow-primary/25 transition-all hover:-translate-y-0.5 hover:bg-primary/90"
+            >
+              Sign in after verifying
+            </Link>
             <Link
               to="/"
-              className="text-xs font-medium text-foreground underline-offset-4 hover:underline"
+              className="text-xs font-medium text-muted-foreground underline-offset-4 hover:underline"
             >
               Back to home
             </Link>

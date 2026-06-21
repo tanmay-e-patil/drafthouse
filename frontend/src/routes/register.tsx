@@ -48,6 +48,7 @@ function Register() {
         return;
       }
 
+      localStorage.setItem("dh_pending_verification_email", email);
       setSuccess(true);
     } catch {
       setError("Network error. Please try again.");
@@ -72,13 +73,25 @@ function Register() {
               click the link to verify your account before logging in.
             </CardDescription>
           </CardHeader>
-          <CardFooter>
+          <CardFooter className="flex-col gap-3">
             <Link
-              to="/"
-              className="text-xs font-medium text-foreground underline-offset-4 hover:underline"
+              to="/resend-verification"
+              search={{ email }}
+              className="inline-flex h-7 w-full items-center justify-center rounded-lg bg-primary px-2.5 text-[0.8rem] font-medium text-primary-foreground shadow-sm shadow-primary/25 transition-all hover:-translate-y-0.5 hover:bg-primary/90"
             >
-              Back to home
+              Resend verification email
             </Link>
+            <div className="flex w-full justify-between text-xs text-muted-foreground">
+              <Link to="/register" className="underline-offset-4 hover:underline">
+                Change email
+              </Link>
+              <Link to="/login" className="underline-offset-4 hover:underline">
+                Sign in
+              </Link>
+            </div>
+            <p className="text-xs text-muted-foreground">
+              Didn&apos;t get it? Check spam or request a fresh link.
+            </p>
           </CardFooter>
         </Card>
       </AuthLayout>
@@ -101,9 +114,18 @@ function Register() {
         <form onSubmit={handleSubmit} className="space-y-4">
           <CardContent className="space-y-3">
             {error && (
-              <p className="rounded-md bg-destructive/10 px-3 py-2 text-xs text-destructive">
-                {error}
-              </p>
+              <div className="space-y-2 rounded-md bg-destructive/10 px-3 py-2 text-xs text-destructive">
+                <p>{error}</p>
+                {error.includes("verification email") && (
+                  <Link
+                    to="/resend-verification"
+                    search={{ email }}
+                    className="font-medium underline-offset-4 hover:underline"
+                  >
+                    Request a new verification email
+                  </Link>
+                )}
+              </div>
             )}
             <div className="space-y-1.5">
               <Label htmlFor="email" className="text-xs">
