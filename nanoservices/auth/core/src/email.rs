@@ -30,25 +30,24 @@ pub async fn send_verification_email(to_email: &str, token: &str) -> Result<(), 
     let app_origin = env::var("APP_ORIGIN").unwrap_or_else(|_| "http://localhost:3000".into());
 
     let verify_url = format!("{}/verify-email?token={}", app_origin, token);
-    let logo_url = format!("{}/logo192.png", app_origin);
+    let logo_src = "data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCA2NCA2NCIgcm9sZT0iaW1nIiBhcmlhLWxhYmVsPSJEcmFmdGhvdXNlIj48ZGVmcz48bGluZWFyR3JhZGllbnQgaWQ9ImJnIiB4MT0iMTAiIHgyPSI1NCIgeTE9IjgiIHkyPSI1OCIgZ3JhZGllbnRVbml0cz0idXNlclNwYWNlT25Vc2UiPjxzdG9wIHN0b3AtY29sb3I9IiNGOEU2QTAiLz48c3RvcCBvZmZzZXQ9IjAuNTUiIHN0b3AtY29sb3I9IiNFNUI4NUMiLz48c3RvcCBvZmZzZXQ9IjEiIHN0b3AtY29sb3I9IiM5QjZBMkYiLz48L2xpbmVhckdyYWRpZW50PjwvZGVmcz48cmVjdCB3aWR0aD0iNjQiIGhlaWdodD0iNjQiIGZpbGw9IiMyNDE3MEUiLz48cmVjdCB4PSI4IiB5PSI4IiB3aWR0aD0iNDgiIGhlaWdodD0iNDgiIHJ4PSIxMiIgZmlsbD0idXJsKCNiZykiLz48cGF0aCBkPSJNMjIgMThoMTUuMkw0NSAyNS44VjQ2SDIyVjE4WiIgZmlsbD0iI0ZGRjhFNiIvPjxwYXRoIGQ9Ik0zNyAxOHY4aDgiIGZpbGw9Im5vbmUiIHN0cm9rZT0iIzdBNEEyMiIgc3Ryb2tlLWxpbmVqb2luPSJyb3VuZCIgc3Ryb2tlLXdpZHRoPSIzIi8+PHBhdGggZD0iTTI4IDMyaDExTTI4IDM4aDkiIHN0cm9rZT0iIzdBNEEyMiIgc3Ryb2tlLWxpbmVjYXA9InJvdW5kIiBzdHJva2Utd2lkdGg9IjMiLz48L3N2Zz4=";
 
     let html = format!(
         r#"<!DOCTYPE html>
 <html>
 <head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"></head>
 <body style="margin:0;background:#f7f1df;color:#241f18;font-family:Inter,-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;">
-  <div style="display:none;max-height:0;overflow:hidden;">Confirm your Drafthouse email to open your private writing room.</div>
+  <div style="display:none;max-height:0;overflow:hidden;">Confirm your Drafthouse email address to finish setting up your account.</div>
   <main style="padding:32px 16px;background:radial-gradient(circle at 15% 18%,#f2cf87 0,#f2cf8700 34%),radial-gradient(circle at 82% 6%,#b8db9b 0,#b8db9b00 30%),linear-gradient(135deg,#fffaf0,#f3ead2);">
     <section style="max-width:560px;margin:0 auto;border:1px solid #ddd0b2;border-radius:24px;background:#fffaf0cc;box-shadow:0 18px 60px #6b4f1d24;overflow:hidden;">
       <div style="padding:28px 28px 18px;">
-        <div style="display:inline-flex;align-items:center;gap:8px;margin-bottom:24px;font-weight:700;letter-spacing:-0.02em;">
-          <img src="{logo_url}" width="34" height="34" alt="Drafthouse" style="display:block;width:34px;height:34px;border-radius:12px;">
-          Drafthouse
+        <div style="text-align:center;margin-bottom:24px;font-weight:700;letter-spacing:-0.02em;">
+          <img src="{logo_src}" width="42" height="42" alt="Drafthouse" style="display:block;width:42px;height:42px;border-radius:12px;margin:0 auto 10px;">
+          <div>Drafthouse</div>
         </div>
-        <p style="display:inline-block;margin:0 0 14px;padding:5px 10px;border:1px solid #328f9733;border-radius:999px;background:#ffffff99;color:#6d6252;font-size:12px;font-weight:600;">Verified writers only</p>
-        <h1 style="margin:0;font-size:30px;line-height:1.12;letter-spacing:-0.04em;">Confirm your email to start drafting.</h1>
-        <p style="margin:16px 0 24px;color:#6d6252;font-size:15px;line-height:1.7;">One click opens private Markdown workspaces, live collaboration, and secure sharing for your Drafthouse account.</p>
-        <a href="{verify_url}" style="display:inline-block;border-radius:12px;background:#328f97;color:#fff;padding:13px 20px;text-decoration:none;font-size:14px;font-weight:700;box-shadow:0 8px 22px #328f9740;">Confirm email</a>
+        <h1 style="margin:0;font-size:30px;line-height:1.12;letter-spacing:-0.04em;">Confirm your email address.</h1>
+        <p style="margin:16px 0 24px;color:#6d6252;font-size:15px;line-height:1.7;">Thanks for creating a Drafthouse account. Confirm this email address to finish setup and unlock your private Markdown workspace.</p>
+        <a href="{verify_url}" style="display:inline-block;border-radius:12px;background:#328f97;color:#fff;padding:13px 20px;text-decoration:none;font-size:14px;font-weight:700;box-shadow:0 8px 22px #328f9740;">Confirm email address</a>
         <p style="margin:22px 0 0;color:#6d6252;font-size:13px;line-height:1.6;">This link expires in 24 hours. If the button does not work, copy and paste this URL into your browser:</p>
         <p style="word-break:break-all;margin:8px 0 0;font-size:12px;line-height:1.6;"><a href="{verify_url}" style="color:#28777e;">{verify_url}</a></p>
       </div>
