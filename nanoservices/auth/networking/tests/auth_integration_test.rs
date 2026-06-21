@@ -90,7 +90,7 @@ async fn register_success() {
 
 #[tokio::test]
 #[serial]
-async fn register_duplicate_email_returns_409() {
+async fn register_duplicate_unverified_email_resends_verification() {
     let env = TestEnv::new().await;
     let mock_server = MockServer::start().await;
     Mock::given(method("POST"))
@@ -121,10 +121,44 @@ async fn register_duplicate_email_returns_409() {
         .set_json(&payload)
         .to_request();
     let resp = test::call_service(&app, second).await;
-    assert_eq!(resp.status(), StatusCode::CONFLICT);
+    assert_eq!(resp.status(), StatusCode::CREATED);
+
+    let body: serde_json::Value = test::read_body_json(resp).await;
+    assert_eq!(
+        body["message"],
+        "We sent a fresh verification email. Please check your inbox."
+    );
+
+    let token_count: i64 = sqlx::query_scalar(
+        "SELECT COUNT(*) FROM email_verification_tokens WHERE user_id = (SELECT id FROM users WHERE email = $1)",
+    )
+    .bind("dup@example.com")
+    .fetch_one(&env.pool)
+    .await
+    .unwrap();
+    assert_eq!(token_count, 1);
+
     unsafe {
         std::env::remove_var("RESEND_API_BASE_URL");
     }
+}
+
+#[tokio::test]
+async fn register_duplicate_verified_email_returns_409() {
+    let env = TestEnv::new().await;
+    let app = make_app!(env);
+    create_verified_user(&env.pool, "verifieddup@example.com", "password123").await;
+
+    let req = test::TestRequest::post()
+        .uri("/auth/register")
+        .set_json(RegisterRequest {
+            email: "verifieddup@example.com".into(),
+            password: "password123".into(),
+        })
+        .to_request();
+
+    let resp = test::call_service(&app, req).await;
+    assert_eq!(resp.status(), StatusCode::CONFLICT);
 }
 
 #[tokio::test]
