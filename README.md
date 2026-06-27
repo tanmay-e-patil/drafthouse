@@ -6,6 +6,32 @@ See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for full design decisions.
 
 ---
 
+## Architecture
+
+```mermaid
+flowchart LR
+  user[Browser] --> frontend[TanStack Start frontend]
+  frontend -->|HTTP + WebSocket| ingress[Actix ingress monolith]
+
+  subgraph backend[Rust nanoservices]
+    ingress --> auth[auth networking/core/dal]
+    ingress --> docs[documents networking/core/dal]
+    ingress --> collab[collab networking/core/dal]
+    docs -. in-process events .-> collab
+    auth -. in-process events .-> docs
+  end
+
+  auth --> pg[(PostgreSQL\nusers, tokens)]
+  docs --> pg
+  collab --> scylla[(ScyllaDB\nCRDT WAL + snapshots)]
+  auth -->|verification, password reset, export links| resend[Resend Email API]
+  infisical[Infisical secrets] -. env vars .-> ingress
+  pg -. backups .-> b2[Backblaze B2]
+  scylla -. backups .-> b2
+```
+
+---
+
 ## Prerequisites
 
 | Tool | Purpose |
