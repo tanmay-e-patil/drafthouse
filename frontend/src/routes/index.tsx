@@ -14,6 +14,7 @@ import {
   Command,
   FileText,
   GitBranch,
+  Github,
   Layers3,
   Lock,
   MessageSquareText,
@@ -130,6 +131,9 @@ function LandingPage() {
               <a className="rounded-lg px-3 py-2 text-sm text-muted-foreground transition hover:bg-muted/70 hover:text-foreground" href="#security">Security</a>
             </nav>
             <div className="flex items-center gap-2">
+              <Button variant="ghost" size="icon" nativeButton={false} render={<a href="https://github.com/tanmay-e-patil/drafthouse" target="_blank" rel="noreferrer" aria-label="GitHub" />}>
+                <Github className="size-4" />
+              </Button>
               <Button variant="ghost" size="sm" nativeButton={false} render={<Link to="/login" />}>Sign in</Button>
               <Button size="sm" nativeButton={false} render={<Link to="/register" />}>Start writing</Button>
             </div>
