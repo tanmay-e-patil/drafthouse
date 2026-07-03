@@ -21,6 +21,7 @@ import { Eye, Code2 } from "lucide-react";
 import { EDITOR_ACTIONS } from "./editorActions";
 import { getFormattingEdit, type FormattingActionId } from "./formatting";
 import { cn } from "#/lib/utils";
+import MarkdownIt from "markdown-it";
 
 interface EditorProps {
   docId: string;
@@ -33,6 +34,14 @@ interface EditorProps {
 }
 
 const DEBOUNCE_MS = 500;
+
+function sanitizeMarkdownPreview(markdown: string) {
+  return new MarkdownIt({
+    html: false,
+    linkify: true,
+    typographer: true,
+  }).render(markdown);
+}
 
 const STATUS_LABEL: Record<ConnectionStatus, string> = {
   connecting: "Connecting...",
@@ -88,7 +97,6 @@ export default function Editor({
   const [content, setContent] = useState(initialContent);
   const [saving, setSaving] = useState(false);
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
-  const [previewHtml, setPreviewHtml] = useState("");
   const [editorView, setEditorView] = useState<EditorView | null>(null);
   const [selectionToolbar, setSelectionToolbar] = useState<{
     open: boolean;
@@ -219,19 +227,6 @@ export default function Editor({
 
   useEffect(() => {
     if (mode === "preview") {
-      import("markdown-it").then((mod) => {
-        const md = new mod.default({
-          html: true,
-          linkify: true,
-          typographer: true,
-        });
-        setPreviewHtml(md.render(content));
-      });
-    }
-  }, [mode, content]);
-
-  useEffect(() => {
-    if (mode === "preview") {
       setSelectionToolbar({ open: false, left: 0, top: 0 });
     }
   }, [mode]);
@@ -343,7 +338,7 @@ export default function Editor({
         <>
           <div
             className="prose prose-sm dark:prose-invert prose-headings:font-heading max-w-none flex-1 overflow-y-auto bg-card/65 p-6"
-            dangerouslySetInnerHTML={{ __html: previewHtml }}
+            dangerouslySetInnerHTML={{ __html: sanitizeMarkdownPreview(content) }}
           />
           {readOnly && (
             <div
