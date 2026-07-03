@@ -2,8 +2,8 @@ import { useEffect, useRef } from "react";
 import * as Y from "yjs";
 import { WebsocketProvider } from "y-websocket";
 import { yCollab } from "y-codemirror.next";
-import { EditorView } from "@codemirror/view";
-import { EditorState, type Extension } from "@codemirror/state";
+import type { EditorView } from "@codemirror/view";
+import type { Extension } from "@codemirror/state";
 import { issueWsTicket } from "./api";
 import { useCollabStore } from "./store";
 import { useAuthStore } from "#/features/auth/store";
@@ -111,6 +111,11 @@ export function useCollabEditor(
           // Public viewers can connect without a ticket.
         }
       }
+
+      const [{ EditorView }, { EditorState }] = await Promise.all([
+        import("@codemirror/view"),
+        import("@codemirror/state"),
+      ]);
 
       provider = new WebsocketProvider(`${WS_BASE}/collab`, docId, ydoc, {
         connect: true,

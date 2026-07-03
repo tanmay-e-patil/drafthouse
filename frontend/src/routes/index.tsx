@@ -8,7 +8,7 @@ import { Button } from "#/components/ui/button";
 import { CommandPalette } from "#/features/documents/CommandPalette";
 import { useDocumentHotkeys } from "#/features/documents/useDocumentHotkeys";
 import { FileText, Plus } from "lucide-react";
-import { LandingPage } from "./indexLanding";
+import { LandingPage } from "./-indexLanding";
 import { notifyTransientError } from "#/shared/errors";
 
 export const Route = createFileRoute("/")({ component: Dashboard });

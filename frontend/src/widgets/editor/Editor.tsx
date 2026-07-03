@@ -1,27 +1,23 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { useCollabStore, type ConnectionStatus } from "#/features/collab/store";
+import { useCollabStore } from "#/features/collab/store";
 import { useCollabEditor } from "#/features/collab/useCollabEditor";
-import AvatarStrip from "#/features/collab/ui/AvatarStrip";
-import { EditorView, keymap, lineNumbers, highlightActiveLineGutter, highlightSpecialChars, drawSelection, highlightActiveLine } from "@codemirror/view";
-import { defaultKeymap, history, historyKeymap } from "@codemirror/commands";
-import { syntaxHighlighting, defaultHighlightStyle, bracketMatching } from "@codemirror/language";
-import { markdown, markdownLanguage } from "@codemirror/lang-markdown";
-import { languages } from "@codemirror/language-data";
-import type { ViewUpdate } from "@codemirror/view";
+import type { EditorView, ViewUpdate } from "@codemirror/view";
 import type { Extension } from "@codemirror/state";
 import { useDebounce } from "./useDebounce";
-import { Toggle } from "#/components/ui/toggle";
 import { Button } from "#/components/ui/button";
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipTrigger,
-} from "#/components/ui/tooltip";
-import { Eye, Code2 } from "lucide-react";
 import { EDITOR_ACTIONS } from "./editorActions";
 import { getFormattingEdit, type FormattingActionId } from "./formatting";
 import { cn } from "#/lib/utils";
 import MarkdownIt from "markdown-it";
+import EditorHeader from "./EditorHeader";
+
+interface CodeMirrorModules {
+  view: typeof import("@codemirror/view");
+  commands: typeof import("@codemirror/commands");
+  language: typeof import("@codemirror/language");
+  markdown: typeof import("@codemirror/lang-markdown");
+  languageData: typeof import("@codemirror/language-data");
+}
 
 interface EditorProps {
   docId: string;
@@ -42,20 +38,6 @@ function sanitizeMarkdownPreview(markdown: string) {
     typographer: true,
   }).render(markdown);
 }
-
-const STATUS_LABEL: Record<ConnectionStatus, string> = {
-  connecting: "Connecting...",
-  connected: "Synced",
-  syncing: "Syncing...",
-  disconnected: "Offline",
-};
-
-const STATUS_DOT: Record<ConnectionStatus, string> = {
-  connecting: "bg-primary",
-  connected: "bg-emerald-500 dark:bg-emerald-400",
-  syncing: "bg-primary",
-  disconnected: "bg-destructive",
-};
 
 function dispatchEditorAction(view: EditorView, actionId: FormattingActionId) {
   const selection = view.state.selection.main;
@@ -104,6 +86,25 @@ export default function Editor({
     top: number;
   }>({ open: false, left: 0, top: 0 });
   const saveLockRef = useRef(false);
+  const [codeMirror, setCodeMirror] = useState<CodeMirrorModules | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    Promise.all([
+      import("@codemirror/view"),
+      import("@codemirror/commands"),
+      import("@codemirror/language"),
+      import("@codemirror/lang-markdown"),
+      import("@codemirror/language-data"),
+    ]).then(([view, commands, language, markdown, languageData]) => {
+      if (!cancelled) {
+        setCodeMirror({ view, commands, language, markdown, languageData });
+      }
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   const debouncedSave = useDebounce(async (value: string) => {
     if (saveLockRef.current) return;
@@ -155,19 +156,19 @@ export default function Editor({
     });
   }, [container, currentMode, readOnly]);
 
-  const updateListener = useMemo(
-    () =>
-      EditorView.updateListener.of((update: ViewUpdate) => {
-        if (update.docChanged) handleChange(update.view, !readOnly);
-        if (update.docChanged || update.selectionSet || update.focusChanged) {
-          updateSelectionToolbar(update.view);
-        }
-      }),
-    [handleChange, readOnly, updateSelectionToolbar],
-  );
+  const updateListener = useMemo(() => {
+    if (!codeMirror) return null;
+    return codeMirror.view.EditorView.updateListener.of((update: ViewUpdate) => {
+      if (update.docChanged) handleChange(update.view, !readOnly);
+      if (update.docChanged || update.selectionSet || update.focusChanged) {
+        updateSelectionToolbar(update.view);
+      }
+    });
+  }, [codeMirror, handleChange, readOnly, updateSelectionToolbar]);
 
-  const editorKeymap = useMemo(
-    () => keymap.of([
+  const editorKeymap = useMemo(() => {
+    if (!codeMirror) return null;
+    return codeMirror.view.keymap.of([
       { key: "Mod-b", run: (view) => dispatchEditorAction(view, "bold") },
       { key: "Mod-i", run: (view) => dispatchEditorAction(view, "italic") },
       { key: "Mod-e", run: (view) => dispatchEditorAction(view, "inlineCode") },
@@ -178,36 +179,41 @@ export default function Editor({
       { key: "Mod-Alt-c", run: (view) => dispatchEditorAction(view, "codeBlock") },
       { key: "Mod-Shift-7", run: (view) => dispatchEditorAction(view, "checklist") },
       { key: "Mod-Alt--", run: (view) => dispatchEditorAction(view, "divider") },
-    ]),
-    [],
-  );
+    ]);
+  }, [codeMirror]);
 
-  const extensions = useMemo<Extension[]>(
-    () => [
-      lineNumbers(),
-      highlightActiveLineGutter(),
-      highlightSpecialChars(),
-      history(),
-      drawSelection(),
-      highlightActiveLine(),
-      syntaxHighlighting(defaultHighlightStyle, { fallback: true }),
-      bracketMatching(),
-      markdown({ base: markdownLanguage, codeLanguages: languages }),
+  const extensions = useMemo<Extension[]>(() => {
+    if (!codeMirror || !editorKeymap || !updateListener) return [];
+    return [
+      codeMirror.view.lineNumbers(),
+      codeMirror.view.highlightActiveLineGutter(),
+      codeMirror.view.highlightSpecialChars(),
+      codeMirror.commands.history(),
+      codeMirror.view.drawSelection(),
+      codeMirror.view.highlightActiveLine(),
+      codeMirror.language.syntaxHighlighting(codeMirror.language.defaultHighlightStyle, { fallback: true }),
+      codeMirror.language.bracketMatching(),
+      codeMirror.markdown.markdown({
+        base: codeMirror.markdown.markdownLanguage,
+        codeLanguages: codeMirror.languageData.languages,
+      }),
       editorKeymap,
-      keymap.of([...defaultKeymap, ...historyKeymap]),
+      codeMirror.view.keymap.of([
+        ...codeMirror.commands.defaultKeymap,
+        ...codeMirror.commands.historyKeymap,
+      ]),
       updateListener,
-      EditorView.theme({
+      codeMirror.view.EditorView.theme({
         "&": { height: "100%" },
         ".cm-scroller": { overflow: "auto" },
         "&.cm-focused": { outline: "none" },
       }),
-    ],
-    [editorKeymap, updateListener],
-  );
+    ];
+  }, [codeMirror, editorKeymap, updateListener]);
 
   const collabOptions = useMemo(
     () =>
-      container && (currentMode === "edit" || readOnly)
+      codeMirror && container && (currentMode === "edit" || readOnly)
         ? {
             docId,
             container,
@@ -218,7 +224,7 @@ export default function Editor({
             onViewChange: setEditorView,
           }
         : null,
-    [container, currentMode, docId, extensions, initialContent, onTitleUpdate, readOnly],
+    [codeMirror, container, currentMode, docId, extensions, initialContent, onTitleUpdate, readOnly],
   );
 
   useCollabEditor(collabOptions);
@@ -233,97 +239,15 @@ export default function Editor({
   return (
     <div className="flex flex-1 flex-col overflow-hidden">
       {!focusMode && (
-        <div className="flex min-h-12 items-center gap-2 border-b border-border/80 bg-card px-2 py-2 shadow-xs">
-          <div className="flex items-center gap-1">
-            <Tooltip>
-              <TooltipTrigger
-                render={
-                  <Toggle
-                    pressed={currentMode === "edit"}
-                    onPressedChange={() => setMode("edit")}
-                    size="sm"
-                    className="gap-1.5 text-xs"
-                  />
-                }
-              >
-                <Code2 className="size-3.5" />
-                Edit
-              </TooltipTrigger>
-              <TooltipContent>Edit mode</TooltipContent>
-            </Tooltip>
-            <Tooltip>
-              <TooltipTrigger
-                render={
-                  <Toggle
-                    pressed={currentMode === "preview"}
-                    onPressedChange={() => setMode("preview")}
-                    size="sm"
-                    className="gap-1.5 text-xs"
-                  />
-                }
-              >
-                <Eye className="size-3.5" />
-                Preview
-              </TooltipTrigger>
-              <TooltipContent>Preview mode</TooltipContent>
-            </Tooltip>
-          </div>
-
-          {mode === "edit" && !readOnly && (
-            <div
-              className="flex flex-wrap items-center gap-1 border-l border-border/80 pl-2"
-              data-testid="editor-toolbar"
-            >
-              {EDITOR_ACTIONS.map((action) => (
-                <Tooltip key={action.id}>
-                  <TooltipTrigger
-                    render={
-                      <Button
-                        type="button"
-                        variant="ghost"
-                        size="xs"
-                        onClick={() => runToolbarAction(action.id)}
-                        aria-label={action.label}
-                      />
-                    }
-                  >
-                    {action.shortLabel}
-                  </TooltipTrigger>
-                  <TooltipContent>{action.label} · {action.shortcut}</TooltipContent>
-                </Tooltip>
-              ))}
-            </div>
-          )}
-
-          <div className="ml-auto flex items-center gap-2">
-            {saving && (
-              <span className="text-[11px] text-muted-foreground animate-pulse">
-                Saving...
-              </span>
-            )}
-            {!saving && hasUnsavedChanges && (
-              <span className="text-[11px] text-muted-foreground">Unsaved</span>
-            )}
-            <AvatarStrip />
-            <Tooltip>
-              <TooltipTrigger
-                render={
-                  <div className="flex items-center gap-1.5 rounded-full border border-border/70 bg-card/70 px-2 py-1 text-[11px] text-muted-foreground shadow-xs">
-                    <span className={`inline-block size-1.5 rounded-full ${STATUS_DOT[collabStatus]}`} />
-                    {STATUS_LABEL[collabStatus]}
-                  </div>
-                }
-              />
-              <TooltipContent>
-                {collabStatus === "connected"
-                  ? "Connected to server"
-                  : collabStatus === "disconnected"
-                    ? "Changes saved locally — will sync when reconnected"
-                    : STATUS_LABEL[collabStatus]}
-              </TooltipContent>
-            </Tooltip>
-          </div>
-        </div>
+        <EditorHeader
+          mode={currentMode}
+          readOnly={readOnly}
+          saving={saving}
+          hasUnsavedChanges={hasUnsavedChanges}
+          collabStatus={collabStatus}
+          onModeChange={setMode}
+          onToolbarAction={runToolbarAction}
+        />
       )}
 
       {currentMode === "preview" ? (

@@ -20,24 +20,21 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "#/components/ui/dropdown-menu";
-import { Avatar, AvatarFallback } from "#/components/ui/avatar";
 import {
   Tooltip,
   TooltipContent,
   TooltipTrigger,
 } from "#/components/ui/tooltip";
-import ThemeToggle from "#/components/ThemeToggle";
 import { notifyTransientError } from "#/shared/errors";
 import {
   FileText,
   Plus,
   Trash2,
   MoreHorizontal,
-  LogOut,
-  Settings,
   PanelLeftClose,
-  PanelLeft,
 } from "lucide-react";
+import SidebarCollapsed from "#/components/SidebarCollapsed";
+import SidebarFooter from "#/components/SidebarFooter";
 
 function formatRelativeTime(dateStr: string): string {
   const date = new Date(dateStr);
@@ -194,65 +191,21 @@ export default function Sidebar({ collapsed, onToggleCollapse }: SidebarProps) {
     navigate({ to: "/" });
   }
 
-  const initials = email
-    ? email
-        .split("@")[0]
-        .slice(0, 2)
-        .toUpperCase()
-    : "??";
+  function selectDocument(documentId: string) {
+    navigate({
+      to: "/documents/$documentId",
+      params: { documentId },
+    });
+  }
 
   if (collapsed) {
     return (
-      <aside className="flex h-screen w-14 flex-col border-r border-sidebar-border bg-sidebar/95 shadow-sm shadow-foreground/5 backdrop-blur">
-        <div className="flex h-12 items-center justify-center">
-          <Tooltip>
-            <TooltipTrigger
-              render={
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  onClick={onToggleCollapse}
-                  className="size-8"
-                />
-              }
-            >
-              <PanelLeft className="size-4" />
-            </TooltipTrigger>
-            <TooltipContent side="right">Expand sidebar</TooltipContent>
-          </Tooltip>
-        </div>
-        <Separator />
-        <ScrollArea className="flex-1 px-2 pt-1">
-          <div className="flex flex-col items-center gap-1">
-            {documents.slice(0, 10).map((doc) => (
-              <Tooltip key={doc.id}>
-                <TooltipTrigger
-                  render={
-                    <button
-                      type="button"
-                      aria-label={doc.title}
-                      className={`rounded-md p-2 transition-colors ${
-                        params.documentId === doc.id
-                          ? "bg-sidebar-accent text-sidebar-accent-foreground shadow-sm"
-                          : "text-sidebar-foreground hover:bg-sidebar-accent/60 hover:text-sidebar-accent-foreground"
-                      }`}
-                      onClick={() =>
-                        navigate({
-                          to: "/documents/$documentId",
-                          params: { documentId: doc.id },
-                        })
-                      }
-                    />
-                  }
-                >
-                  <FileText className="size-4" />
-                </TooltipTrigger>
-                <TooltipContent side="right">{doc.title}</TooltipContent>
-              </Tooltip>
-            ))}
-          </div>
-        </ScrollArea>
-      </aside>
+      <SidebarCollapsed
+        documents={documents}
+        selectedDocumentId={params.documentId}
+        onSelectDocument={selectDocument}
+        onToggleCollapse={onToggleCollapse}
+      />
     );
   }
 
@@ -321,12 +274,7 @@ export default function Sidebar({ collapsed, onToggleCollapse }: SidebarProps) {
             <button
               type="button"
               className="min-w-0 flex-1 truncate rounded-md px-2 py-1.5 text-left text-sm transition-colors"
-              onClick={() =>
-                navigate({
-                  to: "/documents/$documentId",
-                  params: { documentId: doc.id },
-                })
-              }
+              onClick={() => selectDocument(doc.id)}
             >
               <span className="block truncate">{doc.title}</span>
               <span
@@ -384,35 +332,11 @@ export default function Sidebar({ collapsed, onToggleCollapse }: SidebarProps) {
         )}
       </ScrollArea>
       <Separator />
-      <div className="flex items-center justify-between px-3 py-2">
-        <DropdownMenu>
-          <DropdownMenuTrigger
-            render={
-              <Button variant="ghost" size="sm" className="gap-2 px-2">
-                <Avatar className="size-6">
-                  <AvatarFallback className="text-[10px]">
-                    {initials}
-                  </AvatarFallback>
-                </Avatar>
-                <span className="max-w-24 truncate text-xs">
-                  {email?.split("@")[0]}
-                </span>
-              </Button>
-            }
-          />
-          <DropdownMenuContent align="start" className="w-48">
-            <DropdownMenuItem onClick={() => navigate({ to: "/settings" })}>
-              <Settings className="size-4" />
-              Settings
-            </DropdownMenuItem>
-            <DropdownMenuItem onClick={handleLogout}>
-              <LogOut className="size-4" />
-              Sign out
-            </DropdownMenuItem>
-          </DropdownMenuContent>
-        </DropdownMenu>
-        <ThemeToggle />
-      </div>
+      <SidebarFooter
+        email={email}
+        onOpenSettings={() => navigate({ to: "/settings" })}
+        onLogout={handleLogout}
+      />
     </aside>
   );
 }

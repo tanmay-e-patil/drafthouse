@@ -1,5 +1,5 @@
 import { createFileRoute, useParams } from "@tanstack/react-router";
-import { useEffect, useState, useCallback, useMemo, useRef } from "react";
+import { useEffect, useState, useCallback, useMemo, useReducer, useRef } from "react";
 import {
   getDocumentApi,
   updateDocumentApi,
@@ -30,6 +30,7 @@ import {
 } from "#/features/preferences/store";
 import { Maximize2, Minimize2, Share2 } from "lucide-react";
 import { Link } from "@tanstack/react-router";
+import { DocumentLoadingState, InaccessibleDocumentState } from "./-documentStates";
 
 export const Route = createFileRoute("/documents/$documentId")({
   component: DocumentEditor,
@@ -50,6 +51,37 @@ function getJwtSubject(token: string | null): string | null {
   }
 }
 
+interface DocumentEditorState {
+  document: Document | null;
+  title: string;
+  loading: boolean;
+  inaccessibleDocument: boolean;
+  authRequired: boolean;
+  saving: boolean;
+  shareOpen: boolean;
+  content: string;
+  contentLoading: boolean;
+}
+
+const initialEditorState: DocumentEditorState = {
+  document: null,
+  title: "",
+  loading: true,
+  inaccessibleDocument: false,
+  authRequired: false,
+  saving: false,
+  shareOpen: false,
+  content: "",
+  contentLoading: true,
+};
+
+function editorReducer(
+  state: DocumentEditorState,
+  patch: Partial<DocumentEditorState>,
+): DocumentEditorState {
+  return { ...state, ...patch };
+}
+
 function DocumentEditor() {
   const { documentId } = useParams({ strict: false }) as {
     documentId: string;
@@ -57,15 +89,22 @@ function DocumentEditor() {
   const accessToken = useAuthStore((s) => s.accessToken);
   const hydrated = useAuthStore((s) => s.hydrated);
   const hydrate = useAuthStore((s) => s.hydrate);
-  const [document, setDocument] = useState<Document | null>(null);
-  const [title, setTitle] = useState("");
-  const [loading, setLoading] = useState(true);
-  const [inaccessibleDocument, setInaccessibleDocument] = useState(false);
-  const [authRequired, setAuthRequired] = useState(false);
-  const [saving, setSaving] = useState(false);
-  const [shareOpen, setShareOpen] = useState(false);
-  const [content, setContent] = useState("");
-  const [contentLoading, setContentLoading] = useState(true);
+  const [state, setState] = useReducer(editorReducer, initialEditorState);
+  const {
+    document,
+    title,
+    loading,
+    inaccessibleDocument,
+    authRequired,
+    saving,
+    shareOpen,
+    content,
+    contentLoading,
+  } = state;
+  const setDocument = (document: Document | null) => setState({ document });
+  const setTitle = (title: string) => setState({ title });
+  const setSaving = (saving: boolean) => setState({ saving });
+  const setShareOpen = (shareOpen: boolean) => setState({ shareOpen });
   const titleRef = useRef<HTMLInputElement>(null);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [paletteOpen, setPaletteOpen] = useState(false);
@@ -85,29 +124,26 @@ function DocumentEditor() {
   }, [hydrate]);
 
   const fetchDocument = useCallback(async () => {
-    setLoading(true);
-    setContentLoading(true);
+    setState({ loading: true, contentLoading: true });
     try {
-      setInaccessibleDocument(false);
-      setAuthRequired(false);
+      setState({ inaccessibleDocument: false, authRequired: false });
       const [doc, contentResp] = await Promise.all([
         getDocumentApi(documentId),
         getDocumentContentApi(documentId),
       ]);
-      setDocument(doc);
-      setTitle(doc.title);
-      setContent(contentResp.content);
+      setState({ document: doc, title: doc.title, content: contentResp.content });
       upsertDocument(doc);
     } catch (error) {
       if (isInaccessibleDocumentError(error)) {
-        setInaccessibleDocument(true);
-        setAuthRequired(error instanceof ApiError && error.status === 401);
+        setState({
+          inaccessibleDocument: true,
+          authRequired: error instanceof ApiError && error.status === 401,
+        });
       } else {
         notifyTransientError(error);
       }
     } finally {
-      setLoading(false);
-      setContentLoading(false);
+      setState({ loading: false, contentLoading: false });
     }
   }, [documentId, upsertDocument]);
 
@@ -189,37 +225,24 @@ function DocumentEditor() {
 
   if (loading) {
     return (
-      <div className="flex h-screen overflow-hidden bg-background">
-        <CommandPalette
-          currentDocumentId={documentId}
-          open={paletteOpen}
-          onOpenChange={setPaletteOpen}
-        />
-        {!focusMode && (
-          <Sidebar collapsed={sidebarCollapsed} onToggleCollapse={toggleSidebar} />
-        )}
-        <main className="flex flex-1 items-center justify-center text-muted-foreground">
-          <p className="text-sm">Loading...</p>
-        </main>
-      </div>
+      <DocumentLoadingState
+        documentId={documentId}
+        paletteOpen={paletteOpen}
+        sidebarCollapsed={sidebarCollapsed}
+        focusMode={focusMode}
+        onPaletteOpenChange={setPaletteOpen}
+        onToggleSidebar={toggleSidebar}
+      />
     );
   }
 
   if (inaccessibleDocument) {
     return (
-      <div className="flex h-screen overflow-hidden bg-background">
-        <Sidebar collapsed={sidebarCollapsed} onToggleCollapse={toggleSidebar} />
-        <main className="flex flex-1 items-center justify-center p-8">
-          <div className="ambient-panel max-w-sm rounded-3xl border border-border/80 p-8 text-center shadow-lg">
-            <h1 className="font-heading text-xl font-semibold tracking-tight">Document unavailable</h1>
-            <p className="mt-2 text-sm text-muted-foreground">
-              {authRequired
-                ? "This document is private. You need an invite link to access it."
-                : "This document was deleted, or you do not have access to it."}
-            </p>
-          </div>
-        </main>
-      </div>
+      <InaccessibleDocumentState
+        authRequired={authRequired}
+        sidebarCollapsed={sidebarCollapsed}
+        onToggleSidebar={toggleSidebar}
+      />
     );
   }
 

@@ -1,5 +1,5 @@
 import { HeadContent, Outlet, Scripts, createRootRoute } from '@tanstack/react-router'
-import { AppErrorPage, NotFoundPage } from './rootPages'
+import { AppErrorPage, NotFoundPage } from './-rootPages'
 import { Toaster } from '#/components/ui/sonner'
 import { TooltipProvider } from '#/components/ui/tooltip'
 import { ThemeProvider } from 'next-themes'

@@ -12,16 +12,7 @@ import {
 } from "#/components/ui/card";
 import { Input } from "#/components/ui/input";
 import { Label } from "#/components/ui/label";
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from "#/components/ui/alert-dialog";
+import { SettingsDeleteDialog } from "./-settingsDeleteDialog";
 import {
   changePasswordApi,
   deleteAccountApi,
@@ -309,37 +300,15 @@ export function SettingsPage() {
         </div>
       </main>
 
-      <AlertDialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>Delete account?</AlertDialogTitle>
-            <AlertDialogDescription>
-              This action is irreversible. Enter your current password to confirm
-              permanent account deletion.
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <div className="space-y-1.5">
-            <Label htmlFor="delete-password">Current password</Label>
-            <Input
-              id="delete-password"
-              type="password"
-              value={deletePassword}
-              onChange={(event) => setDeletePassword(event.target.value)}
-            />
-            {deleteError && <p className="text-sm text-destructive">{deleteError}</p>}
-          </div>
-          <AlertDialogFooter>
-            <AlertDialogCancel disabled={deleting}>Cancel</AlertDialogCancel>
-            <AlertDialogAction
-              variant="destructive"
-              onClick={handleDeleteAccount}
-              disabled={deleting}
-            >
-              {deleting ? "Deleting..." : "Delete account"}
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
+      <SettingsDeleteDialog
+        open={deleteDialogOpen}
+        password={deletePassword}
+        error={deleteError}
+        deleting={deleting}
+        onOpenChange={setDeleteDialogOpen}
+        onPasswordChange={setDeletePassword}
+        onDeleteAccount={handleDeleteAccount}
+      />
     </div>
   );
 }
