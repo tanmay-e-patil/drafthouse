@@ -121,12 +121,10 @@ export function useCollabEditor(
       const awareness = provider.awareness;
 
       // Assign color not already used by others in this room
-      const usedColors = Array.from(awareness.getStates().values())
-        .map((s) => {
-          const u = s["user"] as { color?: string } | undefined;
-          return u?.color ?? "";
-        })
-        .filter(Boolean);
+      const usedColors = Array.from(awareness.getStates().values()).flatMap((s) => {
+        const u = s["user"] as { color?: string } | undefined;
+        return u?.color ? [u.color] : [];
+      });
       userColor = assignColor(usedColors);
 
       // Register local client ID so AvatarStrip can exclude self
@@ -234,7 +232,7 @@ export function useCollabEditor(
       handleRef.current?.destroy();
       handleRef.current = null;
     };
-  }, [options?.docId, options?.readOnly, accessToken, storedEmail]);
+  }, [accessToken, options, setLocalClientId, setPeers, setStatus, storedEmail]);
 
   return handleRef;
 }

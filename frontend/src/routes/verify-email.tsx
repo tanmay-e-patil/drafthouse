@@ -1,6 +1,6 @@
-import { createFileRoute, useNavigate, useSearch } from "@tanstack/react-router";
-import { useState, useEffect } from "react";
-import { Link } from "@tanstack/react-router";
+import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
+import { createServerFn } from "@tanstack/react-start";
+import { useEffect, useState } from "react";
 import { AuthLayout } from "#/features/auth/AuthLayout";
 import {
   Card,
@@ -10,86 +10,89 @@ import {
   CardTitle,
 } from "#/components/ui/card";
 
-export const Route = createFileRoute("/verify-email")({ component: VerifyEmail });
-
 const API_BASE = import.meta.env.VITE_API_URL ?? "http://localhost:8080";
 
 interface ApiError {
   detail: string;
 }
 
-function VerifyEmail() {
-  const [error, setError] = useState<string | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [success, setSuccess] = useState(false);
-  const [verifiedEmail, setVerifiedEmail] = useState("");
-  const navigate = useNavigate();
-  const search = useSearch({ strict: false });
-  const token =
-    typeof search === "object" && search !== null && "token" in search
-      ? (search as Record<string, string>).token
-      : null;
+type VerifyResult = { success: true } | { success: false; error: string };
 
-  useEffect(() => {
-    if (!token) {
-      setError("No verification token provided.");
-      setLoading(false);
-      return;
-    }
-
-    fetch(`${API_BASE}/auth/verify-email`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ token }),
-    })
-      .then(async (res) => {
-        const data = await res.json();
-        if (!res.ok) {
-          const err = data as ApiError;
-          setError(err.detail ?? "Verification failed");
-        } else {
-          const pendingEmail = localStorage.getItem("dh_pending_verification_email") ?? "";
-          localStorage.removeItem("dh_pending_verification_email");
-          setVerifiedEmail(pendingEmail);
-          setSuccess(true);
-        }
-      })
-      .catch(() => {
-        setError("Network error. Please try again.");
-      })
-      .finally(() => {
-        setLoading(false);
+const verifyEmail = createServerFn({ method: "POST" })
+  .validator((token: string) => token)
+  .handler(async ({ data: token }): Promise<VerifyResult> => {
+    try {
+      const res = await fetch(`${API_BASE}/auth/verify-email`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ token }),
       });
-  }, [token]);
+      const data = await res.json();
+
+      if (!res.ok) {
+        return {
+          success: false,
+          error: (data as ApiError).detail ?? "Verification failed",
+        };
+      }
+
+      return { success: true };
+    } catch {
+      return { success: false, error: "Network error. Please try again." };
+    }
+  });
+
+export const Route = createFileRoute("/verify-email")({
+  loader: ({ location }): Promise<VerifyResult> => {
+    const search = location.search as Record<string, string>;
+    const token = search.token;
+
+    return token
+      ? verifyEmail({ data: token })
+      : Promise.resolve({ success: false, error: "No verification token provided." });
+  },
+  pendingComponent: VerifyEmailPending,
+  component: VerifyEmail,
+});
+
+function VerifyEmailPending() {
+  return (
+    <AuthLayout
+      eyebrow="Verifying account"
+      title="Setting up secure access to your drafts."
+      description="Drafthouse verifies email ownership before opening private collaborative documents."
+    >
+      <Card className="w-full max-w-sm">
+        <CardHeader>
+          <CardTitle className="text-lg">Verifying your email...</CardTitle>
+          <CardDescription>
+            Please wait while we verify your email address.
+          </CardDescription>
+        </CardHeader>
+      </Card>
+    </AuthLayout>
+  );
+}
+
+function VerifyEmail() {
+  const result = Route.useLoaderData();
+  const navigate = useNavigate();
+  const [verifiedEmail] = useState(() => {
+    if (!result.success || typeof window === "undefined") return "";
+    const pendingEmail = localStorage.getItem("dh_pending_verification_email") ?? "";
+    localStorage.removeItem("dh_pending_verification_email");
+    return pendingEmail;
+  });
 
   useEffect(() => {
-    if (!success) return;
+    if (!result.success) return;
     const timer = window.setTimeout(() => {
       navigate({ to: "/login", search: { verified: "1", email: verifiedEmail } });
     }, 2500);
     return () => window.clearTimeout(timer);
-  }, [success, verifiedEmail, navigate]);
+  }, [result.success, verifiedEmail, navigate]);
 
-  if (loading) {
-    return (
-      <AuthLayout
-        eyebrow="Verifying account"
-        title="Setting up secure access to your drafts."
-        description="Drafthouse verifies email ownership before opening private collaborative documents."
-      >
-        <Card className="w-full max-w-sm">
-          <CardHeader>
-            <CardTitle className="text-lg">Verifying your email...</CardTitle>
-            <CardDescription>
-              Please wait while we verify your email address.
-            </CardDescription>
-          </CardHeader>
-        </Card>
-      </AuthLayout>
-    );
-  }
-
-  if (success) {
+  if (result.success) {
     return (
       <AuthLayout
         eyebrow="Email verified"
@@ -126,10 +129,7 @@ function VerifyEmail() {
       <Card className="w-full max-w-sm">
         <CardHeader>
           <CardTitle className="text-lg">Verification failed</CardTitle>
-          <CardDescription>
-            {error ??
-              "The verification link may have expired or is invalid."}
-          </CardDescription>
+          <CardDescription>{result.error}</CardDescription>
         </CardHeader>
         <CardFooter>
           <Link

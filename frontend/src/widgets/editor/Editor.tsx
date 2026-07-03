@@ -91,12 +91,12 @@ export default function Editor({
 }: EditorProps) {
   const collabStatus = useCollabStore((s) => s.status);
   const [container, setContainer] = useState<HTMLElement | null>(null);
-  const [mode, setMode] = useState<"edit" | "preview">(
-    readOnly ? "preview" : "edit",
-  );
+  const [mode, setMode] = useState<"edit" | "preview">("edit");
+  const currentMode = readOnly ? "preview" : mode;
   const [content, setContent] = useState(initialContent);
   const [saving, setSaving] = useState(false);
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
+
   const [editorView, setEditorView] = useState<EditorView | null>(null);
   const [selectionToolbar, setSelectionToolbar] = useState<{
     open: boolean;
@@ -132,7 +132,7 @@ export default function Editor({
 
   const updateSelectionToolbar = useCallback((view: EditorView) => {
     const selection = view.state.selection.main;
-    if (readOnly || mode !== "edit" || selection.empty || !container) {
+    if (readOnly || currentMode !== "edit" || selection.empty || !container) {
       setSelectionToolbar({ open: false, left: 0, top: 0 });
       return;
     }
@@ -153,7 +153,7 @@ export default function Editor({
       left,
       top,
     });
-  }, [container, mode, readOnly]);
+  }, [container, currentMode, readOnly]);
 
   const updateListener = useMemo(
     () =>
@@ -205,31 +205,23 @@ export default function Editor({
     [editorKeymap, updateListener],
   );
 
-  useCollabEditor(
-    container && (mode === "edit" || readOnly)
-      ? {
-          docId,
-          container,
-          extensions,
-          initialContent,
-          readOnly,
-          onTitleUpdate,
-          onViewChange: setEditorView,
-        }
-      : null,
+  const collabOptions = useMemo(
+    () =>
+      container && (currentMode === "edit" || readOnly)
+        ? {
+            docId,
+            container,
+            extensions,
+            initialContent,
+            readOnly,
+            onTitleUpdate,
+            onViewChange: setEditorView,
+          }
+        : null,
+    [container, currentMode, docId, extensions, initialContent, onTitleUpdate, readOnly],
   );
 
-  useEffect(() => {
-    if (readOnly) {
-      setMode("preview");
-    }
-  }, [readOnly]);
-
-  useEffect(() => {
-    if (mode === "preview") {
-      setSelectionToolbar({ open: false, left: 0, top: 0 });
-    }
-  }, [mode]);
+  useCollabEditor(collabOptions);
 
   function runToolbarAction(actionId: FormattingActionId) {
     if (editorView) {
@@ -241,13 +233,13 @@ export default function Editor({
   return (
     <div className="flex flex-1 flex-col overflow-hidden">
       {!focusMode && (
-        <div className="flex min-h-12 items-center gap-2 border-b border-border/80 bg-card/50 px-2 py-2 shadow-xs backdrop-blur">
+        <div className="flex min-h-12 items-center gap-2 border-b border-border/80 bg-card px-2 py-2 shadow-xs">
           <div className="flex items-center gap-1">
             <Tooltip>
               <TooltipTrigger
                 render={
                   <Toggle
-                    pressed={mode === "edit"}
+                    pressed={currentMode === "edit"}
                     onPressedChange={() => setMode("edit")}
                     size="sm"
                     className="gap-1.5 text-xs"
@@ -263,7 +255,7 @@ export default function Editor({
               <TooltipTrigger
                 render={
                   <Toggle
-                    pressed={mode === "preview"}
+                    pressed={currentMode === "preview"}
                     onPressedChange={() => setMode("preview")}
                     size="sm"
                     className="gap-1.5 text-xs"
@@ -334,10 +326,10 @@ export default function Editor({
         </div>
       )}
 
-      {mode === "preview" ? (
+      {currentMode === "preview" ? (
         <>
           <div
-            className="prose prose-sm dark:prose-invert prose-headings:font-heading max-w-none flex-1 overflow-y-auto bg-card/65 p-6"
+            className="prose prose-sm dark:prose-invert prose-headings:font-heading mx-auto w-full max-w-3xl flex-1 overflow-y-auto bg-card p-8"
             dangerouslySetInnerHTML={{ __html: sanitizeMarkdownPreview(content) }}
           />
           {readOnly && (
@@ -349,8 +341,8 @@ export default function Editor({
           )}
         </>
       ) : (
-        <div className="relative flex-1 overflow-hidden bg-card/65">
-          {selectionToolbar.open && (
+        <div className="relative flex-1 overflow-hidden bg-card">
+          {currentMode === "edit" && selectionToolbar.open && (
             <div
               className="absolute z-20 flex -translate-x-1/2 items-center gap-1 rounded-lg border border-border/80 bg-popover/95 p-1 shadow-lg shadow-foreground/10 ring-1 ring-primary/10 backdrop-blur"
               style={{ left: selectionToolbar.left, top: selectionToolbar.top }}

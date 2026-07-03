@@ -12,7 +12,8 @@ import Sidebar from "#/components/Sidebar";
 import Editor from "#/widgets/editor/Editor";
 import { ShareModal } from "#/features/documents/ShareModal";
 import type { Document } from "#/features/documents/api";
-import { Button, buttonVariants } from "#/components/ui/button";
+import { Button } from "#/components/ui/button";
+import { buttonVariants } from "#/components/ui/buttonVariants";
 import { CommandPalette } from "#/features/documents/CommandPalette";
 import { useDocumentHotkeys } from "#/features/documents/useDocumentHotkeys";
 import { isInaccessibleDocumentError, notifyTransientError } from "#/shared/errors";
@@ -239,11 +240,12 @@ function DocumentEditor() {
       {!focusMode && (
         <Sidebar collapsed={sidebarCollapsed} onToggleCollapse={toggleSidebar} />
       )}
-      <main className="flex flex-1 flex-col overflow-hidden bg-background/65">
+      <main className="flex flex-1 flex-col overflow-hidden bg-background">
         {!focusMode && (
-          <div className="flex h-12 items-center justify-between border-b border-border/80 bg-card/65 px-4 shadow-xs backdrop-blur">
+          <div className="flex h-12 items-center justify-between border-b border-border/80 bg-card px-4 shadow-xs">
             <input
               ref={titleRef}
+              aria-label="Document title"
               className="min-w-0 border-none bg-transparent font-heading text-sm font-semibold text-foreground outline-none transition-colors placeholder:text-muted-foreground focus:text-primary"
               value={title}
               onChange={(e) => setTitle(e.target.value)}

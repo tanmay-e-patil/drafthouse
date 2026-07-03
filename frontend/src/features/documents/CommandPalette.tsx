@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "@tanstack/react-router";
 import { Dialog, DialogContent } from "#/components/ui/dialog";
 import { Input } from "#/components/ui/input";
@@ -28,7 +28,7 @@ export function CommandPalette({
   onOpenChange,
 }: CommandPaletteProps) {
   const navigate = useNavigate();
-  const inputRef = useRef<HTMLInputElement>(null);
+
   const documents = useDocumentStore((s) => s.documents);
   const hasMore = useDocumentStore((s) => s.hasMore);
   const nextCursor = useDocumentStore((s) => s.nextCursor);
@@ -36,14 +36,15 @@ export function CommandPalette({
   const [query, setQuery] = useState("");
   const [activeIndex, setActiveIndex] = useState(0);
   const [loading, setLoading] = useState(false);
+  const [wasOpen, setWasOpen] = useState(open);
 
-  useEffect(() => {
+  if (open !== wasOpen) {
+    setWasOpen(open);
     if (open) {
       setQuery("");
       setActiveIndex(0);
-      queueMicrotask(() => inputRef.current?.focus());
     }
-  }, [open]);
+  }
 
   useEffect(() => {
     if (!open) return;
@@ -134,7 +135,7 @@ export function CommandPalette({
       <DialogContent className="max-w-xl p-0" showCloseButton={false}>
         <div className="border-b border-border/80 bg-muted/35 p-3">
           <Input
-            ref={inputRef}
+            autoFocus
             value={query}
             onChange={(event) => setQuery(event.target.value)}
             onKeyDown={handleKeyDown}

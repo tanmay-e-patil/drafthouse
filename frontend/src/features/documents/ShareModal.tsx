@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useCallback, useEffect, useState } from "react";
 import {
   type InviteLink,
   type DocumentMember,
@@ -55,11 +55,7 @@ export function ShareModal({
   const APP_ORIGIN =
     import.meta.env.VITE_APP_ORIGIN ?? window.location.origin;
 
-  useEffect(() => {
-    loadData();
-  }, [docId]);
-
-  async function loadData() {
+  const loadData = useCallback(async () => {
     try {
       const [m, l] = await Promise.all([
         listMembersApi(docId),
@@ -70,7 +66,11 @@ export function ShareModal({
     } catch {
       toast.error("Failed to load sharing data");
     }
-  }
+  }, [docId]);
+
+  useEffect(() => {
+    loadData();
+  }, [loadData]);
 
   async function handleGenerateLink(role: MemberRole) {
     const existingLink = links.find((link) => link.role === role);
@@ -145,19 +145,19 @@ export function ShareModal({
     <Dialog open onOpenChange={(open) => !open && onClose()}>
       <DialogContent className="sm:max-w-md">
         <DialogHeader>
-          <DialogTitle className="text-sm">Share &quot;{docTitle}&quot;</DialogTitle>
-          <DialogDescription className="text-xs">
+          <DialogTitle>Share &quot;{docTitle}&quot;</DialogTitle>
+          <DialogDescription>
             Manage who has access to this document
           </DialogDescription>
         </DialogHeader>
 
         <div className="max-h-[60vh] space-y-4 overflow-y-auto">
           <section className="space-y-2">
-            <h3 className="text-xs font-medium text-muted-foreground">
+            <h3 className="text-sm font-medium text-muted-foreground">
               People with access
             </h3>
             {members.length === 0 ? (
-              <p className="text-xs text-muted-foreground">No members yet</p>
+              <p className="text-sm text-muted-foreground">No members yet</p>
             ) : (
               <div className="space-y-1">
                 {members.map((m) => (
@@ -165,7 +165,7 @@ export function ShareModal({
                     key={m.user_id}
                     className="flex items-center justify-between rounded-md px-2 py-1.5 transition-colors hover:bg-muted/60"
                   >
-                    <span className="truncate text-xs text-muted-foreground">
+                    <span className="truncate text-sm text-muted-foreground">
                       {m.email ?? m.user_id}
                     </span>
                     <div className="flex items-center gap-1">
@@ -201,7 +201,7 @@ export function ShareModal({
           <Separator />
 
           <section className="space-y-2">
-            <h3 className="text-xs font-medium text-muted-foreground">
+            <h3 className="text-sm font-medium text-muted-foreground">
               Invite link
             </h3>
             <div className="space-y-1">
@@ -214,7 +214,7 @@ export function ShareModal({
                     className="flex items-center justify-between rounded-md border border-border/70 bg-muted/50 px-2 py-1.5"
                   >
                     <div className="min-w-0">
-                      <div className="text-xs font-medium">{label} link</div>
+                      <div className="text-sm font-medium">{label} link</div>
                       {link ? (
                         <span className="block truncate font-mono text-[11px] text-muted-foreground">
                           {`${APP_ORIGIN}/invite/${link.token}`}
@@ -272,7 +272,7 @@ export function ShareModal({
           <section className="flex items-center justify-between">
             <div className="flex items-center gap-2">
               <Globe className="size-3.5 text-muted-foreground" />
-              <span className="text-xs">Public access</span>
+              <span className="text-sm">Public access</span>
             </div>
             <div className="flex items-center gap-2">
               <span className="text-[11px] text-muted-foreground">

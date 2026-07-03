@@ -8,24 +8,24 @@ export function useDebounce<T>(callback: (value: T) => void, delay: number): (va
     callbackRef.current = callback;
   }, [callback]);
 
-  useEffect(() => {
-    return () => {
-      if (timerRef.current !== null) {
-        clearTimeout(timerRef.current);
-      }
-    };
+  const cancel = useCallback(() => {
+    const timer = timerRef.current;
+    if (timer !== null) {
+      clearTimeout(timer);
+      timerRef.current = null;
+    }
   }, []);
+
+  useEffect(() => cancel, [cancel]);
 
   const debouncedFn = useCallback(
     (value: T) => {
-      if (timerRef.current !== null) {
-        clearTimeout(timerRef.current);
-      }
+      cancel();
       timerRef.current = setTimeout(() => {
         callbackRef.current(value);
       }, delay);
     },
-    [delay]
+    [cancel, delay]
   );
 
   return debouncedFn;

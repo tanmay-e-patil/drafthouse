@@ -110,7 +110,7 @@ export default function Sidebar({ collapsed, onToggleCollapse }: SidebarProps) {
       hasFetched.current = true;
       fetchDocuments();
     }
-  }, [hydrated, accessToken]);
+  }, [hydrated, accessToken, fetchDocuments]);
 
   useEffect(() => {
     if (!hydrated || !accessToken || documents.length === 0) {
@@ -229,6 +229,8 @@ export default function Sidebar({ collapsed, onToggleCollapse }: SidebarProps) {
                 <TooltipTrigger
                   render={
                     <button
+                      type="button"
+                      aria-label={doc.title}
                       className={`rounded-md p-2 transition-colors ${
                         params.documentId === doc.id
                           ? "bg-sidebar-accent text-sidebar-accent-foreground shadow-sm"
@@ -257,7 +259,10 @@ export default function Sidebar({ collapsed, onToggleCollapse }: SidebarProps) {
   return (
     <aside className="flex h-screen w-60 flex-col border-r border-sidebar-border bg-sidebar/95 shadow-sm shadow-foreground/5 backdrop-blur">
       <div className="flex h-12 items-center justify-between px-3">
-        <span className="font-heading text-sm font-semibold tracking-tight text-sidebar-foreground">
+        <span className="flex items-center gap-2 font-heading text-sm font-semibold tracking-tight text-sidebar-foreground">
+          <span className="brand-mark flex size-7 items-center justify-center rounded-lg">
+            <FileText className="size-3.5" />
+          </span>
           Drafthouse
         </span>
         <Tooltip>
@@ -314,6 +319,7 @@ export default function Sidebar({ collapsed, onToggleCollapse }: SidebarProps) {
             }`}
           >
             <button
+              type="button"
               className="min-w-0 flex-1 truncate rounded-md px-2 py-1.5 text-left text-sm transition-colors"
               onClick={() =>
                 navigate({
