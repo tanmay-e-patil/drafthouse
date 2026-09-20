@@ -7,9 +7,10 @@ use dal::{
     RevokeInviteLink, UpdateDocument, UpdateDocumentMemberRole,
 };
 use kernel::{
-    CreateInviteLinkRequest, Document, DocumentContentResponse, DocumentListResponse,
-    DocumentMember, InviteLink, MemberRole, NewDocument, NewInviteLink, TitleUpdated,
-    UpdateDocumentRequest, UpdateMemberRoleRequest, WsTicketResponse,
+    CreateInviteLinkRequest, Document, DocumentAccessChange, DocumentAccessChanged,
+    DocumentContentResponse, DocumentListResponse, DocumentMember, InviteLink, MemberRole,
+    NewDocument, NewInviteLink, TitleUpdated, UpdateDocumentRequest, UpdateMemberRoleRequest,
+    WsTicketResponse,
 };
 use nan_serve_publish_event::publish_event;
 use rand::Rng;
@@ -196,6 +197,14 @@ where
         };
         publish_event!(event);
     }
+    if request.is_public.is_some() {
+        publish_event!(DocumentAccessChanged {
+            doc_id: updated.id,
+            change: DocumentAccessChange::Visibility {
+                is_public: updated.is_public,
+            },
+        });
+    }
 
     Ok(updated)
 }
@@ -220,6 +229,10 @@ where
     }
 
     dal.delete_document(id).await?;
+    publish_event!(DocumentAccessChanged {
+        doc_id: id,
+        change: DocumentAccessChange::Deleted,
+    });
     tracing::info!(doc_id = %id, owner_id = %owner_id, "document deleted");
     Ok(())
 }
@@ -454,7 +467,15 @@ where
         ));
     }
 
-    dal.delete_document_member(doc_id, user_id).await
+    dal.delete_document_member(doc_id, user_id).await?;
+    publish_event!(DocumentAccessChanged {
+        doc_id,
+        change: DocumentAccessChange::Member {
+            user_id,
+            role: None,
+        },
+    });
+    Ok(())
 }
 
 pub async fn update_member_role<D>(
@@ -478,8 +499,17 @@ where
         ));
     }
 
-    dal.update_document_member_role(doc_id, user_id, request.role)
-        .await
+    let member = dal
+        .update_document_member_role(doc_id, user_id, request.role)
+        .await?;
+    publish_event!(DocumentAccessChanged {
+        doc_id,
+        change: DocumentAccessChange::Member {
+            user_id,
+            role: Some(member.role),
+        },
+    });
+    Ok(member)
 }
 
 #[cfg(test)]
@@ -999,7 +1029,6 @@ mod tests {
     }
 
     // ── update_document + TitleUpdated event ──────────────────────────────────
-
     #[tokio::test]
     async fn update_document_publishes_title_updated_event() {
         static FIRED: AtomicBool = AtomicBool::new(false);
@@ -1074,6 +1103,136 @@ mod tests {
             !FIRED2.load(Ordering::SeqCst),
             "TitleUpdated must not fire when title not updated"
         );
+    }
+
+    // ── DocumentAccessChanged events (#6) ─────────────────────────────────────
+
+    #[tokio::test]
+    async fn access_events_are_published_only_after_successful_writes() {
+        static EVENTS: std::sync::Mutex<Vec<DocumentAccessChanged>> =
+            std::sync::Mutex::new(Vec::new());
+
+        fn handler(data: Vec<u8>) -> Pin<Box<dyn Future<Output = ()> + Send>> {
+            Box::pin(async move {
+                let event: DocumentAccessChanged =
+                    bincode::deserialize(&data).expect("deserialize DocumentAccessChanged");
+                EVENTS.lock().unwrap().push(event);
+            })
+        }
+        crate::tokio_event_adapter_runtime::insert_into_hashmap(
+            "DocumentAccessChanged".to_string(),
+            handler,
+        );
+
+        let owner_id = Uuid::new_v4();
+        let member_id = Uuid::new_v4();
+        let doc = test_document(owner_id);
+        let member = DocumentMember {
+            doc_id: doc.id,
+            user_id: member_id,
+            email: None,
+            role: MemberRole::Editor,
+        };
+        let dal = MockDal::with_document_and_member(doc.clone(), member);
+        let record = |change| DocumentAccessChanged {
+            doc_id: doc.id,
+            change,
+        };
+        let drain = || {
+            std::mem::take(&mut *EVENTS.lock().unwrap())
+                .into_iter()
+                .filter(|event| event.doc_id == doc.id)
+                .collect::<Vec<_>>()
+        };
+
+        // Failed mutations publish nothing.
+        update_document(
+            &dal,
+            doc.id,
+            member_id,
+            &UpdateDocumentRequest {
+                title: None,
+                is_public: Some(false),
+            },
+        )
+        .await
+        .unwrap_err();
+        delete_document(&dal, doc.id, member_id).await.unwrap_err();
+        remove_member(&dal, doc.id, member_id, owner_id)
+            .await
+            .unwrap_err();
+        update_member_role(
+            &dal,
+            doc.id,
+            member_id,
+            owner_id,
+            &UpdateMemberRoleRequest {
+                role: MemberRole::Viewer,
+            },
+        )
+        .await
+        .unwrap_err();
+        tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+        assert!(
+            drain().is_empty(),
+            "failed mutations must not publish events"
+        );
+
+        // Successful mutations publish their access change.
+        update_document(
+            &dal,
+            doc.id,
+            owner_id,
+            &UpdateDocumentRequest {
+                title: None,
+                is_public: Some(false),
+            },
+        )
+        .await
+        .unwrap();
+        tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+        assert_eq!(
+            drain(),
+            vec![record(DocumentAccessChange::Visibility {
+                is_public: false
+            })]
+        );
+
+        update_member_role(
+            &dal,
+            doc.id,
+            owner_id,
+            member_id,
+            &UpdateMemberRoleRequest {
+                role: MemberRole::Viewer,
+            },
+        )
+        .await
+        .unwrap();
+        tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+        assert_eq!(
+            drain(),
+            vec![record(DocumentAccessChange::Member {
+                user_id: member_id,
+                role: Some(MemberRole::Viewer),
+            })]
+        );
+
+        remove_member(&dal, doc.id, owner_id, member_id)
+            .await
+            .unwrap();
+        tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+        assert_eq!(
+            drain(),
+            vec![record(DocumentAccessChange::Member {
+                user_id: member_id,
+                role: None,
+            })]
+        );
+
+        delete_document(&dal, doc.id, owner_id).await.unwrap();
+        tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+        assert_eq!(drain(), vec![record(DocumentAccessChange::Deleted)]);
     }
 
     #[tokio::test]

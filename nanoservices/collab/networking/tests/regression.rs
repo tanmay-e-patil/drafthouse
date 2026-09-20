@@ -7,7 +7,11 @@
 
 mod dal {
     pub use ::dal::*;
-    use kernel::{CollabOp, CollabSnapshot, Document, NewCollabOp, NewCollabSnapshot};
+    use kernel::{
+        CollabOp, CollabSnapshot, Document, DocumentMember, MemberRole, NewCollabOp,
+        NewCollabSnapshot,
+    };
+    use std::collections::HashMap;
     use std::sync::{Arc, Mutex};
     use utils::errors::{NanoServiceError, NanoServiceErrorStatus};
     use uuid::Uuid;
@@ -19,6 +23,7 @@ mod dal {
             pub Arc<Mutex<Option<String>>>,
             pub Arc<Mutex<i64>>,
             pub bool,
+            pub Arc<Mutex<HashMap<Uuid, MemberRole>>>,
         );
         impl GetDocumentById for SqlxPostGresDescriptor {
             async fn get_document_by_id(
@@ -26,6 +31,26 @@ mod dal {
                 _: Uuid,
             ) -> Result<Option<Document>, NanoServiceError> {
                 Ok(self.0.lock().unwrap().clone())
+            }
+        }
+        impl GetDocumentMember for SqlxPostGresDescriptor {
+            async fn get_document_member(
+                &self,
+                doc_id: Uuid,
+                user_id: Uuid,
+            ) -> Result<Option<DocumentMember>, NanoServiceError> {
+                Ok(self
+                    .4
+                    .lock()
+                    .unwrap()
+                    .get(&user_id)
+                    .copied()
+                    .map(|role| DocumentMember {
+                        doc_id,
+                        user_id,
+                        email: None,
+                        role,
+                    }))
             }
         }
         impl GetDocumentContent for SqlxPostGresDescriptor {
@@ -151,7 +176,8 @@ mod regression {
     use super::*;
     use actix_web::{App, HttpServer};
     use chrono::Utc;
-    use collab_core::{apply_update_safe, room::MAX_DOC_BYTES};
+    use collab_core::{RoomAccessChange, apply_update_safe, room::MAX_DOC_BYTES};
+    use std::collections::HashMap;
     use std::sync::{Arc, Mutex};
     use std::time::Duration;
     use tokio::{
@@ -189,6 +215,7 @@ mod regression {
                 Arc::new(Mutex::new(Some(String::new()))),
                 Arc::new(Mutex::new(0)),
                 projection_fail,
+                Arc::new(Mutex::new(HashMap::new())),
             );
             let store = web::Data::new(DocStore::new());
             let storage = ScyllaDescriptor {
@@ -222,9 +249,11 @@ mod regression {
             }
         }
         async fn connect(&self, readonly: bool) -> Client {
+            self.connect_user(self.owner, readonly).await
+        }
+        async fn connect_user(&self, user_id: Uuid, readonly: bool) -> Client {
             let token =
-                auth_core::ws_capability::create_ws_capability(self.owner, self.id, readonly)
-                    .unwrap();
+                auth_core::ws_capability::create_ws_capability(user_id, self.id, readonly).unwrap();
             let (mut client, status) = Client::request(
                 self.port,
                 &format!("/collab/{}?ticket={token}", self.id),
@@ -401,18 +430,154 @@ mod regression {
             Client::request(env.port, &format!("/collab/{}", env.id), true).await;
         assert!(status.contains("101"));
         reader.frame().await.unwrap();
+        let mut owner = env.connect(false).await;
+
         env.pg.0.lock().unwrap().as_mut().unwrap().is_public = false;
+        env.store
+            .get(&env.id)
+            .unwrap()
+            .notify_access_change(RoomAccessChange::DisconnectAnonymous);
+
         let (opcode, _) = reader.frame().await.expect("reader must be closed");
         assert_eq!(opcode, 8);
+        assert!(
+            owner.frame().await.is_none(),
+            "authorized owner must remain connected"
+        );
         env.stop().await;
     }
 
-    /// REG-06 (#6): editors are disconnected when the document is deleted.
+    /// REG-06 (#6): removing a member closes only that user's sessions.
+    #[actix_web::test]
+    async fn regression_06_removed_member_is_disconnected() {
+        let env = Env::new(false).await;
+        let member_id = Uuid::new_v4();
+        env.pg
+            .4
+            .lock()
+            .unwrap()
+            .insert(member_id, kernel::MemberRole::Editor);
+        let mut member = env.connect_user(member_id, false).await;
+        let mut owner = env.connect(false).await;
+
+        env.pg.4.lock().unwrap().remove(&member_id);
+        env.store
+            .get(&env.id)
+            .unwrap()
+            .notify_access_change(RoomAccessChange::DisconnectUser(member_id));
+
+        assert_eq!(member.frame().await.unwrap().0, 8);
+        assert!(owner.frame().await.is_none(), "owner must remain connected");
+        env.stop().await;
+    }
+
+    /// REG-06 (#6): role changes close stale writable sessions so reconnect
+    /// authorization determines their new capability.
+    #[actix_web::test]
+    async fn regression_06_downgraded_editor_is_disconnected() {
+        let env = Env::new(false).await;
+        let member_id = Uuid::new_v4();
+        env.pg
+            .4
+            .lock()
+            .unwrap()
+            .insert(member_id, kernel::MemberRole::Editor);
+        let mut member = env.connect_user(member_id, false).await;
+
+        env.pg
+            .4
+            .lock()
+            .unwrap()
+            .insert(member_id, kernel::MemberRole::Viewer);
+        env.store
+            .get(&env.id)
+            .unwrap()
+            .notify_access_change(RoomAccessChange::DisconnectUser(member_id));
+
+        assert_eq!(member.frame().await.unwrap().0, 8);
+        env.stop().await;
+    }
+
+    /// REG-06 (#6): a stale editable ticket never grants more than the
+    /// current policy; a downgraded member reconnects read-only.
+    #[actix_web::test]
+    async fn regression_06_stale_editable_ticket_is_downgraded_on_reconnect() {
+        let env = Env::new(false).await;
+        let member_id = Uuid::new_v4();
+        env.pg
+            .4
+            .lock()
+            .unwrap()
+            .insert(member_id, kernel::MemberRole::Editor);
+        let mut member = env.connect_user(member_id, false).await;
+
+        env.pg
+            .4
+            .lock()
+            .unwrap()
+            .insert(member_id, kernel::MemberRole::Viewer);
+        env.store
+            .get(&env.id)
+            .unwrap()
+            .notify_access_change(RoomAccessChange::DisconnectUser(member_id));
+        assert_eq!(member.frame().await.unwrap().0, 8);
+
+        // Reconnect with the still-valid old ticket: the server must treat the
+        // session as read-only even though the ticket says editable.
+        let mut reconnected = env.connect_user(member_id, false).await;
+        reconnected.send(2, true, &update("must be ignored")).await;
+        assert!(
+            reconnected.frame().await.is_none(),
+            "read-only reconnect must not broadcast or close"
+        );
+        assert_eq!(env.content(), "");
+        env.stop().await;
+    }
+
+    /// REG-06 (#6): a revoked member's ticket is refused once the document is
+    /// private and no membership remains.
+    #[actix_web::test]
+    async fn regression_06_revoked_member_ticket_is_refused_on_reconnect() {
+        let env = Env::new(false).await;
+        env.pg.0.lock().unwrap().as_mut().unwrap().is_public = false;
+        let member_id = Uuid::new_v4();
+        env.pg
+            .4
+            .lock()
+            .unwrap()
+            .insert(member_id, kernel::MemberRole::Editor);
+        let mut member = env.connect_user(member_id, false).await;
+
+        env.pg.4.lock().unwrap().remove(&member_id);
+        env.store
+            .get(&env.id)
+            .unwrap()
+            .notify_access_change(RoomAccessChange::DisconnectUser(member_id));
+        assert_eq!(member.frame().await.unwrap().0, 8);
+
+        let token =
+            auth_core::ws_capability::create_ws_capability(member_id, env.id, false).unwrap();
+        let (_, status) = Client::request(
+            env.port,
+            &format!("/collab/{}?ticket={token}", env.id),
+            true,
+        )
+        .await;
+        assert!(
+            status.contains("401"),
+            "revoked member must be refused: {status}"
+        );
+        env.stop().await;
+    }
     #[actix_web::test]
     async fn regression_06_editor_disconnected_after_document_deletion() {
         let env = Env::new(false).await;
         let mut client = env.connect(false).await;
         *env.pg.0.lock().unwrap() = None;
+        env.store
+            .get(&env.id)
+            .unwrap()
+            .notify_access_change(RoomAccessChange::DisconnectAll);
         let (opcode, _) = client.frame().await.expect("editor must be closed");
         assert_eq!(opcode, 8);
         env.stop().await;

@@ -344,6 +344,26 @@ pub struct TitleUpdated {
     pub title: String,
 }
 
+/// In-process event: published after document access changes commit so active
+/// collaboration sessions can immediately re-evaluate their authorization.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub struct DocumentAccessChanged {
+    pub doc_id: Uuid,
+    pub change: DocumentAccessChange,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum DocumentAccessChange {
+    Deleted,
+    Visibility {
+        is_public: bool,
+    },
+    Member {
+        user_id: Uuid,
+        role: Option<MemberRole>,
+    },
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ExportRequested {
     pub user_id: Uuid,

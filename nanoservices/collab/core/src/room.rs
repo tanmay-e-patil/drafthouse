@@ -33,6 +33,23 @@ pub struct AwarenessPeer {
     pub last_active_ms: i64,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum RoomAccessChange {
+    DisconnectAll,
+    DisconnectAnonymous,
+    DisconnectUser(Uuid),
+}
+
+impl RoomAccessChange {
+    pub fn disconnects(self, user_id: Option<Uuid>) -> bool {
+        match self {
+            Self::DisconnectAll => true,
+            Self::DisconnectAnonymous => user_id.is_none(),
+            Self::DisconnectUser(target) => user_id == Some(target),
+        }
+    }
+}
+
 pub struct DocRoom {
     pub doc: Arc<std::sync::RwLock<Doc>>,
     pub connections: AtomicUsize,
@@ -47,6 +64,9 @@ pub struct DocRoom {
     update_gate: AsyncMutex<()>,
     /// Broadcast channel: all WS sessions in this room subscribe.
     pub tx: broadcast::Sender<Bytes>,
+    /// Authorization changes are separate from protocol payloads so sessions
+    /// can selectively close without exposing control messages to clients.
+    access_tx: broadcast::Sender<RoomAccessChange>,
 }
 
 impl Default for DocRoom {
@@ -58,6 +78,7 @@ impl Default for DocRoom {
 impl DocRoom {
     pub fn new() -> Self {
         let (tx, _) = broadcast::channel(BROADCAST_CAPACITY);
+        let (access_tx, _) = broadcast::channel(BROADCAST_CAPACITY);
         Self {
             doc: Arc::new(std::sync::RwLock::new(Doc::new())),
             connections: AtomicUsize::new(0),
@@ -71,7 +92,16 @@ impl DocRoom {
             initialization: OnceCell::new(),
             update_gate: AsyncMutex::new(()),
             tx,
+            access_tx,
         }
+    }
+
+    pub fn subscribe_to_access_changes(&self) -> broadcast::Receiver<RoomAccessChange> {
+        self.access_tx.subscribe()
+    }
+
+    pub fn notify_access_change(&self, change: RoomAccessChange) {
+        let _ = self.access_tx.send(change);
     }
 
     pub fn connection_count(&self) -> usize {

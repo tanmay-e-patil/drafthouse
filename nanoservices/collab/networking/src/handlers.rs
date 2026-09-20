@@ -7,7 +7,7 @@ use collab_core::{
     encode_sync_step1, encode_sync_step2, encode_update,
 };
 use dal::{
-    DeleteSnapshot, GetDocumentById, GetDocumentContent, ProjectDocumentContent,
+    DeleteSnapshot, GetDocumentById, GetDocumentContent, GetDocumentMember, ProjectDocumentContent,
     ReadLatestSnapshot, ScyllaDescriptor, WriteOp, WriteSnapshot,
     postgres_txs::SqlxPostGresDescriptor,
 };
@@ -51,7 +51,31 @@ pub async fn ws_handler(
             return Ok(HttpResponse::Unauthorized().body("Ticket doc mismatch"));
         }
 
-        (Some(claims.sub), claims.readonly)
+        let doc = pg_dal
+            .get_document_by_id(doc_id)
+            .await
+            .map_err(|e| actix_web::error::ErrorInternalServerError(e.to_string()))?;
+        let Some(doc) = doc else {
+            return Ok(HttpResponse::NotFound().body("Document not found"));
+        };
+
+        let currently_readonly = if doc.owner_id == claims.sub {
+            false
+        } else if let Some(member) = pg_dal
+            .get_document_member(doc_id, claims.sub)
+            .await
+            .map_err(|e| actix_web::error::ErrorInternalServerError(e.to_string()))?
+        {
+            matches!(member.role, kernel::MemberRole::Viewer)
+        } else if doc.is_public {
+            true
+        } else {
+            return Ok(HttpResponse::Unauthorized().body("Document access revoked"));
+        };
+
+        // A stale capability may retain fewer privileges, but never more, than
+        // the current document policy grants.
+        (Some(claims.sub), claims.readonly || currently_readonly)
     } else {
         let doc = pg_dal
             .get_document_by_id(doc_id)
@@ -102,6 +126,7 @@ pub async fn ws_handler(
     let room_clone = room.clone();
     let pg_projection = pg_dal.get_ref().clone();
     let mut broadcast_rx = room.tx.subscribe();
+    let mut access_rx = room.subscribe_to_access_changes();
     let connection_id = Uuid::new_v4().as_u128() as u64;
 
     actix_web::rt::spawn(async move {
@@ -160,6 +185,15 @@ pub async fn ws_handler(
                 // Broadcast from other clients
                 Ok(bytes) = broadcast_rx.recv() => {
                     let _ = session.binary(bytes).await;
+                }
+                access_change = access_rx.recv() => {
+                    match access_change {
+                        Ok(change) if change.disconnects(meta.user_id) => break,
+                        Ok(_) => {}
+                        // Missing an authorization event is unsafe, so force a
+                        // reconnect that revalidates access against Postgres.
+                        Err(_) => break,
+                    }
                 }
             }
         }

@@ -66,6 +66,8 @@ Authorization is captured once in `ConnectionMeta`. Removing a member or downgra
 
 **Fix:** propagate permission/deletion events to active sessions and enforce them immediately. Short-lived handshake tokens do not expire an already-open session.
 
+**Resolved (single-process):** document mutations now publish `DocumentAccessChanged` events after the database write commits; the collaboration subscriber signals the affected room, and sessions selectively close (all on deletion, anonymous on private, only the targeted user on member removal/role change). Reconnects revalidate the ticket against current Postgres policy, so a stale capability can never grant more privileges than the policy now allows (downgraded members reconnect read-only; revoked members are refused). Cross-replica propagation still requires the multi-replica decision noted in the storage findings.
+
 ### 7. Account/document deletion leaves collaborative content behind — P1, C
 
 **Locations:** `nanoservices/auth/core/src/me.rs:72–89`; `nanoservices/documents/core/src/lib.rs:202–226`; `dal/dal/src/postgres_txs/documents.rs:64–73`.
