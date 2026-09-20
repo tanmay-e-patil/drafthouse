@@ -1,0 +1,199 @@
+{
+  "metrics": {
+    "iterations": {
+      "count": 100,
+      "rate": 0.3151079763959547
+    },
+    "http_req_receiving": {
+      "avg": 8.59356862745098,
+      "min": 0.031,
+      "med": 0.125,
+      "max": 783.446,
+      "p(90)": 2.2029000000000027,
+      "p(95)": 4.728049999999997
+    },
+    "http_req_tls_handshaking": {
+      "p(95)": 121.03994999999998,
+      "avg": 12.991529411764706,
+      "min": 0,
+      "med": 0,
+      "max": 155.673,
+      "p(90)": 74.52090000000018
+    },
+    "http_reqs": {
+      "count": 102,
+      "rate": 0.3214101359238738
+    },
+    "ws_ping": {
+      "p(95)": 514.9479413499997,
+      "avg": 181.97880292799996,
+      "min": 65.297209,
+      "med": 108.200396,
+      "max": 1517.802625,
+      "p(90)": 399.6668997
+    },
+    "http_req_blocked": {
+      "min": 0,
+      "med": 0.001,
+      "max": 209.374,
+      "p(90)": 131.68400000000034,
+      "p(95)": 202.29449999999997,
+      "avg": 21.154627450980488
+    },
+    "http_req_waiting": {
+      "max": 2901.255,
+      "p(90)": 739.1512000000002,
+      "p(95)": 2176.568499999999,
+      "avg": 382.5028823529411,
+      "min": 77.756,
+      "med": 152.2655
+    },
+    "checks": {
+      "passes": 202,
+      "fails": 0,
+      "thresholds": {
+        "rate>0.99": false
+      },
+      "value": 1
+    },
+    "http_req_failed": {
+      "fails": 102,
+      "passes": 0,
+      "value": 0
+    },
+    "http_req_duration": {
+      "max": 2901.505,
+      "p(90)": 785.4992000000001,
+      "p(95)": 2176.800749999999,
+      "avg": 391.27112745098026,
+      "min": 79.402,
+      "med": 156.685
+    },
+    "ws_session_duration": {
+      "p(90)": 32901.0644744,
+      "p(95)": 33052.3533979,
+      "avg": 31026.770056220004,
+      "min": 30295.9485,
+      "med": 30517.211646000003,
+      "max": 34696.385
+    },
+    "http_req_duration{expected_response:true}": {
+      "p(90)": 785.4992000000001,
+      "p(95)": 2176.800749999999,
+      "avg": 391.27112745098026,
+      "min": 79.402,
+      "med": 156.685,
+      "max": 2901.505
+    },
+    "data_sent": {
+      "count": 236225,
+      "rate": 744.363817241344
+    },
+    "ws_sessions": {
+      "count": 100,
+      "rate": 0.3151079763959547
+    },
+    "http_req_connecting": {
+      "avg": 8.089999999999998,
+      "min": 0,
+      "med": 0,
+      "max": 82.095,
+      "p(90)": 42.07770000000011,
+      "p(95)": 79.6666
+    },
+    "ws_connecting": {
+      "med": 515.6234374999999,
+      "max": 4694.427834,
+      "p(90)": 2898.5755953000003,
+      "p(95)": 3049.7394603999996,
+      "avg": 1024.3209750300002,
+      "min": 294.0275,
+      "thresholds": {
+        "p(95)<1000": true
+      }
+    },
+    "data_received": {
+      "count": 543835,
+      "rate": 1713.6674634329404
+    },
+    "vus": {
+      "value": 3,
+      "min": 3,
+      "max": 10
+    },
+    "vus_max": {
+      "value": 10,
+      "min": 10,
+      "max": 10
+    },
+    "ws_msgs_received": {
+      "count": 100,
+      "rate": 0.3151079763959547
+    },
+    "iteration_duration": {
+      "avg": 31440.13942453001,
+      "min": 30386.135417,
+      "med": 30842.3135835,
+      "max": 35491.64825,
+      "p(90)": 34193.0982131,
+      "p(95)": 35297.7228923
+    },
+    "http_req_sending": {
+      "max": 1.327,
+      "p(90)": 0.4056,
+      "p(95)": 0.5226999999999997,
+      "avg": 0.1746764705882353,
+      "min": 0.026,
+      "med": 0.114
+    }
+  },
+  "setup_data": {
+    "accessToken": "[redacted]",
+    "docId": "3c890177-8d84-4fd0-8f68-996149e3e55d"
+  },
+  "root_group": {
+    "name": "",
+    "path": "",
+    "id": "d41d8cd98f00b204e9800998ecf8427e",
+    "groups": {
+      "setup": {
+        "id": "5c0f8025f7e0b6654089e5b00e950f1a",
+        "groups": {},
+        "checks": {
+          "login ok": {
+            "passes": 1,
+            "fails": 0,
+            "name": "login ok",
+            "path": "::setup::login ok",
+            "id": "65474b9d4039908543e738715d924333"
+          },
+          "create hot doc": {
+            "fails": 0,
+            "name": "create hot doc",
+            "path": "::setup::create hot doc",
+            "id": "ccd2f6ce4b8c8be260ab0c54f9ec4179",
+            "passes": 1
+          }
+        },
+        "name": "setup",
+        "path": "::setup"
+      }
+    },
+    "checks": {
+      "ticket issued": {
+        "fails": 0,
+        "name": "ticket issued",
+        "path": "::ticket issued",
+        "id": "4edff8b0a6385bbf9cb71b97a5e8768d",
+        "passes": 100
+      },
+      "ws upgraded": {
+        "name": "ws upgraded",
+        "path": "::ws upgraded",
+        "id": "072c61afd0cd3b15887ec7b435c5afdc",
+        "passes": 100,
+        "fails": 0
+      }
+    }
+  }
+}

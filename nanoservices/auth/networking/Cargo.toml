@@ -3,6 +3,9 @@ name = "auth-networking"
 version = "0.1.0"
 edition = "2024"
 
+[lints]
+workspace = true
+
 [dependencies]
 kernel = { path = "../../../dal/kernel" }
 utils = { path = "../../../crates/utils" }
@@ -17,7 +20,7 @@ tracing = { workspace = true }
 [dev-dependencies]
 tokio = { workspace = true }
 chrono = { workspace = true }
-testcontainers-modules = { version = "0.11", features = ["postgres"] }
+testcontainers-modules = { version = "0.15", features = ["postgres"] }
 wiremock = "0.6"
 serial_test = "3"
 auth-core = { path = "../core" }

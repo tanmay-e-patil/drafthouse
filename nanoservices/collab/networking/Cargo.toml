@@ -3,6 +3,9 @@ name = "collab-networking"
 version = "0.1.0"
 edition = "2024"
 
+[lints]
+workspace = true
+
 [dependencies]
 kernel = { path = "../../../dal/kernel" }
 utils = { path = "../../../crates/utils" }

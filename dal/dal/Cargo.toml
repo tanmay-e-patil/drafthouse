@@ -3,6 +3,9 @@ name = "dal"
 version = "0.1.0"
 edition = "2024"
 
+[lints]
+workspace = true
+
 [dependencies]
 kernel = { path = "../kernel" }
 utils = { path = "../../crates/utils" }
@@ -13,3 +16,7 @@ chrono = { workspace = true }
 async-trait = "0.1"
 tokio = { workspace = true }
 scylla = { workspace = true }
+
+[dev-dependencies]
+testcontainers-modules = { version = "0.15", features = ["scylladb"] }
+yrs = { workspace = true }

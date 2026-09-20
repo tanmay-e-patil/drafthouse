@@ -1,0 +1,205 @@
+{
+    "root_group": {
+        "path": "",
+        "id": "d41d8cd98f00b204e9800998ecf8427e",
+        "groups": {
+            "setup": {
+                "groups": {},
+                "checks": {
+                        "login ok": {
+                            "fails": 0,
+                            "name": "login ok",
+                            "path": "::setup::login ok",
+                            "id": "65474b9d4039908543e738715d924333",
+                            "passes": 1
+                        },
+                        "create hot doc": {
+                            "fails": 0,
+                            "name": "create hot doc",
+                            "path": "::setup::create hot doc",
+                            "id": "ccd2f6ce4b8c8be260ab0c54f9ec4179",
+                            "passes": 1
+                        }
+                    },
+                "name": "setup",
+                "path": "::setup",
+                "id": "5c0f8025f7e0b6654089e5b00e950f1a"
+            }
+        },
+        "checks": {
+            "login ok": {
+                "id": "0ddcda49e3a8b9d6d2e015dafbaafe65",
+                "passes": 10,
+                "fails": 0,
+                "name": "login ok",
+                "path": "::login ok"
+            },
+            "ticket issued": {
+                "name": "ticket issued",
+                "path": "::ticket issued",
+                "id": "4edff8b0a6385bbf9cb71b97a5e8768d",
+                "passes": 100,
+                "fails": 0
+            },
+            "ws upgraded": {
+                "passes": 100,
+                "fails": 0,
+                "name": "ws upgraded",
+                "path": "::ws upgraded",
+                "id": "072c61afd0cd3b15887ec7b435c5afdc"
+            }
+        },
+        "name": ""
+    },
+    "metrics": {
+        "ws_sessions": {
+            "count": 100,
+            "rate": 0.3265439501657882
+        },
+        "http_req_failed": {
+            "fails": 112,
+            "passes": 0,
+            "value": 0
+        },
+        "ws_ping": {
+            "min": 62.650042,
+            "med": 68.4752295,
+            "max": 619.994917,
+            "p(90)": 75.0036203,
+            "p(95)": 95.22603719999987,
+            "avg": 77.87306025799997
+        },
+        "ws_connecting": {
+            "avg": 306.26378832999995,
+            "min": 264.663792,
+            "med": 302.8292705,
+            "max": 376.058417,
+            "p(90)": 340.8532164,
+            "p(95)": 348.82740624999997,
+            "thresholds": {
+                "p(95)<1000": false
+            }
+        },
+        "http_req_connecting": {
+            "med": 0,
+            "max": 55.47,
+            "p(90)": 0,
+            "p(95)": 47.99155,
+            "avg": 4.727910714285715,
+            "min": 0
+        },
+        "http_req_sending": {
+            "p(90)": 0.4248,
+            "p(95)": 0.6898499999999999,
+            "avg": 0.21264285714285722,
+            "min": 0.032,
+            "med": 0.11,
+            "max": 2.235
+        },
+        "vus_max": {
+            "value": 10,
+            "min": 10,
+            "max": 10
+        },
+        "http_req_duration{expected_response:true}": {
+            "med": 80.70949999999999,
+            "max": 1546.827,
+            "p(90)": 344.1549000000003,
+            "p(95)": 1305.9976499999998,
+            "avg": 206.51071428571422,
+            "min": 72.059
+        },
+        "http_req_tls_handshaking": {
+            "p(90)": 0,
+            "p(95)": 74.00945,
+            "avg": 7.242776785714286,
+            "min": 0,
+            "med": 0,
+            "max": 82.212
+        },
+        "ws_session_duration": {
+            "max": 30377.459334,
+            "p(90)": 30343.705279499998,
+            "p(95)": 30350.182152399997,
+            "avg": 30308.16939084,
+            "min": 30268.783834,
+            "med": 30304.151395499997
+        },
+        "iteration_duration": {
+            "med": 30385.0056875,
+            "max": 32065.56425,
+            "p(90)": 30629.342058700004,
+            "p(95)": 31986.473388950002,
+            "avg": 30547.927571309996,
+            "min": 30343.349875
+        },
+        "checks": {
+            "passes": 212,
+            "fails": 0,
+            "thresholds": {
+                "rate>0.99": false
+            },
+            "value": 1
+        },
+        "data_received": {
+            "rate": 1880.2172069780968,
+            "count": 575793
+        },
+        "ws_msgs_received": {
+            "rate": 0.3265439501657882,
+            "count": 100
+        },
+        "http_req_blocked": {
+            "p(95)": 121.32759999999999,
+            "avg": 12.008499999999975,
+            "min": 0,
+            "med": 0.001,
+            "max": 135.269,
+            "p(90)": 0.025500000000000064
+        },
+        "http_reqs": {
+            "count": 112,
+            "rate": 0.36572922418568277
+        },
+        "vus": {
+            "max": 10,
+            "value": 8,
+            "min": 8
+        },
+        "iterations": {
+            "count": 100,
+            "rate": 0.3265439501657882
+        },
+        "http_req_duration": {
+            "p(90)": 344.1549000000003,
+            "p(95)": 1305.9976499999998,
+            "avg": 206.51071428571422,
+            "min": 72.059,
+            "med": 80.70949999999999,
+            "max": 1546.827
+        },
+        "http_req_waiting": {
+            "med": 80.35249999999999,
+            "max": 1546.53,
+            "p(90)": 343.7163000000003,
+            "p(95)": 1305.7407999999998,
+            "avg": 206.05308035714287,
+            "min": 71.317
+        },
+        "http_req_receiving": {
+            "avg": 0.2449910714285713,
+            "min": 0.027,
+            "med": 0.102,
+            "max": 6.596,
+            "p(90)": 0.276,
+            "p(95)": 0.8943499999999995
+        },
+        "data_sent": {
+            "count": 263744,
+            "rate": 861.2400759252564
+        }
+    },
+    "setup_data": {
+        "docId": "51c85d98-766e-4ad2-a3dc-f0117b32a54b"
+    }
+}

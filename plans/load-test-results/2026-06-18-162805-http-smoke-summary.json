@@ -1,0 +1,194 @@
+{
+  "metrics": {
+    "http_req_failed": {
+      "passes": 0,
+      "fails": 9893,
+      "thresholds": {
+        "rate<0.01": false
+      },
+      "value": 0
+    },
+    "http_reqs": {
+      "count": 9893,
+      "rate": 32.75287869265367
+    },
+    "http_req_sending": {
+      "avg": 0.23709916102294568,
+      "min": 0.017,
+      "med": 0.151,
+      "max": 13.868,
+      "p(90)": 0.42280000000000023,
+      "p(95)": 0.5703999999999995
+    },
+    "data_received": {
+      "count": 8944290,
+      "rate": 29611.97264347673
+    },
+    "iterations": {
+      "count": 1647,
+      "rate": 5.4527434758718885
+    },
+    "http_req_duration{expected_response:true}": {
+      "min": 71.974,
+      "med": 104.827,
+      "max": 2107.739,
+      "p(90)": 204.4068,
+      "p(95)": 276.1726,
+      "avg": 136.4447318305867
+    },
+    "http_req_waiting": {
+      "avg": 134.11821307995507,
+      "min": 70.827,
+      "med": 103.193,
+      "max": 2106.589,
+      "p(90)": 202.15900000000002,
+      "p(95)": 270.7561999999998
+    },
+    "data_sent": {
+      "count": 682916,
+      "rate": 2260.938532828492
+    },
+    "http_req_connecting": {
+      "med": 0,
+      "max": 102.674,
+      "p(90)": 0,
+      "p(95)": 0,
+      "avg": 0.08452057010007076,
+      "min": 0
+    },
+    "http_req_blocked": {
+      "p(95)": 0.002,
+      "avg": 0.20507085818252843,
+      "min": 0,
+      "med": 0.001,
+      "max": 246.657,
+      "p(90)": 0.002
+    },
+    "iteration_duration": {
+      "p(95)": 2402.1027001,
+      "avg": 1823.2784566690925,
+      "min": 1465.12125,
+      "med": 1700.63275,
+      "max": 6823.641792,
+      "p(90)": 2121.0782830000003
+    },
+    "vus_max": {
+      "max": 10,
+      "value": 10,
+      "min": 10
+    },
+    "checks": {
+      "passes": 9893,
+      "fails": 0,
+      "value": 1
+    },
+    "http_req_duration": {
+      "max": 2107.739,
+      "p(90)": 204.4068,
+      "p(95)": 276.1726,
+      "avg": 136.4447318305867,
+      "min": 71.974,
+      "med": 104.827,
+      "thresholds": {
+        "p(95)<1000": false
+      }
+    },
+    "http_req_receiving": {
+      "max": 540.645,
+      "p(90)": 3.0446000000000013,
+      "p(95)": 6.828799999999995,
+      "avg": 2.0894195896088195,
+      "min": 0.015,
+      "med": 0.126
+    },
+    "http_req_tls_handshaking": {
+      "p(90)": 0,
+      "p(95)": 0,
+      "avg": 0.11252673607601335,
+      "min": 0,
+      "med": 0,
+      "max": 116.296
+    },
+    "vus": {
+      "value": 1,
+      "min": 1,
+      "max": 10
+    }
+  },
+  "setup_data": {
+    "accessToken": "[redacted]"
+  },
+  "root_group": {
+    "name": "",
+    "path": "",
+    "id": "d41d8cd98f00b204e9800998ecf8427e",
+    "groups": {
+      "setup": {
+        "name": "setup",
+        "path": "::setup",
+        "id": "5c0f8025f7e0b6654089e5b00e950f1a",
+        "groups": {},
+        "checks": {
+          "login ok": {
+            "path": "::setup::login ok",
+            "id": "65474b9d4039908543e738715d924333",
+            "passes": 1,
+            "fails": 0,
+            "name": "login ok"
+          }
+        }
+      }
+    },
+    "checks": {
+      "create document": {
+        "id": "1ac48aa2dc26dacb5b1b641292c90e2b",
+        "passes": 10,
+        "fails": 0,
+        "name": "create document",
+        "path": "::create document"
+      },
+      "list documents": {
+        "name": "list documents",
+        "path": "::list documents",
+        "id": "736c0059292e7b06261cb03f153f7792",
+        "passes": 1647,
+        "fails": 0
+      },
+      "get document": {
+        "passes": 1647,
+        "fails": 0,
+        "name": "get document",
+        "path": "::get document",
+        "id": "25a9d73ddde9e7c94ec4ac74604c33e1"
+      },
+      "patch document": {
+        "passes": 1647,
+        "fails": 0,
+        "name": "patch document",
+        "path": "::patch document",
+        "id": "9d195f750b7ddddb267d7ee05faa33c5"
+      },
+      "get content": {
+        "name": "get content",
+        "path": "::get content",
+        "id": "7946baf50544226fa5dc2e5337611680",
+        "passes": 1647,
+        "fails": 0
+      },
+      "patch content": {
+        "fails": 0,
+        "name": "patch content",
+        "path": "::patch content",
+        "id": "1e20480cc41fe8e5e9e9f03e60b734b1",
+        "passes": 1647
+      },
+      "issue ws ticket": {
+        "fails": 0,
+        "name": "issue ws ticket",
+        "path": "::issue ws ticket",
+        "id": "47aa6fa271546b45dde12dadf9abc319",
+        "passes": 1647
+      }
+    }
+  }
+}

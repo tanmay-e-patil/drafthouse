@@ -1,0 +1,182 @@
+{
+    "metrics": {
+        "http_req_duration": {
+            "p(90)": 85.7275,
+            "p(95)": 97.85474999999998,
+            "avg": 95.43561845321211,
+            "min": 68.461,
+            "med": 76.9725,
+            "max": 16684.044,
+            "thresholds": {
+                "p(95)<1000": false
+            }
+        },
+        "vus_max": {
+            "value": 10,
+            "min": 10,
+            "max": 10
+        },
+        "http_req_blocked": {
+            "p(95)": 0.002,
+            "avg": 0.14554504189941553,
+            "min": 0,
+            "med": 0.001,
+            "max": 177.058,
+            "p(90)": 0.002
+        },
+        "http_req_failed": {
+            "passes": 0,
+            "fails": 11456,
+            "thresholds": {
+                "rate<0.01": false
+            },
+            "value": 0
+        },
+        "http_req_connecting": {
+            "p(95)": 0,
+            "avg": 0.0424479748603352,
+            "min": 0,
+            "med": 0,
+            "max": 53.088,
+            "p(90)": 0
+        },
+        "iteration_duration": {
+            "max": 18701.317709,
+            "p(90)": 1517.7057920000002,
+            "p(95)": 1725.4501349999998,
+            "avg": 1577.5399282591857,
+            "min": 1434.022084,
+            "med": 1467.8364375
+        },
+        "http_req_receiving": {
+            "max": 147.09,
+            "p(90)": 0.6595000000000003,
+            "p(95)": 1.4507499999999964,
+            "avg": 0.4529347067039107,
+            "min": 0.006,
+            "med": 0.091
+        },
+        "http_reqs": {
+            "count": 11456,
+            "rate": 38.01830185652899
+        },
+        "http_req_waiting": {
+            "avg": 94.70177985335215,
+            "min": 47.446,
+            "med": 76.392,
+            "max": 16683.929,
+            "p(90)": 84.5635,
+            "p(95)": 95.22349999999997
+        },
+        "http_req_tls_handshaking": {
+            "max": 73.863,
+            "p(90)": 0,
+            "p(95)": 0,
+            "avg": 0.05800209497206705,
+            "min": 0,
+            "med": 0
+        },
+        "iterations": {
+            "count": 1906,
+            "rate": 6.325321520473486
+        },
+        "http_req_duration{expected_response:true}": {
+            "min": 68.461,
+            "med": 76.9725,
+            "max": 16684.044,
+            "p(90)": 85.7275,
+            "p(95)": 97.85474999999998,
+            "avg": 95.43561845321211
+        },
+        "checks": {
+            "passes": 11456,
+            "fails": 0,
+            "value": 1
+        },
+        "vus": {
+            "value": 2,
+            "min": 2,
+            "max": 10
+        },
+        "data_sent": {
+            "count": 842640,
+            "rate": 2796.4160157459487
+        },
+        "http_req_sending": {
+            "avg": 0.2809038931564251,
+            "min": 0.013,
+            "med": 0.156,
+            "max": 27.905,
+            "p(90)": 0.4605000000000003,
+            "p(95)": 0.72
+        },
+        "data_received": {
+            "count": 14698618,
+            "rate": 48779.372904836804
+        }
+    },
+    "root_group": {
+        "path": "",
+        "id": "d41d8cd98f00b204e9800998ecf8427e",
+        "groups": {},
+        "checks": {
+                "login ok": {
+                    "id": "0ddcda49e3a8b9d6d2e015dafbaafe65",
+                    "passes": 10,
+                    "fails": 0,
+                    "name": "login ok",
+                    "path": "::login ok"
+                },
+                "create document": {
+                    "fails": 0,
+                    "name": "create document",
+                    "path": "::create document",
+                    "id": "1ac48aa2dc26dacb5b1b641292c90e2b",
+                    "passes": 10
+                },
+                "list documents": {
+                    "passes": 1906,
+                    "fails": 0,
+                    "name": "list documents",
+                    "path": "::list documents",
+                    "id": "736c0059292e7b06261cb03f153f7792"
+                },
+                "get document": {
+                    "name": "get document",
+                    "path": "::get document",
+                    "id": "25a9d73ddde9e7c94ec4ac74604c33e1",
+                    "passes": 1906,
+                    "fails": 0
+                },
+                "patch document": {
+                    "id": "9d195f750b7ddddb267d7ee05faa33c5",
+                    "passes": 1906,
+                    "fails": 0,
+                    "name": "patch document",
+                    "path": "::patch document"
+                },
+                "get content": {
+                    "name": "get content",
+                    "path": "::get content",
+                    "id": "7946baf50544226fa5dc2e5337611680",
+                    "passes": 1906,
+                    "fails": 0
+                },
+                "patch content": {
+                    "name": "patch content",
+                    "path": "::patch content",
+                    "id": "1e20480cc41fe8e5e9e9f03e60b734b1",
+                    "passes": 1906,
+                    "fails": 0
+                },
+                "issue ws ticket": {
+                    "passes": 1906,
+                    "fails": 0,
+                    "name": "issue ws ticket",
+                    "path": "::issue ws ticket",
+                    "id": "47aa6fa271546b45dde12dadf9abc319"
+                }
+            },
+        "name": ""
+    }
+}
