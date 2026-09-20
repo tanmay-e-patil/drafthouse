@@ -14,7 +14,7 @@ Permanent regression suite for [BUG_AUDIT.md](BUG_AUDIT.md). Audit finding **#1 
 | #5 initialization | `REG-05` ×2 (duplicate seeding, resurrection/readonly) + `regression_05_readonly_update_is_ignored_without_closing` | collab hook + WS suite | red |
 | #6 revocation | `regression_06_reader_disconnected_when_document_becomes_private`, `regression_06_editor_disconnected_after_document_deletion` | WS suite | red |
 | #7 erasure | `regression_07_deletion_tears_down_live_rooms`, `regression_07_deletion_purges_scylla_data` (Scylla container) | PG suite | red |
-| #33 Scylla DAL broken | `regression_33_wal_and_snapshot_writes_succeed` | `dal/dal/tests/scylla_regression.rs` (Scylla container) | red |
+| #33 Scylla DAL broken | `regression_33_wal_and_snapshot_writes_succeed` | `dal/dal/tests/scylla_regression.rs` (Scylla container) | **green** |
 | #8 undo | `REG-08: undo never removes another collaborator's change` | `frontend/src/widgets/editor/__tests__/editorRegression.test.tsx` | red |
 | #9 save lock | `REG-09: edits made during an in-flight save...` | editor suite | red |
 | #10 final save | `REG-10: navigating away flushes the pending final save` | editor suite | red |
@@ -79,7 +79,7 @@ is tested.
 - Frontend: **22 regression tests red**, 149 pre-existing tests green.
 - `collab-core`: **5 red**; `collab-networking`: **11 red + 1 green guard** (plus 3 handler unit tests green).
 - Postgres + Scylla suite: **7 red, 3 green** (server-policy, invite-concurrency, and presence guards).
-- Scylla DAL suite: **3 red, 1 green guard** — the red tests exposed audit finding **#33** in all three forms: `write_op`/`write_snapshot` binds, the `read_ops_since` query bind, and timestamp deserialization all fail against real ScyllaDB, so WAL/snapshot persistence has silently never worked.
+- Scylla DAL suite: **2 red, 2 green** — #33 is fixed: `write_op`/`write_snapshot` binds, the `read_ops_since` query bind, and timestamp deserialization now use Scylla's `CqlTimestamp`. The remaining red tests cover #2 recovery and #28 latest-snapshot ordering.
 - `cargo test --workspace --lib` remains fully green; the pre-existing integration tests pass on `testcontainers-modules` 0.15.
 
 ## Workflow for fixing
