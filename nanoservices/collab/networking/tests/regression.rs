@@ -17,6 +17,8 @@ mod dal {
         pub struct SqlxPostGresDescriptor(
             pub Arc<Mutex<Option<Document>>>,
             pub Arc<Mutex<Option<String>>>,
+            pub Arc<Mutex<i64>>,
+            pub bool,
         );
         impl GetDocumentById for SqlxPostGresDescriptor {
             async fn get_document_by_id(
@@ -32,6 +34,28 @@ mod dal {
                 _: Uuid,
             ) -> Result<Option<String>, NanoServiceError> {
                 Ok(self.1.lock().unwrap().clone())
+            }
+        }
+        impl ProjectDocumentContent for SqlxPostGresDescriptor {
+            async fn project_document_content(
+                &self,
+                _: Uuid,
+                content: String,
+                revision: i64,
+            ) -> Result<bool, NanoServiceError> {
+                if self.3 {
+                    return Err(NanoServiceError::new(
+                        "injected projection failure",
+                        NanoServiceErrorStatus::InternalServerError,
+                    ));
+                }
+                let mut current_revision = self.2.lock().unwrap();
+                if revision <= *current_revision {
+                    return Ok(false);
+                }
+                *self.1.lock().unwrap() = Some(content);
+                *current_revision = revision;
+                Ok(true)
             }
         }
     }
@@ -126,7 +150,8 @@ include!("../src/handlers.rs");
 mod regression {
     use super::*;
     use actix_web::{App, HttpServer};
-    use collab_core::room::MAX_DOC_BYTES;
+    use chrono::Utc;
+    use collab_core::{apply_update_safe, room::MAX_DOC_BYTES};
     use std::sync::{Arc, Mutex};
     use std::time::Duration;
     use tokio::{
@@ -146,6 +171,10 @@ mod regression {
     }
     impl Env {
         async fn new(fail: bool) -> Self {
+            Self::new_with_failures(fail, false).await
+        }
+
+        async fn new_with_failures(wal_fail: bool, projection_fail: bool) -> Self {
             let id = Uuid::new_v4();
             let owner = Uuid::new_v4();
             let pg = SqlxPostGresDescriptor(
@@ -158,10 +187,12 @@ mod regression {
                     updated_at: Utc::now(),
                 }))),
                 Arc::new(Mutex::new(Some(String::new()))),
+                Arc::new(Mutex::new(0)),
+                projection_fail,
             );
             let store = web::Data::new(DocStore::new());
             let storage = ScyllaDescriptor {
-                fail,
+                fail: wal_fail,
                 ..Default::default()
             };
             let (pg2, store2, storage2) = (pg.clone(), store.clone(), storage.clone());
@@ -519,6 +550,27 @@ mod regression {
             client.frame().await.is_none(),
             "non-durable update must not be broadcast"
         );
+        assert_eq!(env.content(), "", "non-durable update must not be applied");
+        assert!(env.storage.ops.lock().unwrap().is_empty());
+        assert_eq!(env.pg.1.lock().unwrap().as_deref(), Some(""));
+        env.stop().await;
+    }
+
+    /// Guard: PostgreSQL projection failure does not reject an update already
+    /// durable in the WAL; recovery can rebuild the projection later.
+    #[actix_web::test]
+    async fn guard_projection_failure_keeps_durable_update_accepted() {
+        let env = Env::new_with_failures(false, true).await;
+        let mut client = env.connect(false).await;
+        client.send(2, true, &update("durable")).await;
+        client
+            .frame()
+            .await
+            .expect("durable update must still be broadcast");
+
+        assert_eq!(env.content(), "durable");
+        assert_eq!(env.storage.ops.lock().unwrap().len(), 1);
+        assert_eq!(env.pg.1.lock().unwrap().as_deref(), Some(""));
         env.stop().await;
     }
 

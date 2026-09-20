@@ -2,7 +2,7 @@
 
 Permanent regression suite for [BUG_AUDIT.md](BUG_AUDIT.md). Audit finding **#1 is intentionally not covered** (excluded by request); every other finding (now including **#33**, discovered by the Scylla container tests) plus the duplicate-self indicator bug has a test that asserts the **required** behavior.
 
-**These tests are red on purpose.** The bugs are not fixed yet, so 39 tests currently fail — each failure is one unfixed audit finding. A fix must turn its test green **without weakening the assertion**. Do not delete, skip, or loosen a `REG-` test to make a build pass; if a requirement is wrong, change the audit doc and the test together in the same commit.
+**These tests are red on purpose.** The bugs are not fixed yet, so 38 tests currently fail — each failure is one unfixed audit finding. A fix must turn its test green **without weakening the assertion**. Do not delete, skip, or loosen a `REG-` test to make a build pass; if a requirement is wrong, change the audit doc and the test together in the same commit.
 
 ## Coverage map
 
@@ -36,13 +36,14 @@ Permanent regression suite for [BUG_AUDIT.md](BUG_AUDIT.md). Audit finding **#1 
 | #26 eviction | `regression_26_failed_snapshot_retains_room`, `regression_26_connection_arriving_during_sweep_keeps_room` | core suite | red |
 | #27 snapshot timer | `regression_27_due_room_is_snapshotted_by_sweep` | core suite | red |
 | #28 latest snapshot | `regression_28_latest_snapshot_is_newest_write_not_highest_slot` | `dal/dal/tests/scylla_regression.rs` (Scylla container) | **green** |
-| #29 WAL failure | `regression_29_failed_wal_write_is_not_broadcast` | WS suite | red |
+| #29 WAL failure | `regression_29_failed_wal_write_is_not_broadcast` | WS suite | **green** |
 | #30 pagination | `regression_30_pagination_returns_all_documents_with_equal_timestamps` | PG suite | red |
 | #31 reset validation | `regression_31_reset_rejects_short_password` | PG suite | red |
 | #32 token consumption | `regression_32_refresh_token_consumed_exactly_once`, `regression_32_password_reset_token_consumed_exactly_once` | PG suite | red |
 | duplicate-self | `REG-SELF` ×2 (avatar of same user, superseded sessions' cursors) | collab suite | red |
 | guard: invite concurrency | `guard_invite_link_max_uses_enforced_under_concurrency` — pins the `FOR UPDATE` serialization no existing test exercised | documents suite | **green guard** |
 | guard: editor cap | `guard_editor_cap_rejects_101st_connection` — 429 end-to-end through the real handler | WS suite | **green guard** |
+| guard: projection failure | `guard_projection_failure_keeps_durable_update_accepted` — WAL durability remains authoritative when the PostgreSQL materialized view is unavailable | WS suite | **green guard** |
 | guard: snapshot retention | `guard_snapshot_ring_retains_at_most_five_rows` + core retention test — monotonic generations retain only the latest five | Scylla DAL + core suites | **green guard** |
 | guard: presence endpoint | `guard_presence_endpoint_lists_recent_deduplicated_peers_only` — cutoff + per-user dedup (existing test only covered the empty room) | documents suite | **green guard** |
 
@@ -77,7 +78,7 @@ is tested.
 ## Current state (2026-09-20)
 
 - Frontend: **19 regression tests red**, 152 tests green.
-- `collab-core`: **5 red**; `collab-networking`: **9 red, 5 green** (plus 3 handler unit tests green).
+- `collab-core`: **5 red**; `collab-networking`: **8 red, 7 green** (plus 3 handler unit tests and 3 authoritative-update unit tests green).
 - Postgres + Scylla suite: **6 red, 4 green** — #4's revision guard is green; authoritative server wiring remains pending.
 - Scylla DAL suite: **4 green** — WAL replay uses monotonic sequences and snapshots use monotonic generations with explicit WAL boundaries.
 - `cargo test --workspace --lib` remains fully green; the pre-existing integration tests pass on `testcontainers-modules` 0.15.

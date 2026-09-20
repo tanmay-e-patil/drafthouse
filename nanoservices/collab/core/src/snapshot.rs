@@ -58,40 +58,43 @@ pub async fn persist_snapshot<D>(dal: &D, doc_id: Uuid, room: &DocRoom) -> bool
 where
     D: WriteSnapshot + ReadLatestSnapshot + DeleteSnapshot,
 {
-    let (data, checksum) = {
-        let doc = room.doc.read().unwrap();
-        encode_snapshot(&doc)
-    };
+    room.serialize_update(|| async {
+        let (data, checksum) = {
+            let doc = room.doc.read().unwrap();
+            encode_snapshot(&doc)
+        };
 
-    let generation = room.next_snapshot_generation();
-    let through_sequence = room.current_sequence();
-    let taken_at = Utc::now();
+        let generation = room.next_snapshot_generation();
+        let through_sequence = room.current_sequence();
+        let taken_at = Utc::now();
 
-    let result = dal
-        .write_snapshot(NewCollabSnapshot {
-            doc_id,
-            generation,
-            through_sequence,
-            data,
-            checksum,
-            taken_at,
-        })
-        .await;
+        let result = dal
+            .write_snapshot(NewCollabSnapshot {
+                doc_id,
+                generation,
+                through_sequence,
+                data,
+                checksum,
+                taken_at,
+            })
+            .await;
 
-    if let Err(e) = result {
-        tracing::warn!(doc_id = %doc_id, generation, "snapshot write failed: {}", e);
-        return false;
-    }
-
-    let stale_generation = generation - i64::from(SNAPSHOT_RING_SIZE);
-    if stale_generation > 0 {
-        if let Err(e) = dal.delete_snapshot(doc_id, stale_generation).await {
-            tracing::warn!(doc_id = %doc_id, stale_generation, "stale snapshot deletion failed: {}", e);
+        if let Err(e) = result {
+            tracing::warn!(doc_id = %doc_id, generation, "snapshot write failed: {}", e);
+            return false;
         }
-    }
 
-    tracing::debug!(doc_id = %doc_id, generation, through_sequence, "snapshot written");
-    true
+        let stale_generation = generation - i64::from(SNAPSHOT_RING_SIZE);
+        if stale_generation > 0 {
+            if let Err(e) = dal.delete_snapshot(doc_id, stale_generation).await {
+                tracing::warn!(doc_id = %doc_id, stale_generation, "stale snapshot deletion failed: {}", e);
+            }
+        }
+
+        tracing::debug!(doc_id = %doc_id, generation, through_sequence, "snapshot written");
+        true
+    })
+    .await
 }
 
 /// Eviction sweep: remove rooms idle > 5 minutes, flush final snapshot.

@@ -1,19 +1,17 @@
 use actix_web::{HttpRequest, HttpResponse, web};
 use bytes::Bytes;
-use chrono::Utc;
 use collab_core::room::{AwarenessPeer, DocRoom, MAX_MSG_BYTES, get_or_create_room};
 use collab_core::snapshot::{persist_snapshot, restore_room};
-use collab_core::sync_protocol::apply_update_safe;
 use collab_core::{
-    CollabMessage, DocStore, decode_message, encode_full_sync_step2, encode_sync_step1,
-    encode_sync_step2, encode_update,
+    CollabMessage, DocStore, accept_update, decode_message, encode_full_sync_step2,
+    encode_sync_step1, encode_sync_step2, encode_update,
 };
 use dal::{
-    DeleteSnapshot, GetDocumentById, GetDocumentContent, ReadLatestSnapshot, ScyllaDescriptor,
-    WriteOp, WriteSnapshot, postgres_txs::SqlxPostGresDescriptor,
+    DeleteSnapshot, GetDocumentById, GetDocumentContent, ProjectDocumentContent,
+    ReadLatestSnapshot, ScyllaDescriptor, WriteOp, WriteSnapshot,
+    postgres_txs::SqlxPostGresDescriptor,
 };
 use futures_util::StreamExt;
-use kernel::NewCollabOp;
 use serde::Deserialize;
 use serde_json::Value;
 use tracing::{info, warn};
@@ -102,6 +100,7 @@ pub async fn ws_handler(
     let (response, mut session, mut msg_stream) = actix_ws::handle(&req, stream)?;
 
     let room_clone = room.clone();
+    let pg_projection = pg_dal.get_ref().clone();
     let mut broadcast_rx = room.tx.subscribe();
     let connection_id = Uuid::new_v4().as_u128() as u64;
 
@@ -147,6 +146,7 @@ pub async fn ws_handler(
                                 &room_clone,
                                 &mut session,
                                 &scylla_dal,
+                                &pg_projection,
                             )
                             .await;
                         }
@@ -173,14 +173,16 @@ pub async fn ws_handler(
     Ok(response)
 }
 
-async fn handle_binary<D>(
+async fn handle_binary<D, P>(
     data: &[u8],
     meta: ConnectionMeta,
     room: &DocRoom,
     session: &mut actix_ws::Session,
     dal: &D,
+    projection: &P,
 ) where
     D: WriteOp + WriteSnapshot + ReadLatestSnapshot + DeleteSnapshot,
+    P: ProjectDocumentContent,
 {
     match decode_message(data) {
         CollabMessage::SyncStep1(sv_bytes) => {
@@ -194,34 +196,30 @@ async fn handle_binary<D>(
             if meta.is_readonly {
                 return;
             }
-            let applied = {
-                let doc = room.doc.read().unwrap();
-                apply_update_safe(&doc, &update_bytes)
-            };
-            if let Some(update_bytes) = applied {
-                // Write to WAL async (fire and forget)
-                let op_id = Uuid::new_v4();
-                let new_op = NewCollabOp {
-                    doc_id: meta.doc_id,
-                    sequence: room.next_operation_sequence(),
-                    op_id,
-                    client_id: meta.client_id,
-                    data: update_bytes.clone(),
-                    created_at: Utc::now(),
-                };
-                let _ = dal.write_op(new_op).await;
+            match accept_update(
+                dal,
+                projection,
+                meta.doc_id,
+                meta.client_id,
+                room,
+                &update_bytes,
+            )
+            .await
+            {
+                Ok(Some(accepted)) => {
+                    let broadcast_msg = Bytes::from(encode_update(&accepted.data));
+                    let _ = room.tx.send(broadcast_msg);
 
-                // Broadcast to room
-                let broadcast_msg = Bytes::from(encode_update(&update_bytes));
-                let _ = room.tx.send(broadcast_msg);
-
-                // Snapshot trigger
-                room.increment_ops();
-                if room.should_snapshot() {
-                    persist_snapshot(dal, meta.doc_id, room).await;
+                    if room.should_snapshot() {
+                        persist_snapshot(dal, meta.doc_id, room).await;
+                    }
                 }
-            } else {
-                warn!(doc_id = %meta.doc_id, "malformed update bytes, dropping client");
+                Ok(None) => {
+                    warn!(doc_id = %meta.doc_id, "malformed update bytes, dropping client");
+                }
+                Err(error) => {
+                    warn!(doc_id = %meta.doc_id, %error, "WAL write failed; update rejected");
+                }
             }
         }
         CollabMessage::Awareness(aw_bytes) => {

@@ -10,7 +10,7 @@ use std::{
         atomic::{AtomicI64, AtomicUsize, Ordering},
     },
 };
-use tokio::sync::{OnceCell, broadcast};
+use tokio::sync::{Mutex as AsyncMutex, OnceCell, broadcast};
 use uuid::Uuid;
 use yrs::Doc;
 
@@ -44,6 +44,7 @@ pub struct DocRoom {
     pub awareness: DashMap<u64, AwarenessPeer>,
     pub connection_awareness: DashMap<u64, Vec<u64>>,
     initialization: OnceCell<()>,
+    update_gate: AsyncMutex<()>,
     /// Broadcast channel: all WS sessions in this room subscribe.
     pub tx: broadcast::Sender<Bytes>,
 }
@@ -68,6 +69,7 @@ impl DocRoom {
             awareness: DashMap::new(),
             connection_awareness: DashMap::new(),
             initialization: OnceCell::new(),
+            update_gate: AsyncMutex::new(()),
             tx,
         }
     }
@@ -85,6 +87,15 @@ impl DocRoom {
             .get_or_try_init(initialize)
             .await
             .map(|_| ())
+    }
+
+    pub async fn serialize_update<T, F, Fut>(&self, update: F) -> T
+    where
+        F: FnOnce() -> Fut,
+        Fut: Future<Output = T>,
+    {
+        let _guard = self.update_gate.lock().await;
+        update().await
     }
 
     /// Returns true if the connection was accepted (under the 100-editor cap).
