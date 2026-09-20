@@ -107,7 +107,12 @@ export function useCollabEditor(
           const { ticket } = await issueWsTicket(docId);
           ticketParam = { ticket };
         } catch {
-          // Public viewers can connect without a ticket.
+          // An authenticated session must never silently fall back to an
+          // anonymous socket (#17): a private document would surface as
+          // read-only/public instead of reporting the auth failure.
+          setStatus("disconnected");
+          scheduleReconnect();
+          return;
         }
       }
 

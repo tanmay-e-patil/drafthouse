@@ -164,6 +164,8 @@ Token refresh occurs only on page hydration; API calls neither refresh proactive
 
 **Fix:** centralize single-flight token refresh/retry and distinguish authorization failure from a legitimate anonymous-public connection.
 
+**Resolved:** all document/collaboration API calls now go through one authenticated fetch helper: a 401 triggers the shared single-flight refresh and retries the original request exactly once with the new token, surfacing any subsequent error instead of looping. A failed refresh clears only the access token. The collaboration hook no longer silently downgrades an authenticated session to an anonymous socket when its ticket request fails — it reports disconnected and retries with backoff, so private documents cannot appear as read-only/public after an expiry.
+
 ### 18. Overlapping document loads can bind one document's text to another document ID — P1, C
 
 **Location:** `frontend/src/routes/documents.$documentId.tsx:126–154,363–369`.
