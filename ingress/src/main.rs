@@ -69,6 +69,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // Expose DocStore to the collab title-sync event subscriber
     collab_core::init_doc_store(doc_store.clone().into_inner());
+    // Expose the Scylla DAL so deletion events can purge WAL/snapshots (#7)
+    collab_core::init_collab_dal(std::sync::Arc::new(scylla_dal.get_ref().clone()));
 
     // Background eviction sweep every 60s
     {

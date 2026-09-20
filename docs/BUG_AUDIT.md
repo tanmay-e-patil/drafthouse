@@ -76,6 +76,8 @@ Deletion only removes Postgres rows. Scylla snapshots, WAL records, and in-memor
 
 **Fix:** coordinate room shutdown with deletion of all document storage, including retryable cleanup on partial failure.
 
+**Resolved (single-process):** deletion (document or account) now tears down the live room — sessions are disconnected, the room is removed from the store and permanently closed to durable writes — and purges every Scylla collaboration row (both the ordered `ops_v2`/`snapshots_v2` tables and the legacy `ops`/`snapshots` tables) with bounded retries. Closing the room under its ordering gate prevents racing sessions from repopulating purged storage. Account deletion captures owned document ids before the Postgres user-row cascade and publishes a deletion event per document. If all purge retries fail the failure is logged loudly; a background reaper for that residual case and cross-replica propagation remain open with the multi-replica ownership decision.
+
 ### 8. Undo can delete another collaborator's edit — P1, R
 
 **Location:** `frontend/src/widgets/editor/Editor.tsx:191,201–204`.

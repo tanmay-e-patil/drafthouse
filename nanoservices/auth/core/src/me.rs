@@ -10,8 +10,8 @@ use dal::{
     ListDocumentsByOwnerNoPagination, postgres_txs::SqlxPostGresDescriptor,
 };
 use kernel::{
-    ChangePasswordResponse, DeleteAccountResponse, Document, ExportRequested, ExportResponse,
-    MeResponse,
+    ChangePasswordResponse, DeleteAccountResponse, Document, DocumentAccessChange,
+    DocumentAccessChanged, ExportRequested, ExportResponse, MeResponse,
 };
 use nan_serve_event_subscriber::subscribe_to_event;
 use nan_serve_publish_event::publish_event;
@@ -75,13 +75,25 @@ pub async fn delete_account<D>(
     current_password: &str,
 ) -> Result<DeleteAccountResponse, NanoServiceError>
 where
-    D: GetUserById + DeleteAllRefreshTokensForUser + DeleteUser,
+    D: GetUserById + DeleteAllRefreshTokensForUser + DeleteUser + ListDocumentsByOwnerNoPagination,
 {
     let user = load_user(dal, user_id).await?;
     ensure_password_matches(current_password, &user.password_hash).await?;
 
+    // Postgres cascades document rows on user deletion; capture the owned ids
+    // first so each document's collaboration rooms and Scylla data can be
+    // torn down (audit #7) once the account deletion commits.
+    let owned_docs = dal.list_documents_by_owner_no_pagination(user.id).await?;
+
     dal.delete_all_refresh_tokens_for_user(user.id).await?;
     dal.delete_user(user.id).await?;
+
+    for doc in owned_docs {
+        publish_event!(DocumentAccessChanged {
+            doc_id: doc.id,
+            change: DocumentAccessChange::Deleted,
+        });
+    }
 
     Ok(DeleteAccountResponse {
         message: "Account deleted successfully.".to_string(),
@@ -319,6 +331,7 @@ mod tests {
 
     struct MockDal {
         user: Option<kernel::User>,
+        documents: Vec<Document>,
         updated_password: Arc<Mutex<Option<(Uuid, String)>>>,
         revoked_sessions: Arc<Mutex<Vec<Uuid>>>,
         deleted_users: Arc<Mutex<Vec<Uuid>>>,
@@ -328,6 +341,7 @@ mod tests {
         fn with_user(user: kernel::User) -> Self {
             Self {
                 user: Some(user),
+                documents: Vec::new(),
                 updated_password: Arc::new(Mutex::new(None)),
                 revoked_sessions: Arc::new(Mutex::new(Vec::new())),
                 deleted_users: Arc::new(Mutex::new(Vec::new())),
@@ -383,6 +397,17 @@ mod tests {
                 deleted_users.lock().unwrap().push(user_id);
                 Ok(())
             }
+        }
+    }
+
+    impl ListDocumentsByOwnerNoPagination for MockDal {
+        fn list_documents_by_owner_no_pagination(
+            &self,
+            _owner_id: Uuid,
+        ) -> impl std::future::Future<Output = Result<Vec<Document>, NanoServiceError>> + Send
+        {
+            let documents = self.documents.clone();
+            async move { Ok(documents) }
         }
     }
 
@@ -481,6 +506,55 @@ mod tests {
 
         assert_eq!(error.status, NanoServiceErrorStatus::BadRequest);
         assert_eq!(&error.message, "Current password is incorrect");
+    }
+
+    #[tokio::test]
+    async fn delete_account_publishes_deletion_events_for_owned_documents() {
+        static EVENTS: Mutex<Vec<DocumentAccessChanged>> = Mutex::new(Vec::new());
+
+        fn handler(
+            data: Vec<u8>,
+        ) -> std::pin::Pin<Box<dyn std::future::Future<Output = ()> + Send>> {
+            Box::pin(async move {
+                let event: DocumentAccessChanged =
+                    bincode::deserialize(&data).expect("deserialize DocumentAccessChanged");
+                EVENTS.lock().unwrap().push(event);
+            })
+        }
+        crate::tokio_event_adapter_runtime::insert_into_hashmap(
+            "DocumentAccessChanged".to_string(),
+            handler,
+        );
+
+        let user = verified_user();
+        let doc = |id: Uuid| Document {
+            id,
+            owner_id: user.id,
+            title: "owned".to_string(),
+            is_public: false,
+            created_at: Utc::now(),
+            updated_at: Utc::now(),
+        };
+        let first_id = Uuid::new_v4();
+        let second_id = Uuid::new_v4();
+        let mut dal = MockDal::with_user(user.clone());
+        dal.documents = vec![doc(first_id), doc(second_id)];
+
+        delete_account(&dal, user.id, "current-password")
+            .await
+            .unwrap();
+
+        tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+        let events = std::mem::take(&mut *EVENTS.lock().unwrap())
+            .into_iter()
+            .filter(|event| event.doc_id == first_id || event.doc_id == second_id)
+            .collect::<Vec<_>>();
+        assert_eq!(events.len(), 2, "every owned document must be torn down");
+        assert!(
+            events
+                .iter()
+                .all(|event| event.change == DocumentAccessChange::Deleted)
+        );
     }
 
     #[tokio::test]

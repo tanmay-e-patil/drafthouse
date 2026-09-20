@@ -1,6 +1,7 @@
 use super::ScyllaDescriptor;
 use crate::collab_txs::{
-    DeleteSnapshot, ReadAllSnapshots, ReadLatestSnapshot, ReadOpsAfter, WriteOp, WriteSnapshot,
+    DeleteSnapshot, PurgeCollabData, ReadAllSnapshots, ReadLatestSnapshot, ReadOpsAfter, WriteOp,
+    WriteSnapshot,
 };
 use chrono::{DateTime, Utc};
 use dal_tx_impl::impl_transaction;
@@ -191,5 +192,22 @@ async fn delete_snapshot(&self, doc_id: Uuid, generation: i64) -> Result<(), Nan
         )
         .await
         .map_err(|e| scylla_err("Failed to delete snapshot", e))?;
+    Ok(())
+}
+
+/// Erase every collaboration row for a document. Covers both the ordered
+/// tables in active use and the legacy tables so right-to-erasure cannot be
+/// defeated by data landing in either schema generation.
+#[impl_transaction(ScyllaDescriptor, PurgeCollabData, purge_collab_data)]
+async fn purge_collab_data(&self, doc_id: Uuid) -> Result<(), NanoServiceError> {
+    for table in ["ops_v2", "snapshots_v2", "ops", "snapshots"] {
+        self.session
+            .query_unpaged(
+                format!("DELETE FROM {}.{} WHERE doc_id = ?", self.keyspace, table),
+                (doc_id,),
+            )
+            .await
+            .map_err(|e| scylla_err("Failed to purge collab data", e))?;
+    }
     Ok(())
 }

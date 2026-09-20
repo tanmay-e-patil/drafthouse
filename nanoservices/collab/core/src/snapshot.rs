@@ -58,6 +58,9 @@ pub async fn persist_snapshot<D>(dal: &D, doc_id: Uuid, room: &DocRoom) -> bool
 where
     D: WriteSnapshot + ReadLatestSnapshot + DeleteSnapshot,
 {
+    if room.is_closed() {
+        return false;
+    }
     room.serialize_update(|| async {
         let (data, checksum) = {
             let doc = room.doc.read().unwrap();

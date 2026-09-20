@@ -34,6 +34,13 @@ where
     }
 
     room.serialize_update(|| async {
+        if room.is_closed() {
+            return Err(NanoServiceError::new(
+                "Document deleted; update rejected",
+                NanoServiceErrorStatus::NotFound,
+            ));
+        }
+
         let sequence = room.next_operation_sequence();
         wal.write_op(NewCollabOp {
             doc_id,

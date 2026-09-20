@@ -7,7 +7,7 @@ use std::{
     future::Future,
     sync::{
         Arc, Mutex,
-        atomic::{AtomicI64, AtomicUsize, Ordering},
+        atomic::{AtomicBool, AtomicI64, AtomicUsize, Ordering},
     },
 };
 use tokio::sync::{Mutex as AsyncMutex, OnceCell, broadcast};
@@ -62,6 +62,9 @@ pub struct DocRoom {
     pub connection_awareness: DashMap<u64, Vec<u64>>,
     initialization: OnceCell<()>,
     update_gate: AsyncMutex<()>,
+    /// Set when the document is deleted; the room must accept no further
+    /// durable writes so purged storage cannot be repopulated.
+    closed: AtomicBool,
     /// Broadcast channel: all WS sessions in this room subscribe.
     pub tx: broadcast::Sender<Bytes>,
     /// Authorization changes are separate from protocol payloads so sessions
@@ -91,6 +94,7 @@ impl DocRoom {
             connection_awareness: DashMap::new(),
             initialization: OnceCell::new(),
             update_gate: AsyncMutex::new(()),
+            closed: AtomicBool::new(false),
             tx,
             access_tx,
         }
@@ -106,6 +110,15 @@ impl DocRoom {
 
     pub fn connection_count(&self) -> usize {
         self.connections.load(Ordering::SeqCst)
+    }
+
+    /// Permanently stop accepting durable writes for this room.
+    pub fn close_for_writes(&self) {
+        self.closed.store(true, Ordering::SeqCst);
+    }
+
+    pub fn is_closed(&self) -> bool {
+        self.closed.load(Ordering::SeqCst)
     }
 
     pub async fn ensure_initialized<E, F, Fut>(&self, initialize: F) -> Result<(), E>

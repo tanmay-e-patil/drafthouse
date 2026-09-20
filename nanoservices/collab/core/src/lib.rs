@@ -1,4 +1,5 @@
 mod access_sync;
+pub mod collab_dal_ref;
 pub mod doc_store_ref;
 pub mod room;
 pub mod snapshot;
@@ -6,6 +7,7 @@ pub mod sync_protocol;
 pub mod title_sync;
 pub mod updates;
 
+pub use collab_dal_ref::init_collab_dal;
 pub use doc_store_ref::init_doc_store;
 pub use room::{
     AwarenessPeer, DocRoom, DocStore, RoomAccessChange, awareness_last_active_to_datetime,

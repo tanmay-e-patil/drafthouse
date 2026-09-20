@@ -484,6 +484,7 @@ impl ScyllaEnv {
         for cql in [
             include_str!("../../../../migrations/scylla/0002_create_ops.cql"),
             include_str!("../../../../migrations/scylla/0003_create_snapshots.cql"),
+            include_str!("../../../../migrations/scylla/0004_create_ordered_collab_storage.cql"),
         ] {
             for stmt in cql
                 .split(';')
@@ -500,6 +501,12 @@ impl ScyllaEnv {
             },
             _container: container,
         }
+    }
+
+    /// Register this descriptor as the process-wide collab DAL so deletion
+    /// events purge this Scylla (production wiring mirrors ingress).
+    fn register_globally(&self) {
+        collab_core::init_collab_dal(Arc::new(self.dal.clone()));
     }
 
     async fn seed_collab_data(&self, doc_id: Uuid, marker: &str) {
@@ -583,6 +590,7 @@ async fn regression_07_deletion_purges_scylla_data() {
     let env = TestEnv::new().await;
     let dal = env.dal();
     let scylla = ScyllaEnv::new().await;
+    scylla.register_globally();
     let owner = user(&dal).await;
 
     let doc = document(&dal, owner).await;
@@ -590,12 +598,28 @@ async fn regression_07_deletion_purges_scylla_data() {
     documents_core::delete_document(&dal, doc.id, owner)
         .await
         .unwrap();
-    assert_eq!(scylla.remaining_rows(doc.id).await, 0);
+    wait_until_purged(&scylla, doc.id).await;
 
     let second = document(&dal, owner).await;
     scylla.seed_collab_data(second.id, "account").await;
     auth_core::me::delete_account(&dal, owner, "original-password")
         .await
         .unwrap();
-    assert_eq!(scylla.remaining_rows(second.id).await, 0);
+    wait_until_purged(&scylla, second.id).await;
+}
+
+/// Deletion propagates through an async in-process event, so poll for the
+/// required end state instead of asserting on a racy fixed delay.
+async fn wait_until_purged(scylla: &ScyllaEnv, doc_id: Uuid) {
+    for _ in 0..100 {
+        if scylla.remaining_rows(doc_id).await == 0 {
+            return;
+        }
+        tokio::time::sleep(Duration::from_millis(50)).await;
+    }
+    assert_eq!(
+        scylla.remaining_rows(doc_id).await,
+        0,
+        "collab data must be purged after deletion"
+    );
 }
