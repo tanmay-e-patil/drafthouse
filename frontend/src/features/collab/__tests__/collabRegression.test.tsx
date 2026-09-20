@@ -70,6 +70,14 @@ class Socket {
   }
 }
 
+function step1(doc: Y.Doc) {
+  const e = encoding.createEncoder();
+  encoding.writeVarUint(e, 0);
+  encoding.writeVarUint(e, 0);
+  encoding.writeVarUint8Array(e, Y.encodeStateVector(doc));
+  return encoding.toUint8Array(e);
+}
+
 function step2(doc: Y.Doc, vector?: Uint8Array) {
   const e = encoding.createEncoder();
   encoding.writeVarUint(e, 0);
@@ -146,7 +154,7 @@ it("REG-03: reconnect handshake uploads edits made while disconnected", async ()
   const server = new Y.Doc();
   act(() => {
     ws.open();
-    ws.receive(step2(server));
+    ws.receive(step1(server));
   });
   let uploads = 0;
   for (const message of [...ws.sent]) {

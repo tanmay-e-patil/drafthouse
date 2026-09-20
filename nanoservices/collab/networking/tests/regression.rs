@@ -283,6 +283,45 @@ mod regression {
         env.stop().await;
     }
 
+    /// REG-03 (#3): the server starts a two-way sync so an editor uploads
+    /// changes made while it was disconnected.
+    #[actix_web::test]
+    async fn regression_03_reconnect_handshake_uploads_offline_edits() {
+        let env = Env::new(false).await;
+        let token =
+            auth_core::ws_capability::create_ws_capability(env.owner, env.id, false).unwrap();
+        let (mut client, status) = Client::request(
+            env.port,
+            &format!("/collab/{}?ticket={token}", env.id),
+            true,
+        )
+        .await;
+        assert!(status.contains("101"), "{status}");
+
+        let (_, initial_sync) = client.frame().await.expect("server must initiate sync");
+        let server_vector = match decode_message(&initial_sync) {
+            CollabMessage::SyncStep1(vector) => vector,
+            _ => panic!("editable connections must receive SyncStep1"),
+        };
+
+        let offline = Doc::new();
+        offline.get_or_insert_text("content").insert(
+            &mut offline.transact_mut(),
+            0,
+            "offline edit",
+        );
+        let upload = encode_sync_step2(&offline, &server_vector);
+        client.send(2, true, &upload).await;
+        client
+            .frame()
+            .await
+            .expect("accepted update must be broadcast");
+
+        assert_eq!(env.content(), "offline edit");
+        assert_eq!(env.storage.ops.lock().unwrap().len(), 1);
+        env.stop().await;
+    }
+
     /// REG-05 (#5): read-only clients cannot mutate; their updates are
     /// ignored without severing the connection.
     #[actix_web::test]

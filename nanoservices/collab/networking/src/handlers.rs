@@ -5,8 +5,8 @@ use collab_core::room::{AwarenessPeer, DocRoom, MAX_MSG_BYTES, get_or_create_roo
 use collab_core::snapshot::{persist_snapshot, restore_room};
 use collab_core::sync_protocol::apply_update_safe;
 use collab_core::{
-    CollabMessage, DocStore, decode_message, encode_full_sync_step2, encode_sync_step2,
-    encode_update,
+    CollabMessage, DocStore, decode_message, encode_full_sync_step2, encode_sync_step1,
+    encode_sync_step2, encode_update,
 };
 use dal::{
     DeleteSnapshot, GetDocumentById, ReadLatestSnapshot, ScyllaDescriptor, WriteOp, WriteSnapshot,
@@ -103,13 +103,18 @@ pub async fn ws_handler(
             is_readonly,
         };
 
-        // Send SyncStep1 to new client so it replies with its state vector
+        // Editors exchange state vectors in both directions so reconnecting
+        // clients upload offline edits. Read-only clients only receive state.
         {
-            let step1 = {
+            let initial_sync = {
                 let doc = room_clone.doc.read().unwrap();
-                encode_full_sync_step2(&doc)
+                if is_readonly {
+                    encode_full_sync_step2(&doc)
+                } else {
+                    encode_sync_step1(&doc)
+                }
             };
-            let _ = session.binary(Bytes::from(step1)).await;
+            let _ = session.binary(Bytes::from(initial_sync)).await;
         }
 
         info!(doc_id = %doc_id, client_id = %client_id, "WS connected");
