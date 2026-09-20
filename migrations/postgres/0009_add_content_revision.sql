@@ -1,0 +1,2 @@
+ALTER TABLE documents
+ADD COLUMN content_revision BIGINT NOT NULL DEFAULT 0;

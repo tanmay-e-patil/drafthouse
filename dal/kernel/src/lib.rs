@@ -306,6 +306,7 @@ pub struct WsTicketResponse {
 #[derive(Debug, Clone)]
 pub struct CollabOp {
     pub doc_id: Uuid,
+    pub sequence: i64,
     pub created_at: DateTime<Utc>,
     pub op_id: Uuid,
     pub client_id: Uuid,
@@ -314,6 +315,7 @@ pub struct CollabOp {
 
 pub struct NewCollabOp {
     pub doc_id: Uuid,
+    pub sequence: i64,
     pub op_id: Uuid,
     pub client_id: Uuid,
     pub data: Vec<u8>,
@@ -323,7 +325,8 @@ pub struct NewCollabOp {
 #[derive(Debug, Clone)]
 pub struct CollabSnapshot {
     pub doc_id: Uuid,
-    pub version: i32,
+    pub generation: i64,
+    pub through_sequence: i64,
     pub data: Vec<u8>,
     pub checksum: String,
     pub taken_at: DateTime<Utc>,
@@ -331,7 +334,8 @@ pub struct CollabSnapshot {
 
 pub struct NewCollabSnapshot {
     pub doc_id: Uuid,
-    pub version: i32,
+    pub generation: i64,
+    pub through_sequence: i64,
     pub data: Vec<u8>,
     pub checksum: String,
     pub taken_at: DateTime<Utc>,

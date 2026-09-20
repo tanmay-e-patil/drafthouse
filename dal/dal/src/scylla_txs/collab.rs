@@ -1,6 +1,6 @@
 use super::ScyllaDescriptor;
 use crate::collab_txs::{
-    DeleteSnapshot, ReadAllSnapshots, ReadLatestSnapshot, ReadOpsSince, WriteOp, WriteSnapshot,
+    DeleteSnapshot, ReadAllSnapshots, ReadLatestSnapshot, ReadOpsAfter, WriteOp, WriteSnapshot,
 };
 use chrono::{DateTime, Utc};
 use dal_tx_impl::impl_transaction;
@@ -22,15 +22,16 @@ async fn write_op(&self, new_op: NewCollabOp) -> Result<(), NanoServiceError> {
     self.session
         .query_unpaged(
             format!(
-                "INSERT INTO {}.ops (doc_id, created_at, op_id, client_id, data) VALUES (?, ?, ?, ?, ?)",
+                "INSERT INTO {}.ops_v2 (doc_id, sequence, op_id, client_id, data, created_at) VALUES (?, ?, ?, ?, ?, ?)",
                 self.keyspace
             ),
             (
                 new_op.doc_id,
-                created_at,
+                new_op.sequence,
                 new_op.op_id,
                 new_op.client_id,
                 new_op.data.as_slice(),
+                created_at,
             ),
         )
         .await
@@ -38,21 +39,20 @@ async fn write_op(&self, new_op: NewCollabOp) -> Result<(), NanoServiceError> {
     Ok(())
 }
 
-#[impl_transaction(ScyllaDescriptor, ReadOpsSince, read_ops_since)]
-async fn read_ops_since(
+#[impl_transaction(ScyllaDescriptor, ReadOpsAfter, read_ops_after)]
+async fn read_ops_after(
     &self,
     doc_id: Uuid,
-    since: DateTime<Utc>,
+    sequence: i64,
 ) -> Result<Vec<CollabOp>, NanoServiceError> {
-    let since = CqlTimestamp(since.timestamp_millis());
     let result = self
         .session
         .query_unpaged(
             format!(
-                "SELECT doc_id, created_at, op_id, client_id, data FROM {}.ops WHERE doc_id = ? AND created_at >= ?",
+                "SELECT doc_id, sequence, op_id, client_id, data, created_at FROM {}.ops_v2 WHERE doc_id = ? AND sequence > ?",
                 self.keyspace
             ),
-            (doc_id, since),
+            (doc_id, sequence),
         )
         .await
         .map_err(|e| scylla_err("Failed to read ops", e))?;
@@ -62,14 +62,15 @@ async fn read_ops_since(
         .map_err(|e| scylla_err("Failed to parse rows", e))?;
     let mut ops = Vec::new();
     for row in rows
-        .rows::<(Uuid, CqlTimestamp, Uuid, Uuid, Vec<u8>)>()
+        .rows::<(Uuid, i64, Uuid, Uuid, Vec<u8>, CqlTimestamp)>()
         .map_err(|e| scylla_err("Failed to deserialize ops", e))?
     {
-        let (doc_id, created_at, op_id, client_id, data) =
+        let (doc_id, sequence, op_id, client_id, data, created_at) =
             row.map_err(|e| scylla_err("Failed to read op row", e))?;
         let created_at = DateTime::from_timestamp_millis(created_at.0).unwrap_or_else(Utc::now);
         ops.push(CollabOp {
             doc_id,
+            sequence,
             created_at,
             op_id,
             client_id,
@@ -85,12 +86,13 @@ async fn write_snapshot(&self, new_snapshot: NewCollabSnapshot) -> Result<(), Na
     self.session
         .query_unpaged(
             format!(
-                "INSERT INTO {}.snapshots (doc_id, version, data, checksum, taken_at) VALUES (?, ?, ?, ?, ?)",
+                "INSERT INTO {}.snapshots_v2 (doc_id, generation, through_sequence, data, checksum, taken_at) VALUES (?, ?, ?, ?, ?, ?)",
                 self.keyspace
             ),
             (
                 new_snapshot.doc_id,
-                new_snapshot.version,
+                new_snapshot.generation,
+                new_snapshot.through_sequence,
                 new_snapshot.data.as_slice(),
                 &new_snapshot.checksum,
                 taken_at,
@@ -110,7 +112,7 @@ async fn read_latest_snapshot(
         .session
         .query_unpaged(
             format!(
-                "SELECT doc_id, version, data, checksum, taken_at FROM {}.snapshots WHERE doc_id = ? ORDER BY version DESC LIMIT 1",
+                "SELECT doc_id, generation, through_sequence, data, checksum, taken_at FROM {}.snapshots_v2 WHERE doc_id = ? ORDER BY generation DESC LIMIT 1",
                 self.keyspace
             ),
             (doc_id,),
@@ -122,15 +124,16 @@ async fn read_latest_snapshot(
         .into_rows_result()
         .map_err(|e| scylla_err("Failed to parse rows", e))?;
     let mut iter = rows
-        .rows::<(Uuid, i32, Vec<u8>, String, CqlTimestamp)>()
+        .rows::<(Uuid, i64, i64, Vec<u8>, String, CqlTimestamp)>()
         .map_err(|e| scylla_err("Failed to deserialize snapshot", e))?;
     if let Some(row) = iter.next() {
-        let (doc_id, version, data, checksum, taken_at) =
+        let (doc_id, generation, through_sequence, data, checksum, taken_at) =
             row.map_err(|e| scylla_err("Failed to read snapshot row", e))?;
         let taken_at = DateTime::from_timestamp_millis(taken_at.0).unwrap_or_else(Utc::now);
         return Ok(Some(CollabSnapshot {
             doc_id,
-            version,
+            generation,
+            through_sequence,
             data,
             checksum,
             taken_at,
@@ -145,7 +148,7 @@ async fn read_all_snapshots(&self, doc_id: Uuid) -> Result<Vec<CollabSnapshot>, 
         .session
         .query_unpaged(
             format!(
-                "SELECT doc_id, version, data, checksum, taken_at FROM {}.snapshots WHERE doc_id = ?",
+                "SELECT doc_id, generation, through_sequence, data, checksum, taken_at FROM {}.snapshots_v2 WHERE doc_id = ?",
                 self.keyspace
             ),
             (doc_id,),
@@ -158,15 +161,16 @@ async fn read_all_snapshots(&self, doc_id: Uuid) -> Result<Vec<CollabSnapshot>, 
         .map_err(|e| scylla_err("Failed to parse rows", e))?;
     let mut snapshots = Vec::new();
     for row in rows
-        .rows::<(Uuid, i32, Vec<u8>, String, CqlTimestamp)>()
+        .rows::<(Uuid, i64, i64, Vec<u8>, String, CqlTimestamp)>()
         .map_err(|e| scylla_err("Failed to deserialize snapshots", e))?
     {
-        let (doc_id, version, data, checksum, taken_at) =
+        let (doc_id, generation, through_sequence, data, checksum, taken_at) =
             row.map_err(|e| scylla_err("Failed to read snapshot row", e))?;
         let taken_at = DateTime::from_timestamp_millis(taken_at.0).unwrap_or_else(Utc::now);
         snapshots.push(CollabSnapshot {
             doc_id,
-            version,
+            generation,
+            through_sequence,
             data,
             checksum,
             taken_at,
@@ -176,14 +180,14 @@ async fn read_all_snapshots(&self, doc_id: Uuid) -> Result<Vec<CollabSnapshot>, 
 }
 
 #[impl_transaction(ScyllaDescriptor, DeleteSnapshot, delete_snapshot)]
-async fn delete_snapshot(&self, doc_id: Uuid, version: i32) -> Result<(), NanoServiceError> {
+async fn delete_snapshot(&self, doc_id: Uuid, generation: i64) -> Result<(), NanoServiceError> {
     self.session
         .query_unpaged(
             format!(
-                "DELETE FROM {}.snapshots WHERE doc_id = ? AND version = ?",
+                "DELETE FROM {}.snapshots_v2 WHERE doc_id = ? AND generation = ?",
                 self.keyspace
             ),
-            (doc_id, version),
+            (doc_id, generation),
         )
         .await
         .map_err(|e| scylla_err("Failed to delete snapshot", e))?;

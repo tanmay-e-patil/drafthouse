@@ -43,7 +43,7 @@ impl ReadLatestSnapshot for Storage {
     }
 }
 impl DeleteSnapshot for Storage {
-    async fn delete_snapshot(&self, _: Uuid, _: i32) -> Result<(), NanoServiceError> {
+    async fn delete_snapshot(&self, _: Uuid, _: i64) -> Result<(), NanoServiceError> {
         Ok(())
     }
 }

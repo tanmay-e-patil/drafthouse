@@ -65,48 +65,34 @@ async fn document(dal: &SqlxPostGresDescriptor, owner: Uuid) -> Document {
         .unwrap()
 }
 
-/// REG-04 (#4): a delayed save may never overwrite a newer save of the same
-/// document; the persisted content must be the newest text.
+/// REG-04 (#4): a delayed projection may never overwrite content derived
+/// from a newer authoritative CRDT revision.
 #[tokio::test]
 async fn regression_04_stale_save_cannot_overwrite_newer_text() {
     let env = TestEnv::new().await;
     let dal = env.dal();
     let owner = user(&dal).await;
     let doc = document(&dal, owner).await;
-    let release_old_request = tokio::sync::Notify::new();
-    let (old, new) = tokio::join!(
-        async {
-            release_old_request.notified().await;
-            documents_core::update_document_content(
-                &dal,
-                doc.id,
-                owner,
-                &UpdateDocumentContentRequest {
-                    content: "old text".into(),
-                },
-            )
+
+    assert!(
+        dal.project_document_content(doc.id, "new text".into(), 2)
             .await
-        },
-        async {
-            let result = documents_core::update_document_content(
-                &dal,
-                doc.id,
-                owner,
-                &UpdateDocumentContentRequest {
-                    content: "new text".into(),
-                },
-            )
-            .await;
-            release_old_request.notify_one();
-            result
-        }
+            .unwrap()
     );
-    old.unwrap();
-    new.unwrap();
-    assert_eq!(
-        dal.get_document_content(doc.id).await.unwrap().unwrap(),
-        "new text"
+    assert!(
+        !dal.project_document_content(doc.id, "old text".into(), 1)
+            .await
+            .unwrap()
     );
+
+    let (content, revision): (Option<String>, i64) =
+        sqlx::query_as("SELECT content, content_revision FROM documents WHERE id = $1")
+            .bind(doc.id)
+            .fetch_one(&dal.pool)
+            .await
+            .unwrap();
+    assert_eq!(content.as_deref(), Some("new text"));
+    assert_eq!(revision, 2);
 }
 
 /// REG-07 (#7): deleting a document or an account must also tear down its

@@ -13,6 +13,7 @@ crate::define_dal_transactions!(
     CountDocumentsByOwner => count_documents_by_owner(owner_id: uuid::Uuid) -> i64,
     GetDocumentContent => get_document_content(id: uuid::Uuid) -> Option<String>,
     UpdateDocumentContent => update_document_content(id: uuid::Uuid, content: String) -> (),
+    ProjectDocumentContent => project_document_content(id: uuid::Uuid, content: String, revision: i64) -> bool,
     CreateWsTicket => create_ws_ticket(new_ticket: NewWsTicket) -> WsTicket,
     GetWsTicketByHash => get_ws_ticket_by_hash(token_hash: String) -> Option<WsTicket>,
     DeleteWsTicket => delete_ws_ticket(token_hash: String) -> (),

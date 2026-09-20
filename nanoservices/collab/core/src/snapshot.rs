@@ -3,10 +3,10 @@ use kernel::NewCollabSnapshot;
 use uuid::Uuid;
 
 use crate::{
-    room::{DocRoom, DocStore, encode_snapshot, verify_snapshot_checksum},
+    room::{DocRoom, DocStore, SNAPSHOT_RING_SIZE, encode_snapshot, verify_snapshot_checksum},
     sync_protocol::apply_update_safe,
 };
-use dal::{DeleteSnapshot, ReadLatestSnapshot, ReadOpsSince, WriteSnapshot};
+use dal::{DeleteSnapshot, ReadLatestSnapshot, ReadOpsAfter, WriteSnapshot};
 use utils::errors::{NanoServiceError, NanoServiceErrorStatus};
 
 /// Restore the newest snapshot and subsequent WAL operations before a room is used.
@@ -16,9 +16,9 @@ pub async fn restore_room<D>(
     room: &DocRoom,
 ) -> Result<bool, NanoServiceError>
 where
-    D: ReadLatestSnapshot + ReadOpsSince,
+    D: ReadLatestSnapshot + ReadOpsAfter,
 {
-    let (since, had_snapshot) = match dal.read_latest_snapshot(doc_id).await? {
+    let (through_sequence, had_snapshot) = match dal.read_latest_snapshot(doc_id).await? {
         Some(snapshot) => {
             if !verify_snapshot_checksum(&snapshot.data, &snapshot.checksum) {
                 return Err(NanoServiceError::new(
@@ -32,12 +32,13 @@ where
                     NanoServiceErrorStatus::InternalServerError,
                 )
             })?;
-            (snapshot.taken_at, true)
+            room.restore_progress(snapshot.through_sequence, snapshot.generation);
+            (snapshot.through_sequence, true)
         }
-        None => (chrono::DateTime::<Utc>::UNIX_EPOCH, false),
+        None => (0, false),
     };
 
-    let ops = dal.read_ops_since(doc_id, since).await?;
+    let ops = dal.read_ops_after(doc_id, through_sequence).await?;
     let had_ops = !ops.is_empty();
     for op in ops {
         apply_update_safe(&room.doc.read().unwrap(), &op.data).ok_or_else(|| {
@@ -46,6 +47,7 @@ where
                 NanoServiceErrorStatus::InternalServerError,
             )
         })?;
+        room.restore_progress(op.sequence, 0);
     }
 
     Ok(had_snapshot || had_ops)
@@ -61,13 +63,15 @@ where
         encode_snapshot(&doc)
     };
 
-    let version = room.next_snapshot_slot();
+    let generation = room.next_snapshot_generation();
+    let through_sequence = room.current_sequence();
     let taken_at = Utc::now();
 
     let result = dal
         .write_snapshot(NewCollabSnapshot {
             doc_id,
-            version,
+            generation,
+            through_sequence,
             data,
             checksum,
             taken_at,
@@ -75,11 +79,18 @@ where
         .await;
 
     if let Err(e) = result {
-        tracing::warn!(doc_id = %doc_id, version, "snapshot write failed: {}", e);
+        tracing::warn!(doc_id = %doc_id, generation, "snapshot write failed: {}", e);
         return false;
     }
 
-    tracing::debug!(doc_id = %doc_id, version, "snapshot written");
+    let stale_generation = generation - i64::from(SNAPSHOT_RING_SIZE);
+    if stale_generation > 0 {
+        if let Err(e) = dal.delete_snapshot(doc_id, stale_generation).await {
+            tracing::warn!(doc_id = %doc_id, stale_generation, "stale snapshot deletion failed: {}", e);
+        }
+    }
+
+    tracing::debug!(doc_id = %doc_id, generation, through_sequence, "snapshot written");
     true
 }
 
@@ -133,7 +144,8 @@ mod tests {
             async move {
                 snapshots.lock().unwrap().push(CollabSnapshot {
                     doc_id: new_snapshot.doc_id,
-                    version: new_snapshot.version,
+                    generation: new_snapshot.generation,
+                    through_sequence: new_snapshot.through_sequence,
                     data: new_snapshot.data,
                     checksum: new_snapshot.checksum,
                     taken_at: new_snapshot.taken_at,
@@ -156,7 +168,7 @@ mod tests {
                     .unwrap()
                     .iter()
                     .filter(|s| s.doc_id == doc_id)
-                    .max_by_key(|s| s.version)
+                    .max_by_key(|s| s.generation)
                     .cloned())
             }
         }
@@ -166,14 +178,14 @@ mod tests {
         fn delete_snapshot(
             &self,
             doc_id: uuid::Uuid,
-            version: i32,
+            generation: i64,
         ) -> impl std::future::Future<Output = Result<(), NanoServiceError>> + Send {
             let snapshots = Arc::clone(&self.snapshots);
             async move {
                 snapshots
                     .lock()
                     .unwrap()
-                    .retain(|s| !(s.doc_id == doc_id && s.version == version));
+                    .retain(|s| !(s.doc_id == doc_id && s.generation == generation));
                 Ok(())
             }
         }
@@ -191,7 +203,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn snapshot_version_cycles_1_to_5() {
+    async fn snapshot_retention_keeps_five_monotonic_generations() {
         let dal = MockDal::new();
         let room = DocRoom::new();
         let doc_id = Uuid::new_v4();
@@ -199,9 +211,8 @@ mod tests {
             persist_snapshot(&dal, doc_id, &room).await;
         }
         let snaps = dal.snapshots.lock().unwrap();
-        let versions: Vec<i32> = snaps.iter().map(|s| s.version).collect();
-        // versions should be [1, 2, 3, 4, 5, 1]
-        assert_eq!(versions, vec![1, 2, 3, 4, 5, 1]);
+        let generations: Vec<i64> = snaps.iter().map(|s| s.generation).collect();
+        assert_eq!(generations, vec![2, 3, 4, 5, 6]);
     }
 
     #[tokio::test]

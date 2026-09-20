@@ -203,6 +203,7 @@ async fn handle_binary<D>(
                 let op_id = Uuid::new_v4();
                 let new_op = NewCollabOp {
                     doc_id: meta.doc_id,
+                    sequence: room.next_operation_sequence(),
                     op_id,
                     client_id: meta.client_id,
                     data: update_bytes.clone(),

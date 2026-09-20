@@ -7,7 +7,6 @@
 
 mod dal {
     pub use ::dal::*;
-    use chrono::{DateTime, Utc};
     use kernel::{CollabOp, CollabSnapshot, Document, NewCollabOp, NewCollabSnapshot};
     use std::sync::{Arc, Mutex};
     use utils::errors::{NanoServiceError, NanoServiceErrorStatus};
@@ -81,10 +80,11 @@ mod dal {
                 .unwrap()
                 .iter()
                 .filter(|s| s.doc_id == doc_id)
-                .max_by_key(|s| s.taken_at)
+                .max_by_key(|s| s.generation)
                 .map(|s| CollabSnapshot {
                     doc_id: s.doc_id,
-                    version: s.version,
+                    generation: s.generation,
+                    through_sequence: s.through_sequence,
                     data: s.data.clone(),
                     checksum: s.checksum.clone(),
                     taken_at: s.taken_at,
@@ -92,25 +92,25 @@ mod dal {
         }
     }
     impl DeleteSnapshot for ScyllaDescriptor {
-        async fn delete_snapshot(&self, _: Uuid, _: i32) -> Result<(), NanoServiceError> {
+        async fn delete_snapshot(&self, _: Uuid, _: i64) -> Result<(), NanoServiceError> {
             Ok(())
         }
     }
-    impl ReadOpsSince for ScyllaDescriptor {
-        async fn read_ops_since(
+    impl ReadOpsAfter for ScyllaDescriptor {
+        async fn read_ops_after(
             &self,
             doc_id: Uuid,
-            since: DateTime<Utc>,
+            sequence: i64,
         ) -> Result<Vec<CollabOp>, NanoServiceError> {
-            let since_ms = since.timestamp_millis();
             Ok(self
                 .ops
                 .lock()
                 .unwrap()
                 .iter()
-                .filter(|o| o.doc_id == doc_id && o.created_at.timestamp_millis() >= since_ms)
+                .filter(|o| o.doc_id == doc_id && o.sequence > sequence)
                 .map(|o| CollabOp {
                     doc_id: o.doc_id,
+                    sequence: o.sequence,
                     created_at: o.created_at,
                     op_id: o.op_id,
                     client_id: o.client_id,

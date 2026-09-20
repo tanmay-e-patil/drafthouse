@@ -7,7 +7,7 @@ use std::{
     future::Future,
     sync::{
         Arc, Mutex,
-        atomic::{AtomicUsize, Ordering},
+        atomic::{AtomicI64, AtomicUsize, Ordering},
     },
 };
 use tokio::sync::{OnceCell, broadcast};
@@ -39,7 +39,8 @@ pub struct DocRoom {
     pub op_count: AtomicUsize,
     pub last_empty_at: Mutex<Option<Instant>>,
     pub last_snapshot_at: Mutex<Instant>,
-    pub next_snapshot_version: Mutex<i32>,
+    sequence: AtomicI64,
+    next_snapshot_generation: Mutex<i64>,
     pub awareness: DashMap<u64, AwarenessPeer>,
     pub connection_awareness: DashMap<u64, Vec<u64>>,
     initialization: OnceCell<()>,
@@ -62,7 +63,8 @@ impl DocRoom {
             op_count: AtomicUsize::new(0),
             last_empty_at: Mutex::new(Some(Instant::now())),
             last_snapshot_at: Mutex::new(Instant::now()),
-            next_snapshot_version: Mutex::new(1),
+            sequence: AtomicI64::new(0),
+            next_snapshot_generation: Mutex::new(1),
             awareness: DashMap::new(),
             connection_awareness: DashMap::new(),
             initialization: OnceCell::new(),
@@ -127,17 +129,27 @@ impl DocRoom {
         elapsed >= SNAPSHOT_INTERVAL_SECS
     }
 
-    /// Advance to next ring-buffer slot (1–5) and reset counters.
-    pub fn next_snapshot_slot(&self) -> i32 {
-        let mut v = self.next_snapshot_version.lock().unwrap();
-        let slot = *v;
-        *v = if slot >= SNAPSHOT_RING_SIZE {
-            1
-        } else {
-            slot + 1
-        };
+    pub fn next_operation_sequence(&self) -> i64 {
+        self.sequence.fetch_add(1, Ordering::SeqCst) + 1
+    }
+
+    pub fn current_sequence(&self) -> i64 {
+        self.sequence.load(Ordering::SeqCst)
+    }
+
+    pub fn restore_progress(&self, sequence: i64, generation: i64) {
+        self.sequence.fetch_max(sequence, Ordering::SeqCst);
+        let mut next_generation = self.next_snapshot_generation.lock().unwrap();
+        *next_generation = (*next_generation).max(generation + 1);
+    }
+
+    /// Allocate a monotonically increasing snapshot generation.
+    pub fn next_snapshot_generation(&self) -> i64 {
+        let mut generation = self.next_snapshot_generation.lock().unwrap();
+        let current = *generation;
+        *generation += 1;
         *self.last_snapshot_at.lock().unwrap() = Instant::now();
-        slot
+        current
     }
 
     pub fn is_idle_for_eviction(&self) -> bool {
@@ -328,12 +340,10 @@ mod tests {
     }
 
     #[test]
-    fn snapshot_slot_cycles_1_to_5() {
+    fn snapshot_generations_are_monotonic() {
         let room = make_room();
-        let slots: Vec<i32> = (0..7).map(|_| room.next_snapshot_slot()).collect();
-        assert_eq!(&slots[..5], &[1, 2, 3, 4, 5]);
-        assert_eq!(slots[5], 1); // wraps back to 1
-        assert_eq!(slots[6], 2);
+        let generations: Vec<i64> = (0..7).map(|_| room.next_snapshot_generation()).collect();
+        assert_eq!(generations, vec![1, 2, 3, 4, 5, 6, 7]);
     }
 
     #[test]

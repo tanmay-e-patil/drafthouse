@@ -3,8 +3,9 @@ use crate::documents_txs::{
     AcceptInviteLink, CountDocumentsByOwner, CreateDocument, CreateInviteLink, CreateWsTicket,
     DeleteDocument, DeleteDocumentMember, DeleteWsTicket, GetDocumentById, GetDocumentContent,
     GetDocumentMember, GetInviteLinkByToken, GetWsTicketByHash, ListActiveInviteLinks,
-    ListDocumentMembers, ListDocumentsByOwner, ListDocumentsByOwnerNoPagination, RevokeInviteLink,
-    UpdateDocument, UpdateDocumentContent, UpdateDocumentMemberRole,
+    ListDocumentMembers, ListDocumentsByOwner, ListDocumentsByOwnerNoPagination,
+    ProjectDocumentContent, RevokeInviteLink, UpdateDocument, UpdateDocumentContent,
+    UpdateDocumentMemberRole,
 };
 use chrono::Utc;
 use dal_tx_impl::impl_transaction;
@@ -217,6 +218,37 @@ async fn update_document_content(
         "Failed to update document content"
     )?;
     Ok(())
+}
+
+#[impl_transaction(
+    SqlxPostGresDescriptor,
+    ProjectDocumentContent,
+    project_document_content
+)]
+async fn project_document_content(
+    &self,
+    id: uuid::Uuid,
+    content: String,
+    revision: i64,
+) -> Result<bool, NanoServiceError> {
+    let result = sqlx::query(
+        "UPDATE documents \
+         SET content = $1, content_revision = $2, updated_at = now() \
+         WHERE id = $3 AND content_revision < $2",
+    )
+    .bind(&content)
+    .bind(revision)
+    .bind(id)
+    .execute(&self.pool)
+    .await
+    .map_err(|e| {
+        NanoServiceError::new(
+            format!("Failed to project document content: {}", e),
+            NanoServiceErrorStatus::InternalServerError,
+        )
+    })?;
+
+    Ok(result.rows_affected() == 1)
 }
 
 #[impl_transaction(SqlxPostGresDescriptor, CreateWsTicket, create_ws_ticket)]

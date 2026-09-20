@@ -1,11 +1,11 @@
-//! Regression tests for the Scylla DAL (docs/BUG_AUDIT.md #28, #33) against
-//! a real, disposable ScyllaDB container (testcontainers `scylladb` module).
-//!
-//! Each `regression_NN_...` test asserts the REQUIRED behavior for audit
-//! finding #NN and is intentionally red while the bug is unfixed.
+//! Regression tests for ordered collaboration persistence against a real,
+//! disposable ScyllaDB container.
 
 use chrono::{Duration, Utc};
-use dal::{ReadLatestSnapshot, ReadOpsSince, ScyllaDescriptor, WriteOp, WriteSnapshot};
+use dal::{
+    DeleteSnapshot, ReadAllSnapshots, ReadLatestSnapshot, ReadOpsAfter, ScyllaDescriptor, WriteOp,
+    WriteSnapshot,
+};
 use kernel::{NewCollabOp, NewCollabSnapshot};
 use scylla::frame::value::CqlTimestamp;
 use std::sync::Arc;
@@ -32,7 +32,6 @@ impl ScyllaEnv {
             .build()
             .await
             .unwrap();
-        // Same bootstrap the migrate-scylla runner performs.
         session
             .query_unpaged(
                 format!(
@@ -43,10 +42,9 @@ impl ScyllaEnv {
             )
             .await
             .unwrap();
-        for cql in [
-            include_str!("../../../migrations/scylla/0002_create_ops.cql"),
-            include_str!("../../../migrations/scylla/0003_create_snapshots.cql"),
-        ] {
+        for cql in [include_str!(
+            "../../../migrations/scylla/0004_create_ordered_collab_storage.cql"
+        )] {
             for stmt in cql
                 .split(';')
                 .map(str::trim)
@@ -64,19 +62,26 @@ impl ScyllaEnv {
         }
     }
 
-    /// Seed a snapshot row with correct CQL types, bypassing the DAL under
-    /// test, so ordering assertions do not depend on the write-path bug.
-    async fn seed_snapshot(&self, doc_id: Uuid, version: i32, data: &str, taken_at_ms: i64) {
+    async fn seed_snapshot(
+        &self,
+        doc_id: Uuid,
+        generation: i64,
+        through_sequence: i64,
+        data: &str,
+        taken_at_ms: i64,
+    ) {
         self.dal
             .session
             .query_unpaged(
                 format!(
-                    "INSERT INTO {KEYSPACE}.snapshots (doc_id, version, data, checksum, taken_at) \
-                     VALUES (?, ?, ?, ?, ?)"
+                    "INSERT INTO {KEYSPACE}.snapshots_v2 \
+                     (doc_id, generation, through_sequence, data, checksum, taken_at) \
+                     VALUES (?, ?, ?, ?, ?, ?)"
                 ),
                 (
                     doc_id,
-                    version,
+                    generation,
+                    through_sequence,
                     data.as_bytes().to_vec(),
                     format!("checksum-{data}"),
                     CqlTimestamp(taken_at_ms),
@@ -86,21 +91,22 @@ impl ScyllaEnv {
             .unwrap();
     }
 
-    /// Seed a WAL op row with correct CQL types (see audit #33).
-    async fn seed_op(&self, doc_id: Uuid, data: Vec<u8>, created_at_ms: i64) {
+    async fn seed_op(&self, doc_id: Uuid, sequence: i64, data: Vec<u8>) {
         self.dal
             .session
             .query_unpaged(
                 format!(
-                    "INSERT INTO {KEYSPACE}.ops (doc_id, created_at, op_id, client_id, data) \
-                     VALUES (?, ?, ?, ?, ?)"
+                    "INSERT INTO {KEYSPACE}.ops_v2 \
+                     (doc_id, sequence, op_id, client_id, data, created_at) \
+                     VALUES (?, ?, ?, ?, ?, ?)"
                 ),
                 (
                     doc_id,
-                    CqlTimestamp(created_at_ms),
+                    sequence,
                     Uuid::new_v4(),
                     Uuid::new_v4(),
                     data,
+                    CqlTimestamp(Utc::now().timestamp_millis()),
                 ),
             )
             .await
@@ -108,11 +114,7 @@ impl ScyllaEnv {
     }
 }
 
-/// REG-33 (#33): the production WAL and snapshot write paths must succeed
-/// against real ScyllaDB. They currently fail: the DAL binds raw `i64`
-/// milliseconds to CQL `timestamp` columns, which the pinned driver rejects
-/// (`expected BigInt`), and the error is swallowed upstream — so persistence
-/// has silently never worked.
+/// REG-33 (#33): production WAL and snapshot writes use correct CQL types.
 #[tokio::test]
 async fn regression_33_wal_and_snapshot_writes_succeed() {
     let env = ScyllaEnv::new().await;
@@ -121,6 +123,7 @@ async fn regression_33_wal_and_snapshot_writes_succeed() {
     env.dal
         .write_op(NewCollabOp {
             doc_id,
+            sequence: 1,
             op_id: Uuid::new_v4(),
             client_id: Uuid::new_v4(),
             data: b"op".to_vec(),
@@ -132,7 +135,8 @@ async fn regression_33_wal_and_snapshot_writes_succeed() {
     env.dal
         .write_snapshot(NewCollabSnapshot {
             doc_id,
-            version: 1,
+            generation: 1,
+            through_sequence: 1,
             data: b"snap".to_vec(),
             checksum: "checksum".to_string(),
             taken_at: Utc::now(),
@@ -141,48 +145,42 @@ async fn regression_33_wal_and_snapshot_writes_succeed() {
         .expect("write_snapshot must succeed against real ScyllaDB");
 }
 
-/// REG-28 (#28): after the snapshot ring wraps (slots 1–5, then 1 again),
-/// `read_latest_snapshot` must return the NEWEST write, not the highest ring
-/// slot. The production query orders by `version DESC`, which returns the
-/// stale slot-5 row after the wrap.
+/// REG-28 (#28): latest means greatest monotonic generation, independent of
+/// reusable slots, timestamps, or clock skew.
 #[tokio::test]
 async fn regression_28_latest_snapshot_is_newest_write_not_highest_slot() {
     let env = ScyllaEnv::new().await;
     let doc_id = Uuid::new_v4();
-    let base = Utc::now() - Duration::minutes(10);
-    for n in 1..=6i64 {
-        let version = if n <= 5 { n as i32 } else { 1 }; // documented ring buffer
-        env.seed_snapshot(
-            doc_id,
-            version,
-            &format!("snap-{n}"),
-            (base + Duration::seconds(10 * (n - 1))).timestamp_millis(),
-        )
+    let now = Utc::now();
+    env.seed_snapshot(doc_id, 5, 50, "snap-5", now.timestamp_millis())
         .await;
-    }
+    env.seed_snapshot(
+        doc_id,
+        6,
+        60,
+        "snap-6",
+        (now - Duration::hours(1)).timestamp_millis(),
+    )
+    .await;
+
     let latest = env
         .dal
         .read_latest_snapshot(doc_id)
         .await
         .expect("read_latest_snapshot must succeed against real ScyllaDB")
         .expect("a snapshot must exist");
-    assert_eq!(
-        latest.data,
-        b"snap-6".to_vec(),
-        "latest snapshot must be the newest write, not ring slot 5"
-    );
+    assert_eq!(latest.generation, 6);
+    assert_eq!(latest.through_sequence, 60);
+    assert_eq!(latest.data, b"snap-6".to_vec());
 }
 
-/// REG-02 (#2, WAL contract): ops written to the WAL must be readable back
-/// in ascending `created_at` order, respecting the `since` boundary, and
-/// replaying them onto a fresh Yrs doc must converge to the editor's state —
-/// this is the contract crash recovery depends on.
+/// REG-02 (#2): WAL replay is ordered by sequence and starts strictly after
+/// the snapshot's `through_sequence` boundary.
 #[tokio::test]
 async fn regression_02_wal_replay_contract_on_real_scylla() {
     let env = ScyllaEnv::new().await;
     let doc_id = Uuid::new_v4();
 
-    // Build real incremental Yrs updates: insert "A", then "B".
     let editor = Doc::new();
     let text = editor.get_or_insert_text("content");
     text.insert(&mut editor.transact_mut(), 0, "A");
@@ -193,27 +191,17 @@ async fn regression_02_wal_replay_contract_on_real_scylla() {
     text.insert(&mut editor.transact_mut(), 1, "B");
     let op_b = editor.transact().encode_state_as_update_v1(&sv_after_a);
 
-    let base = Utc::now() - Duration::minutes(10);
-    env.seed_op(doc_id, op_a.clone(), base.timestamp_millis())
-        .await;
-    env.seed_op(
-        doc_id,
-        op_b.clone(),
-        (base + Duration::milliseconds(10)).timestamp_millis(),
-    )
-    .await;
+    env.seed_op(doc_id, 1, op_a.clone()).await;
+    env.seed_op(doc_id, 2, op_b.clone()).await;
 
-    // Full replay from before the first op.
     let ops = env
         .dal
-        .read_ops_since(doc_id, base - Duration::milliseconds(1))
+        .read_ops_after(doc_id, 0)
         .await
-        .expect("read_ops_since must succeed against real ScyllaDB");
+        .expect("read_ops_after must succeed against real ScyllaDB");
     assert_eq!(ops.len(), 2);
-    assert!(
-        ops[0].created_at <= ops[1].created_at,
-        "ops must replay in order"
-    );
+    assert_eq!(ops[0].sequence, 1);
+    assert_eq!(ops[1].sequence, 2);
     assert_eq!(ops[0].data, op_a);
     assert_eq!(ops[1].data, op_b);
 
@@ -229,48 +217,37 @@ async fn regression_02_wal_replay_contract_on_real_scylla() {
         "AB"
     );
 
-    // Boundary filter: only the later op remains after the midpoint.
     let tail = env
         .dal
-        .read_ops_since(doc_id, base + Duration::milliseconds(5))
+        .read_ops_after(doc_id, 1)
         .await
-        .expect("read_ops_since must succeed against real ScyllaDB");
+        .expect("read_ops_after must succeed against real ScyllaDB");
     assert_eq!(tail.len(), 1);
+    assert_eq!(tail[0].sequence, 2);
     assert_eq!(tail[0].data, op_b);
 }
 
-/// Guard: the snapshot ring keeps at most SNAPSHOT_RING_SIZE rows per
-/// document — slot reuse must overwrite, not accumulate.
+/// Guard: snapshot retention can remove generations older than the latest five.
 #[tokio::test]
 async fn guard_snapshot_ring_retains_at_most_five_rows() {
     let env = ScyllaEnv::new().await;
     let doc_id = Uuid::new_v4();
-    let base = Utc::now() - Duration::minutes(10);
-    for n in 1..=7i64 {
-        let version = ((n - 1) % 5 + 1) as i32; // documented ring 1–5
+    for generation in 1..=6 {
         env.seed_snapshot(
             doc_id,
-            version,
-            &format!("snap-{n}"),
-            (base + Duration::seconds(10 * n)).timestamp_millis(),
+            generation,
+            generation * 10,
+            &format!("snap-{generation}"),
+            Utc::now().timestamp_millis(),
         )
         .await;
     }
-    let mut versions: Vec<i32> = env
-        .dal
-        .session
-        .query_unpaged(
-            format!("SELECT version FROM {KEYSPACE}.snapshots WHERE doc_id = ?"),
-            (doc_id,),
-        )
-        .await
-        .unwrap()
-        .into_rows_result()
-        .unwrap()
-        .rows::<(i32,)>()
-        .unwrap()
-        .map(|row| row.unwrap().0)
+    env.dal.delete_snapshot(doc_id, 1).await.unwrap();
+
+    let snapshots = env.dal.read_all_snapshots(doc_id).await.unwrap();
+    let generations: Vec<i64> = snapshots
+        .into_iter()
+        .map(|snapshot| snapshot.generation)
         .collect();
-    versions.sort_unstable();
-    assert_eq!(versions, vec![1, 2, 3, 4, 5]);
+    assert_eq!(generations, vec![6, 5, 4, 3, 2]);
 }
