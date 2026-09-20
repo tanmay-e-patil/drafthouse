@@ -16,7 +16,6 @@ const h = vi.hoisted(() => ({
   get: vi.fn(),
   content: vi.fn(),
   update: vi.fn(),
-  save: vi.fn(),
 }));
 
 vi.mock("@tanstack/react-router", () => ({
@@ -28,12 +27,11 @@ vi.mock("#/features/documents/api", () => ({
   getDocumentApi: h.get,
   getDocumentContentApi: h.content,
   updateDocumentApi: h.update,
-  updateDocumentContentApi: h.save,
 }));
 vi.mock("#/widgets/editor/Editor", () => ({
   default: (props: any) => {
     h.props = props;
-    return <button onClick={() => props.onSave(props.initialContent)}>Audit save</button>;
+    return <div>Audit editor</div>;
   },
 }));
 vi.mock("#/components/Sidebar", () => ({ default: () => null }));
@@ -76,7 +74,6 @@ beforeEach(() => {
   h.get.mockReset();
   h.content.mockReset();
   h.update.mockReset();
-  h.save.mockReset();
   useAuthStore.setState({ accessToken: "token", hydrated: true, hydrate: vi.fn(async () => {}) });
 });
 
@@ -102,8 +99,14 @@ it("REG-18: a late response for document A never overwrites document B state", a
   });
   expect(h.props.docId).toBe("B");
   expect(h.props.initialContent).toBe("B text");
-  fireEvent.click(ui.getByText("Audit save"));
-  expect(h.save).toHaveBeenCalledWith("B", "B text");
+});
+
+it("REG-04: the editor receives no plaintext save callback", async () => {
+  h.get.mockResolvedValue(doc("A"));
+  h.content.mockResolvedValue({ content: "A text" });
+  render(<Component />);
+  await waitFor(() => expect(h.props?.docId).toBe("A"));
+  expect(h.props.onSave).toBeUndefined();
 });
 
 it("REG-18: a failed load for B never serves A's content under B", async () => {

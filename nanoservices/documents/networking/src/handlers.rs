@@ -3,7 +3,7 @@ use collab_core::{DocStore, awareness_last_active_to_datetime};
 use dal::postgres_txs::SqlxPostGresDescriptor;
 use kernel::{
     CreateDocumentRequest, CreateInviteLinkRequest, DocumentPresencePeer, DocumentPresenceResponse,
-    UpdateDocumentContentRequest, UpdateDocumentRequest, UpdateMemberRoleRequest,
+    UpdateDocumentRequest, UpdateMemberRoleRequest,
 };
 use utils::errors::{NanoServiceError, NanoServiceErrorStatus};
 use uuid::Uuid;
@@ -177,17 +177,6 @@ pub async fn get_document_content(
     let claims = crate::middleware::extract_optional_verified_jwt(&req).await?;
     let result = documents_core::get_document_content(dal, *path, claims.map(|c| c.sub)).await?;
     Ok(HttpResponse::Ok().json(result))
-}
-
-pub async fn update_document_content(
-    req: HttpRequest,
-    path: web::Path<Uuid>,
-    body: web::Json<UpdateDocumentContentRequest>,
-) -> Result<HttpResponse, NanoServiceError> {
-    let dal = get_dal(&req)?;
-    let claims = crate::middleware::extract_verified_jwt(&req).await?;
-    documents_core::update_document_content(dal, *path, claims.sub, &body).await?;
-    Ok(HttpResponse::Ok().finish())
 }
 
 pub async fn issue_ws_ticket(

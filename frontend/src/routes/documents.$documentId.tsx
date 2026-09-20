@@ -4,7 +4,6 @@ import {
   getDocumentApi,
   updateDocumentApi,
   getDocumentContentApi,
-  updateDocumentContentApi,
 } from "#/features/documents/api";
 import { useDocumentStore } from "#/features/documents/store";
 import { useAuthStore } from "#/features/auth/store";
@@ -178,15 +177,6 @@ function DocumentEditor() {
       setTitle(document.title);
     } finally {
       setSaving(false);
-    }
-  }
-
-  async function handleContentSave(newContent: string) {
-    try {
-      await updateDocumentContentApi(documentId, newContent);
-    } catch (error) {
-      notifyTransientError(error);
-      throw error;
     }
   }
 
@@ -365,7 +355,6 @@ function DocumentEditor() {
             key={documentId}
             docId={documentId}
             initialContent={content}
-            onSave={handleContentSave}
             onTitleUpdate={handleRemoteTitleUpdate}
             focusMode={focusMode}
             fontClassName={fontClassName}

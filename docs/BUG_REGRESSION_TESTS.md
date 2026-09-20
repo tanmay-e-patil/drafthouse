@@ -2,7 +2,7 @@
 
 Permanent regression suite for [BUG_AUDIT.md](BUG_AUDIT.md). Audit finding **#1 is intentionally not covered** (excluded by request); every other finding (now including **#33**, discovered by the Scylla container tests) plus the duplicate-self indicator bug has a test that asserts the **required** behavior.
 
-**These tests are red on purpose.** The bugs are not fixed yet, so 38 tests currently fail — each failure is one unfixed audit finding. A fix must turn its test green **without weakening the assertion**. Do not delete, skip, or loosen a `REG-` test to make a build pass; if a requirement is wrong, change the audit doc and the test together in the same commit.
+**The remaining tests are red on purpose.** Each failure is one unfixed audit finding. A fix must turn its test green **without weakening the assertion**. Do not delete, skip, or loosen a `REG-` test to make a build pass; if a requirement is wrong, change the audit doc and the test together in the same commit.
 
 ## Coverage map
 
@@ -10,14 +10,14 @@ Permanent regression suite for [BUG_AUDIT.md](BUG_AUDIT.md). Audit finding **#1 
 |---|---|---|---|
 | #2 recovery | `regression_02_rejoin_after_eviction_restores_content` (in-memory) + `regression_02_wal_replay_contract_on_real_scylla` (WAL order/boundary/convergence on real Scylla) | WS suite + `dal/dal/tests/scylla_regression.rs` | **green** |
 | #3 offline sync | `REG-03: reconnect handshake uploads edits...` + `regression_03_reconnect_handshake_uploads_offline_edits` | frontend collab suite + WS suite | **green** |
-| #4 stale saves | `regression_04_stale_save_cannot_overwrite_newer_text` | `nanoservices/documents/networking/tests/regression.rs` (PG) | **green storage guard; production wiring pending** |
+| #4 stale saves | `regression_04_stale_save_cannot_overwrite_newer_text` + `REG-04: the editor receives no plaintext save callback` + `content_patch_is_not_registered` | PG regression + route suite + documents integration suite | **green** |
 | #5 initialization | `REG-05` ×2 (duplicate seeding, resurrection/readonly) + `regression_05_server_initializes_content_once` + `regression_05_readonly_update_is_ignored_without_closing` | collab hook + WS suite | **green** |
 | #6 revocation | `regression_06_reader_disconnected_when_document_becomes_private`, `regression_06_editor_disconnected_after_document_deletion` | WS suite | red |
 | #7 erasure | `regression_07_deletion_tears_down_live_rooms`, `regression_07_deletion_purges_scylla_data` (Scylla container) | PG suite | red |
 | #33 Scylla DAL broken | `regression_33_wal_and_snapshot_writes_succeed` | `dal/dal/tests/scylla_regression.rs` (Scylla container) | **green** |
 | #8 undo | `REG-08: undo never removes another collaborator's change` | `frontend/src/widgets/editor/__tests__/editorRegression.test.tsx` | red |
-| #9 save lock | `REG-09: edits made during an in-flight save...` | editor suite | red |
-| #10 final save | `REG-10: navigating away flushes the pending final save` | editor suite | red |
+| #9 save lock | `REG-09: rapid edits stay in the shared CRDT without plaintext autosaves` | editor suite | **green** |
+| #10 final save | `REG-10: navigating away schedules no plaintext final save` | editor suite | **green** |
 | #11 async teardown | `REG-11: unmounting during pending ticket setup...` | collab suite | red |
 | #12 render lifetime | `REG-12` ×2 (hook + route callback stability) | collab + `frontend/src/routes/__tests__/documentRouteRegression.test.tsx` | red |
 | #13 awareness binding | `REG-13: the editor binding tracks the awareness...` | collab suite | red |
@@ -77,9 +77,9 @@ is tested.
 
 ## Current state (2026-09-20)
 
-- Frontend: **19 regression tests red**, 152 tests green.
+- Frontend: **17 tests red**, 148 tests green. #4/#9/#10 are green; the remaining failures are the documented regressions.
 - `collab-core`: **5 red**; `collab-networking`: **8 red, 7 green** (plus 3 handler unit tests and 3 authoritative-update unit tests green).
-- Postgres + Scylla suite: **6 red, 4 green** — #4's revision guard is green; authoritative server wiring remains pending.
+- Postgres + Scylla regression suite: **6 red, 4 green** — #4's revision guard is green; production wiring is covered by the documents integration and frontend route suites.
 - Scylla DAL suite: **4 green** — WAL replay uses monotonic sequences and snapshots use monotonic generations with explicit WAL boundaries.
 - `cargo test --workspace --lib` remains fully green; the pre-existing integration tests pass on `testcontainers-modules` 0.15.
 

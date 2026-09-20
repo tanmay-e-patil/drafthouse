@@ -48,6 +48,8 @@ Every editable client saves the entire text, including after remote changes, via
 
 **Fix:** derive persisted text from the authoritative server CRDT, rather than allowing competing full-text client saves.
 
+**Resolved:** the collaboration server now writes every accepted update to its ordered WAL before applying or broadcasting it, then derives a revision-guarded PostgreSQL projection from the server CRDT. Clients no longer submit whole-document plaintext, and `PATCH /documents/{id}/content` is no longer registered. Content GET remains a read-only view of the materialized projection.
+
 ### 5. Client-side initialization duplicates or resurrects content — P1, R
 
 **Location:** `frontend/src/features/collab/useCollabEditor.ts:175–181`.
@@ -90,6 +92,8 @@ If request A is slow and the debounce for newer text B fires, `saveLockRef.curre
 
 **Fix:** queue the latest pending version and clear dirty state only when that version is persisted.
 
+**Resolved by architecture:** client plaintext autosaves and their save lock were removed. Rapid edits update the shared Yjs document; the server's WAL-first authoritative update path owns persistence.
+
 ### 10. Navigation cancels the final pending save — P1, C
 
 **Location:** `frontend/src/widgets/editor/useDebounce.ts:11–19`; `frontend/src/widgets/editor/Editor.tsx:109–130`.
@@ -97,6 +101,8 @@ If request A is slow and the debounce for newer text B fires, `saveLockRef.curre
 Typing and navigating away within 500ms cancels the timer without flushing the latest content. Postgres remains stale. Because CRDT recovery is absent, the edit can disappear after room eviction/restart even if it reached the live room.
 
 **Fix:** use authoritative CRDT persistence; meanwhile explicitly handle dirty content on navigation rather than silently dropping it.
+
+**Resolved by architecture:** navigation no longer owns a pending plaintext save because that mutation path was removed. Each accepted collaboration update is durable in the server WAL before acknowledgement/broadcast, so component teardown schedules no final REST write.
 
 ### 11. Async connection setup can finish after unmount — P1, R
 

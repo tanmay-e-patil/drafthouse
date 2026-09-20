@@ -155,24 +155,6 @@ export async function getDocumentContentApi(
   return handleResponse<DocumentContentResponse>(res, "Failed to get document content");
 }
 
-export async function updateDocumentContentApi(
-  id: string,
-  content: string
-): Promise<void> {
-  const res = await fetch(`${API_BASE}/documents/${id}/content`, {
-    method: "PATCH",
-    headers: getAuthHeaders(),
-    body: JSON.stringify({ content }),
-    credentials: "include",
-  });
-
-  if (!res.ok) {
-    const data = await res.json().catch(() => ({}));
-    const err = data as ApiErrorResponse;
-    throw new ApiError(err.detail ?? "Failed to save document content", res.status);
-  }
-}
-
 export interface InviteLink {
   token: string;
   doc_id: string;

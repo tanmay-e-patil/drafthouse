@@ -1,9 +1,8 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useCollabStore } from "#/features/collab/store";
 import { useCollabEditor } from "#/features/collab/useCollabEditor";
 import type { EditorView, ViewUpdate } from "@codemirror/view";
 import type { Extension } from "@codemirror/state";
-import { useDebounce } from "./useDebounce";
 import { Button } from "#/components/ui/button";
 import { EDITOR_ACTIONS } from "./editorActions";
 import { getFormattingEdit, type FormattingActionId } from "./formatting";
@@ -22,14 +21,11 @@ interface CodeMirrorModules {
 interface EditorProps {
   docId: string;
   initialContent: string;
-  onSave: (content: string) => Promise<void>;
   onTitleUpdate?: (title: string) => void;
   focusMode?: boolean;
   fontClassName?: string;
   readOnly?: boolean;
 }
-
-const DEBOUNCE_MS = 500;
 
 function sanitizeMarkdownPreview(markdown: string) {
   return new MarkdownIt({
@@ -65,7 +61,6 @@ function dispatchEditorAction(view: EditorView, actionId: FormattingActionId) {
 export default function Editor({
   docId,
   initialContent,
-  onSave,
   onTitleUpdate,
   focusMode = false,
   fontClassName = "font-sans",
@@ -76,8 +71,6 @@ export default function Editor({
   const [mode, setMode] = useState<"edit" | "preview">("edit");
   const currentMode = readOnly ? "preview" : mode;
   const [content, setContent] = useState(initialContent);
-  const [saving, setSaving] = useState(false);
-  const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
 
   const [editorView, setEditorView] = useState<EditorView | null>(null);
   const [selectionToolbar, setSelectionToolbar] = useState<{
@@ -85,7 +78,6 @@ export default function Editor({
     left: number;
     top: number;
   }>({ open: false, left: 0, top: 0 });
-  const saveLockRef = useRef(false);
   const [codeMirror, setCodeMirror] = useState<CodeMirrorModules | null>(null);
 
   useEffect(() => {
@@ -106,30 +98,9 @@ export default function Editor({
     };
   }, []);
 
-  const debouncedSave = useDebounce(async (value: string) => {
-    if (saveLockRef.current) return;
-    saveLockRef.current = true;
-    setSaving(true);
-    try {
-      await onSave(value);
-      setHasUnsavedChanges(false);
-    } catch {
-    } finally {
-      setSaving(false);
-      saveLockRef.current = false;
-    }
-  }, DEBOUNCE_MS);
-
-  const handleChange = useCallback(
-    (view: EditorView, shouldSave: boolean) => {
-      const newContent = view.state.doc.toString();
-      setContent(newContent);
-      if (!shouldSave) return;
-      setHasUnsavedChanges(true);
-      debouncedSave(newContent);
-    },
-    [debouncedSave],
-  );
+  const handleChange = useCallback((view: EditorView) => {
+    setContent(view.state.doc.toString());
+  }, []);
 
   const updateSelectionToolbar = useCallback((view: EditorView) => {
     const selection = view.state.selection.main;
@@ -159,12 +130,12 @@ export default function Editor({
   const updateListener = useMemo(() => {
     if (!codeMirror) return null;
     return codeMirror.view.EditorView.updateListener.of((update: ViewUpdate) => {
-      if (update.docChanged) handleChange(update.view, !readOnly);
+      if (update.docChanged) handleChange(update.view);
       if (update.docChanged || update.selectionSet || update.focusChanged) {
         updateSelectionToolbar(update.view);
       }
     });
-  }, [codeMirror, handleChange, readOnly, updateSelectionToolbar]);
+  }, [codeMirror, handleChange, updateSelectionToolbar]);
 
   const editorKeymap = useMemo(() => {
     if (!codeMirror) return null;
@@ -242,8 +213,6 @@ export default function Editor({
         <EditorHeader
           mode={currentMode}
           readOnly={readOnly}
-          saving={saving}
-          hasUnsavedChanges={hasUnsavedChanges}
           collabStatus={collabStatus}
           onModeChange={setMode}
           onToolbarAction={runToolbarAction}

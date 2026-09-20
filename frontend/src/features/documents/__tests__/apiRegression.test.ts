@@ -6,7 +6,7 @@
  */
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { useAuthStore } from "#/features/auth/store";
-import { updateDocumentContentApi } from "../api";
+import { deleteDocumentApi } from "../api";
 
 let fetchMock: ReturnType<typeof vi.fn>;
 
@@ -21,7 +21,7 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
-it("REG-17: a 401 save triggers one refresh and retries with the new token", async () => {
+it("REG-17: a 401 request triggers one refresh and retries with the new token", async () => {
   fetchMock
     .mockResolvedValueOnce(
       new Response(JSON.stringify({ detail: "token expired" }), { status: 401 }),
@@ -31,12 +31,12 @@ it("REG-17: a 401 save triggers one refresh and retries with the new token", asy
     )
     .mockResolvedValueOnce(new Response(null, { status: 200 }));
 
-  await expect(updateDocumentContentApi("audit-doc", "new text")).resolves.toBeUndefined();
+  await expect(deleteDocumentApi("audit-doc")).resolves.toBeUndefined();
 
   expect(fetchMock).toHaveBeenCalledTimes(3);
-  expect(fetchMock.mock.calls[0][0]).toContain("/documents/audit-doc/content");
+  expect(fetchMock.mock.calls[0][0]).toContain("/documents/audit-doc");
   expect(fetchMock.mock.calls[1][0]).toContain("/auth/refresh");
-  expect(fetchMock.mock.calls[2][0]).toContain("/documents/audit-doc/content");
+  expect(fetchMock.mock.calls[2][0]).toContain("/documents/audit-doc");
   expect(fetchMock.mock.calls[2][1].headers.Authorization).toBe("Bearer refreshed-token");
 });
 
@@ -56,8 +56,8 @@ it("REG-17: concurrent 401s share a single refresh (single-flight)", async () =>
     .mockResolvedValueOnce(new Response(null, { status: 200 }));
 
   const results = await Promise.allSettled([
-    updateDocumentContentApi("audit-doc", "x"),
-    updateDocumentContentApi("audit-doc", "y"),
+    deleteDocumentApi("audit-doc-a"),
+    deleteDocumentApi("audit-doc-b"),
   ]);
 
   expect(results.every((r) => r.status === "fulfilled")).toBe(true);
@@ -80,8 +80,6 @@ it("REG-17: a failure after refresh surfaces the error instead of looping", asyn
       new Response(JSON.stringify({ detail: "still forbidden" }), { status: 403 }),
     );
 
-  await expect(updateDocumentContentApi("audit-doc", "new text")).rejects.toThrow(
-    "still forbidden",
-  );
+  await expect(deleteDocumentApi("audit-doc")).rejects.toThrow("still forbidden");
   expect(fetchMock).toHaveBeenCalledTimes(3);
 });

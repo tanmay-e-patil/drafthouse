@@ -1,8 +1,8 @@
 /**
  * Regression tests for the editor audit (docs/BUG_AUDIT.md #8, #9, #10, #15).
  *
- * The real Editor component, its configured extensions, undo keymap, debounce,
- * save lock and preview rendering are exercised. Only the network hook is
+ * The real Editor component, its configured extensions, undo keymap and
+ * preview rendering are exercised. Only the network hook is
  * substituted with a local Yjs/CodeMirror binding so editor behavior can be
  * tested without a server.
  */
@@ -63,10 +63,10 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 
-async function mount(onSave = vi.fn().mockResolvedValue(undefined)) {
-  const ui = render(<Editor docId="audit" initialContent="hello" onSave={onSave} />);
+async function mount() {
+  const ui = render(<Editor docId="audit" initialContent="hello" />);
   await waitFor(() => expect(h.views.length).toBeGreaterThan(0));
-  return { ...ui, onSave, view: h.views.at(-1), doc: h.docs.at(-1) };
+  return { ...ui, view: h.views.at(-1), doc: h.docs.at(-1) };
 }
 
 it("REG-08: undo never removes another collaborator's change", async () => {
@@ -82,40 +82,25 @@ it("REG-08: undo never removes another collaborator's change", async () => {
   remote.destroy();
 });
 
-it("REG-09: edits made during an in-flight save are persisted afterwards", async () => {
-  let finish!: () => void;
-  const save = vi.fn(() => new Promise<void>((r) => { finish = r; }));
-  const { view } = await mount(save);
-  vi.useFakeTimers();
+it("REG-09: rapid edits stay in the shared CRDT without plaintext autosaves", async () => {
+  const { view, doc } = await mount();
   act(() => view.dispatch({ changes: { from: 5, insert: " A" } }));
-  await act(async () => {
-    await vi.advanceTimersByTimeAsync(600);
-  });
-  expect(save).toHaveBeenCalledWith("hello A");
   act(() => view.dispatch({ changes: { from: 7, insert: " B" } }));
-  await act(async () => {
-    await vi.advanceTimersByTimeAsync(600);
-  });
-  await act(async () => {
-    finish();
-  });
-  await act(async () => {
-    await vi.advanceTimersByTimeAsync(1000);
-  });
   expect(view.state.doc.toString()).toBe("hello A B");
-  const calls = save.mock.calls.map((c: unknown[]) => c[0]);
-  expect(calls[calls.length - 1]).toBe("hello A B");
+  expect(doc.getText("content").toString()).toBe("hello A B");
 });
 
-it("REG-10: navigating away flushes the pending final save", async () => {
+it("REG-10: navigating away schedules no plaintext final save", async () => {
+  const fetch = vi.fn();
+  vi.stubGlobal("fetch", fetch);
   const ui = await mount();
   vi.useFakeTimers();
-  act(() => ui.view.dispatch({ changes: { from: 5, insert: " unsaved" } }));
+  act(() => ui.view.dispatch({ changes: { from: 5, insert: " durable" } }));
   ui.unmount();
   await act(async () => {
-    await vi.advanceTimersByTimeAsync(600);
+    await vi.runAllTimersAsync();
   });
-  expect(ui.onSave).toHaveBeenCalledWith("hello unsaved");
+  expect(fetch).not.toHaveBeenCalled();
 });
 
 it("REG-15: preview mode keeps receiving collaborators' edits", async () => {

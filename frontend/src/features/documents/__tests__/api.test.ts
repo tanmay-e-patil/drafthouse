@@ -6,7 +6,6 @@ import {
   updateDocumentApi,
   deleteDocumentApi,
   getDocumentContentApi,
-  updateDocumentContentApi,
   createInviteLinkApi,
   listInviteLinksApi,
   revokeInviteLinkApi,
@@ -287,43 +286,6 @@ describe("getDocumentContentApi", () => {
         }),
       })
     );
-  });
-});
-
-describe("updateDocumentContentApi", () => {
-  it("resolves void on success", async () => {
-    vi.stubGlobal(
-      "fetch",
-      vi.fn().mockResolvedValue({ ok: true, status: 200 })
-    );
-
-    await expect(updateDocumentContentApi(mockDoc.id, "# New content")).resolves.toBeUndefined();
-  });
-
-  it("sends PATCH with content body", async () => {
-    const mockFetch = vi.fn().mockResolvedValue({ ok: true, status: 200 });
-    vi.stubGlobal("fetch", mockFetch);
-
-    await updateDocumentContentApi(mockDoc.id, "# Hello");
-    expect(mockFetch).toHaveBeenCalledWith(
-      expect.stringContaining("/content"),
-      expect.objectContaining({
-        method: "PATCH",
-        body: JSON.stringify({ content: "# Hello" }),
-      })
-    );
-  });
-
-  it("throws on error", async () => {
-    vi.stubGlobal(
-      "fetch",
-      vi.fn().mockResolvedValue({
-        ok: false,
-        json: async () => ({ detail: "Document not found" }),
-      })
-    );
-
-    await expect(updateDocumentContentApi("bad-id", "content")).rejects.toThrow("Document not found");
   });
 });
 

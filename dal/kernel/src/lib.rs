@@ -278,11 +278,6 @@ pub struct DocumentContentResponse {
     pub content: String,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct UpdateDocumentContentRequest {
-    pub content: String,
-}
-
 #[derive(Debug, Clone, Serialize, Deserialize, sqlx::FromRow)]
 pub struct WsTicket {
     pub token_hash: String,

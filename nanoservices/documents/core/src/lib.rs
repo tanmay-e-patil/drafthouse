@@ -4,12 +4,12 @@ use dal::{
     AcceptInviteLink, CountDocumentsByOwner, CreateDocument, CreateInviteLink, DeleteDocument,
     DeleteDocumentMember, GetDocumentById, GetDocumentContent, GetDocumentMember,
     GetInviteLinkByToken, ListActiveInviteLinks, ListDocumentMembers, ListDocumentsByOwner,
-    RevokeInviteLink, UpdateDocument, UpdateDocumentContent, UpdateDocumentMemberRole,
+    RevokeInviteLink, UpdateDocument, UpdateDocumentMemberRole,
 };
 use kernel::{
     CreateInviteLinkRequest, Document, DocumentContentResponse, DocumentListResponse,
     DocumentMember, InviteLink, MemberRole, NewDocument, NewInviteLink, TitleUpdated,
-    UpdateDocumentContentRequest, UpdateDocumentRequest, UpdateMemberRoleRequest, WsTicketResponse,
+    UpdateDocumentRequest, UpdateMemberRoleRequest, WsTicketResponse,
 };
 use nan_serve_publish_event::publish_event;
 use rand::Rng;
@@ -270,21 +270,6 @@ where
 
     let content = dal.get_document_content(id).await?.unwrap_or_default();
     Ok(DocumentContentResponse { content })
-}
-
-pub async fn update_document_content<D>(
-    dal: &D,
-    id: uuid::Uuid,
-    user_id: uuid::Uuid,
-    request: &UpdateDocumentContentRequest,
-) -> Result<(), NanoServiceError>
-where
-    D: GetDocumentById + GetDocumentMember + UpdateDocumentContent,
-{
-    ensure_document_editor_access(dal, id, user_id).await?;
-
-    dal.update_document_content(id, request.content.clone())
-        .await
 }
 
 pub async fn issue_ws_ticket<D>(
@@ -958,20 +943,6 @@ mod tests {
         }
     }
 
-    impl UpdateDocumentContent for MockDal {
-        fn update_document_content(
-            &self,
-            id: Uuid,
-            content: String,
-        ) -> impl std::future::Future<Output = Result<(), NanoServiceError>> + Send {
-            let content_map = Arc::clone(&self.content);
-            async move {
-                content_map.lock().unwrap().insert(id, content);
-                Ok(())
-            }
-        }
-    }
-
     // Needed in tests that register test-only event handlers
     use std::future::Future;
     use std::pin::Pin;
@@ -1292,95 +1263,6 @@ mod tests {
     async fn get_document_content_not_found_returns_404() {
         let dal = MockDal::new();
         let result = get_document_content(&dal, Uuid::new_v4(), Some(Uuid::new_v4())).await;
-        assert!(result.is_err());
-        assert_eq!(result.unwrap_err().status, NanoServiceErrorStatus::NotFound);
-    }
-
-    // ── update_document_content ───────────────────────────────────────────────
-
-    #[tokio::test]
-    async fn update_document_content_succeeds() {
-        let owner_id = Uuid::new_v4();
-        let doc = test_document(owner_id);
-        let dal = MockDal::with_document(doc.clone());
-        let result = update_document_content(
-            &dal,
-            doc.id,
-            owner_id,
-            &UpdateDocumentContentRequest {
-                content: "# New Content".to_string(),
-            },
-        )
-        .await;
-        assert!(result.is_ok());
-        let content = dal.content.lock().unwrap().get(&doc.id).cloned();
-        assert_eq!(content, Some("# New Content".to_string()));
-    }
-
-    #[tokio::test]
-    async fn update_document_content_viewer_returns_403() {
-        let owner_id = Uuid::new_v4();
-        let viewer_id = Uuid::new_v4();
-        let doc = test_document(owner_id);
-        let member = DocumentMember {
-            doc_id: doc.id,
-            user_id: viewer_id,
-            email: None,
-            role: MemberRole::Viewer,
-        };
-        let dal = MockDal::with_document_and_member(doc.clone(), member);
-        let result = update_document_content(
-            &dal,
-            doc.id,
-            viewer_id,
-            &UpdateDocumentContentRequest {
-                content: "# Viewer edit".to_string(),
-            },
-        )
-        .await;
-        assert!(result.is_err());
-        assert_eq!(
-            result.unwrap_err().status,
-            NanoServiceErrorStatus::Forbidden
-        );
-    }
-
-    #[tokio::test]
-    async fn update_document_content_editor_member_succeeds() {
-        let owner_id = Uuid::new_v4();
-        let editor_id = Uuid::new_v4();
-        let doc = test_document(owner_id);
-        let member = DocumentMember {
-            doc_id: doc.id,
-            user_id: editor_id,
-            email: None,
-            role: MemberRole::Editor,
-        };
-        let dal = MockDal::with_document_and_member(doc.clone(), member);
-        let result = update_document_content(
-            &dal,
-            doc.id,
-            editor_id,
-            &UpdateDocumentContentRequest {
-                content: "# Editor edit".to_string(),
-            },
-        )
-        .await;
-        assert!(result.is_ok());
-    }
-
-    #[tokio::test]
-    async fn update_document_content_not_found_returns_404() {
-        let dal = MockDal::new();
-        let result = update_document_content(
-            &dal,
-            Uuid::new_v4(),
-            Uuid::new_v4(),
-            &UpdateDocumentContentRequest {
-                content: "content".to_string(),
-            },
-        )
-        .await;
         assert!(result.is_err());
         assert_eq!(result.unwrap_err().status, NanoServiceErrorStatus::NotFound);
     }

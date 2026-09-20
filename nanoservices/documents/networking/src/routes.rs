@@ -26,10 +26,6 @@ pub fn configure(
                     "/{id}/content",
                     web::get().to(handlers::get_document_content),
                 )
-                .route(
-                    "/{id}/content",
-                    web::patch().to(handlers::update_document_content),
-                )
                 .route("/{id}/ws-ticket", web::post().to(handlers::issue_ws_ticket))
                 .route(
                     "/{id}/invites",

@@ -58,10 +58,6 @@ vi.mock("markdown-it", () => ({
   default: MockMarkdownIt,
 }));
 
-vi.mock("../useDebounce", () => ({
-  useDebounce: () => vi.fn(),
-}));
-
 describe("Editor", () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -73,7 +69,6 @@ describe("Editor", () => {
 
   it("accepts onTitleUpdate prop without error", async () => {
     const { default: Editor } = await import("../Editor");
-    const onSave = vi.fn().mockResolvedValue(undefined);
     const onTitleUpdate = vi.fn();
 
     // Should render without errors when onTitleUpdate is provided
@@ -81,7 +76,6 @@ describe("Editor", () => {
       <Editor
         docId="test-doc-id"
         initialContent="# Hello"
-        onSave={onSave}
         onTitleUpdate={onTitleUpdate}
       />
     );
@@ -93,9 +87,8 @@ describe("Editor", () => {
 
   it("renders edit mode by default with toolbar buttons", async () => {
     const { default: Editor } = await import("../Editor");
-    const onSave = vi.fn().mockResolvedValue(undefined);
 
-    render(<Editor docId="test-doc-id" initialContent="# Hello" onSave={onSave} />);
+    render(<Editor docId="test-doc-id" initialContent="# Hello" />);
 
     await waitFor(() => {
       expect(screen.getByText("Edit")).toBeDefined();
@@ -108,9 +101,8 @@ describe("Editor", () => {
 
   it("switches to preview mode on Preview button click", async () => {
     const { default: Editor } = await import("../Editor");
-    const onSave = vi.fn().mockResolvedValue(undefined);
 
-    render(<Editor docId="test-doc-id" initialContent="# Hello" onSave={onSave} />);
+    render(<Editor docId="test-doc-id" initialContent="# Hello" />);
 
     await waitFor(() => {
       expect(screen.getByText("Preview")).toBeDefined();
@@ -126,9 +118,8 @@ describe("Editor", () => {
 
   it("switches back to edit mode from preview", async () => {
     const { default: Editor } = await import("../Editor");
-    const onSave = vi.fn().mockResolvedValue(undefined);
 
-    render(<Editor docId="test-doc-id" initialContent="# Hello" onSave={onSave} />);
+    render(<Editor docId="test-doc-id" initialContent="# Hello" />);
 
     await waitFor(() => {
       expect(screen.getByText("Preview")).toBeDefined();
@@ -149,15 +140,9 @@ describe("Editor", () => {
 
   it("hides editor chrome in focus mode", async () => {
     const { default: Editor } = await import("../Editor");
-    const onSave = vi.fn().mockResolvedValue(undefined);
 
     render(
-      <Editor
-        docId="test-doc-id"
-        initialContent="# Hello"
-        onSave={onSave}
-        focusMode
-      />
+      <Editor docId="test-doc-id" initialContent="# Hello" focusMode />
     );
 
     await waitFor(() => {
@@ -168,13 +153,11 @@ describe("Editor", () => {
 
   it("applies the selected editor font to the editable surface", async () => {
     const { default: Editor } = await import("../Editor");
-    const onSave = vi.fn().mockResolvedValue(undefined);
 
     render(
       <Editor
         docId="test-doc-id"
         initialContent="# Hello"
-        onSave={onSave}
         fontClassName="font-serif"
       />
     );
@@ -186,15 +169,9 @@ describe("Editor", () => {
 
   it("hides formatting controls in read-only mode", async () => {
     const { default: Editor } = await import("../Editor");
-    const onSave = vi.fn().mockResolvedValue(undefined);
 
     render(
-      <Editor
-        docId="test-doc-id"
-        initialContent="# Hello"
-        onSave={onSave}
-        readOnly
-      />
+      <Editor docId="test-doc-id" initialContent="# Hello" readOnly />
     );
 
     await waitFor(() => {

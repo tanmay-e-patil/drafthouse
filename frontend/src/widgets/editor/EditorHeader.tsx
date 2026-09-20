@@ -28,16 +28,12 @@ const STATUS_DOT: Record<ConnectionStatus, string> = {
 export default function EditorHeader({
   mode,
   readOnly,
-  saving,
-  hasUnsavedChanges,
   collabStatus,
   onModeChange,
   onToolbarAction,
 }: {
   mode: "edit" | "preview";
   readOnly: boolean;
-  saving: boolean;
-  hasUnsavedChanges: boolean;
   collabStatus: ConnectionStatus;
   onModeChange: (mode: "edit" | "preview") => void;
   onToolbarAction: (actionId: FormattingActionId) => void;
@@ -106,14 +102,6 @@ export default function EditorHeader({
       )}
 
       <div className="ml-auto flex items-center gap-2">
-        {saving && (
-          <span className="text-[11px] text-muted-foreground animate-pulse">
-            Saving...
-          </span>
-        )}
-        {!saving && hasUnsavedChanges && (
-          <span className="text-[11px] text-muted-foreground">Unsaved</span>
-        )}
         <AvatarStrip />
         <Tooltip>
           <TooltipTrigger
