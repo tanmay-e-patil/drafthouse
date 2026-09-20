@@ -56,7 +56,6 @@ export function useCollabEditor(
       docId,
       container,
       extensions = [],
-      initialContent,
       readOnly = false,
       onTitleUpdate,
       onViewChange,
@@ -173,12 +172,7 @@ export function useCollabEditor(
       });
 
       provider.on("sync", (synced: boolean) => {
-        if (synced) {
-          if (initialContent && ytext.toString() === "") {
-            ydoc.transact(() => { ytext.insert(0, initialContent); });
-          }
-          setStatus("connected");
-        }
+        if (synced) setStatus("connected");
       });
 
       // Build editor if not yet created

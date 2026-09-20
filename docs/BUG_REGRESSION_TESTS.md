@@ -2,7 +2,7 @@
 
 Permanent regression suite for [BUG_AUDIT.md](BUG_AUDIT.md). Audit finding **#1 is intentionally not covered** (excluded by request); every other finding (now including **#33**, discovered by the Scylla container tests) plus the duplicate-self indicator bug has a test that asserts the **required** behavior.
 
-**These tests are red on purpose.** The bugs are not fixed yet, so 44 tests currently fail — each failure is one unfixed audit finding. A fix must turn its test green **without weakening the assertion**. Do not delete, skip, or loosen a `REG-` test to make a build pass; if a requirement is wrong, change the audit doc and the test together in the same commit.
+**These tests are red on purpose.** The bugs are not fixed yet, so 41 tests currently fail — each failure is one unfixed audit finding. A fix must turn its test green **without weakening the assertion**. Do not delete, skip, or loosen a `REG-` test to make a build pass; if a requirement is wrong, change the audit doc and the test together in the same commit.
 
 ## Coverage map
 
@@ -11,7 +11,7 @@ Permanent regression suite for [BUG_AUDIT.md](BUG_AUDIT.md). Audit finding **#1 
 | #2 recovery | `regression_02_rejoin_after_eviction_restores_content` (in-memory) + `regression_02_wal_replay_contract_on_real_scylla` (WAL order/boundary/convergence on real Scylla) | WS suite + `dal/dal/tests/scylla_regression.rs` | **green** |
 | #3 offline sync | `REG-03: reconnect handshake uploads edits...` + `regression_03_reconnect_handshake_uploads_offline_edits` | frontend collab suite + WS suite | **green** |
 | #4 stale saves | `regression_04_stale_save_cannot_overwrite_newer_text` | `nanoservices/documents/networking/tests/regression.rs` (PG) | red |
-| #5 initialization | `REG-05` ×2 (duplicate seeding, resurrection/readonly) + `regression_05_readonly_update_is_ignored_without_closing` | collab hook + WS suite | red |
+| #5 initialization | `REG-05` ×2 (duplicate seeding, resurrection/readonly) + `regression_05_server_initializes_content_once` + `regression_05_readonly_update_is_ignored_without_closing` | collab hook + WS suite | **green** |
 | #6 revocation | `regression_06_reader_disconnected_when_document_becomes_private`, `regression_06_editor_disconnected_after_document_deletion` | WS suite | red |
 | #7 erasure | `regression_07_deletion_tears_down_live_rooms`, `regression_07_deletion_purges_scylla_data` (Scylla container) | PG suite | red |
 | #33 Scylla DAL broken | `regression_33_wal_and_snapshot_writes_succeed` | `dal/dal/tests/scylla_regression.rs` (Scylla container) | **green** |
@@ -76,8 +76,8 @@ is tested.
 
 ## Current state (2026-09-20)
 
-- Frontend: **21 regression tests red**, 150 tests green.
-- `collab-core`: **5 red**; `collab-networking`: **10 red, 3 green** (plus 3 handler unit tests green).
+- Frontend: **19 regression tests red**, 152 tests green.
+- `collab-core`: **5 red**; `collab-networking`: **9 red, 5 green** (plus 3 handler unit tests green).
 - Postgres + Scylla suite: **7 red, 3 green** (server-policy, invite-concurrency, and presence guards).
 - Scylla DAL suite: **1 red, 3 green** — #33 timestamp handling and #2's WAL replay contract are fixed. The remaining red test covers #28 latest-snapshot ordering.
 - `cargo test --workspace --lib` remains fully green; the pre-existing integration tests pass on `testcontainers-modules` 0.15.

@@ -178,6 +178,7 @@ it("REG-05: two clients joining an empty room seed content exactly once", async 
   const a = await mount();
   const b = await mount();
   const server = new Y.Doc();
+  server.getText("content").insert(0, "original");
   act(() => {
     a.provider.ws.open();
     b.provider.ws.open();

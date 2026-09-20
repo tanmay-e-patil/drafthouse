@@ -9,8 +9,8 @@ use collab_core::{
     encode_sync_step2, encode_update,
 };
 use dal::{
-    DeleteSnapshot, GetDocumentById, ReadLatestSnapshot, ScyllaDescriptor, WriteOp, WriteSnapshot,
-    postgres_txs::SqlxPostGresDescriptor,
+    DeleteSnapshot, GetDocumentById, GetDocumentContent, ReadLatestSnapshot, ScyllaDescriptor,
+    WriteOp, WriteSnapshot, postgres_txs::SqlxPostGresDescriptor,
 };
 use futures_util::StreamExt;
 use kernel::NewCollabOp;
@@ -20,6 +20,7 @@ use tracing::{info, warn};
 use uuid::Uuid;
 use yrs::sync::AwarenessUpdate;
 use yrs::updates::decoder::Decode;
+use yrs::{Text, Transact};
 
 #[derive(Clone, Copy)]
 struct ConnectionMeta {
@@ -78,9 +79,20 @@ pub async fn ws_handler(
         .clone();
 
     let room = get_or_create_room(&doc_store, doc_id);
-    room.ensure_initialized(|| restore_room(&scylla_dal, doc_id, &room))
-        .await
-        .map_err(|e| actix_web::error::ErrorInternalServerError(e.to_string()))?;
+    room.ensure_initialized(|| async {
+        if !restore_room(&scylla_dal, doc_id, &room).await? {
+            if let Some(content) = pg_dal.get_document_content(doc_id).await? {
+                if !content.is_empty() {
+                    let doc = room.doc.write().unwrap();
+                    doc.get_or_insert_text("content")
+                        .insert(&mut doc.transact_mut(), 0, &content);
+                }
+            }
+        }
+        Ok::<(), utils::errors::NanoServiceError>(())
+    })
+    .await
+    .map_err(|e| actix_web::error::ErrorInternalServerError(e.to_string()))?;
 
     if !room.add_connection() {
         return Ok(HttpResponse::TooManyRequests().body("Editor cap reached (max 100)"));
@@ -180,13 +192,6 @@ async fn handle_binary<D>(
         }
         CollabMessage::Update(update_bytes) | CollabMessage::SyncStep2(update_bytes) => {
             if meta.is_readonly {
-                let _ = session
-                    .clone()
-                    .close(Some(actix_ws::CloseReason {
-                        code: actix_ws::CloseCode::Policy,
-                        description: Some("Read-only viewers cannot edit".to_string()),
-                    }))
-                    .await;
                 return;
             }
             let applied = {

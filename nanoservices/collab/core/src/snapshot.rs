@@ -10,11 +10,15 @@ use dal::{DeleteSnapshot, ReadLatestSnapshot, ReadOpsSince, WriteSnapshot};
 use utils::errors::{NanoServiceError, NanoServiceErrorStatus};
 
 /// Restore the newest snapshot and subsequent WAL operations before a room is used.
-pub async fn restore_room<D>(dal: &D, doc_id: Uuid, room: &DocRoom) -> Result<(), NanoServiceError>
+pub async fn restore_room<D>(
+    dal: &D,
+    doc_id: Uuid,
+    room: &DocRoom,
+) -> Result<bool, NanoServiceError>
 where
     D: ReadLatestSnapshot + ReadOpsSince,
 {
-    let since = match dal.read_latest_snapshot(doc_id).await? {
+    let (since, had_snapshot) = match dal.read_latest_snapshot(doc_id).await? {
         Some(snapshot) => {
             if !verify_snapshot_checksum(&snapshot.data, &snapshot.checksum) {
                 return Err(NanoServiceError::new(
@@ -28,12 +32,14 @@ where
                     NanoServiceErrorStatus::InternalServerError,
                 )
             })?;
-            snapshot.taken_at
+            (snapshot.taken_at, true)
         }
-        None => chrono::DateTime::<Utc>::UNIX_EPOCH,
+        None => (chrono::DateTime::<Utc>::UNIX_EPOCH, false),
     };
 
-    for op in dal.read_ops_since(doc_id, since).await? {
+    let ops = dal.read_ops_since(doc_id, since).await?;
+    let had_ops = !ops.is_empty();
+    for op in ops {
         apply_update_safe(&room.doc.read().unwrap(), &op.data).ok_or_else(|| {
             NanoServiceError::new(
                 "Failed to replay collaboration operation",
@@ -42,7 +48,7 @@ where
         })?;
     }
 
-    Ok(())
+    Ok(had_snapshot || had_ops)
 }
 
 /// Persist a snapshot for the given room to ScyllaDB.

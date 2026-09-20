@@ -15,13 +15,24 @@ mod dal {
     pub mod postgres_txs {
         use super::*;
         #[derive(Clone)]
-        pub struct SqlxPostGresDescriptor(pub Arc<Mutex<Option<Document>>>);
+        pub struct SqlxPostGresDescriptor(
+            pub Arc<Mutex<Option<Document>>>,
+            pub Arc<Mutex<Option<String>>>,
+        );
         impl GetDocumentById for SqlxPostGresDescriptor {
             async fn get_document_by_id(
                 &self,
                 _: Uuid,
             ) -> Result<Option<Document>, NanoServiceError> {
                 Ok(self.0.lock().unwrap().clone())
+            }
+        }
+        impl GetDocumentContent for SqlxPostGresDescriptor {
+            async fn get_document_content(
+                &self,
+                _: Uuid,
+            ) -> Result<Option<String>, NanoServiceError> {
+                Ok(self.1.lock().unwrap().clone())
             }
         }
     }
@@ -137,14 +148,17 @@ mod regression {
         async fn new(fail: bool) -> Self {
             let id = Uuid::new_v4();
             let owner = Uuid::new_v4();
-            let pg = SqlxPostGresDescriptor(Arc::new(Mutex::new(Some(kernel::Document {
-                id,
-                owner_id: owner,
-                title: "regression".into(),
-                is_public: true,
-                created_at: Utc::now(),
-                updated_at: Utc::now(),
-            }))));
+            let pg = SqlxPostGresDescriptor(
+                Arc::new(Mutex::new(Some(kernel::Document {
+                    id,
+                    owner_id: owner,
+                    title: "regression".into(),
+                    is_public: true,
+                    created_at: Utc::now(),
+                    updated_at: Utc::now(),
+                }))),
+                Arc::new(Mutex::new(Some(String::new()))),
+            );
             let store = web::Data::new(DocStore::new());
             let storage = ScyllaDescriptor {
                 fail,
@@ -319,6 +333,20 @@ mod regression {
 
         assert_eq!(env.content(), "offline edit");
         assert_eq!(env.storage.ops.lock().unwrap().len(), 1);
+        env.stop().await;
+    }
+
+    /// REG-05 (#5): existing plaintext initializes a new CRDT room once on
+    /// the server, regardless of how many clients join.
+    #[actix_web::test]
+    async fn regression_05_server_initializes_content_once() {
+        let env = Env::new(false).await;
+        *env.pg.1.lock().unwrap() = Some("initial content".to_string());
+
+        let _first = env.connect(false).await;
+        let _second = env.connect(false).await;
+
+        assert_eq!(env.content(), "initial content");
         env.stop().await;
     }
 
