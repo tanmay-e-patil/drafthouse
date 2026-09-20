@@ -4,12 +4,13 @@ use dashmap::DashMap;
 use std::time::Instant;
 use std::{
     collections::HashMap,
+    future::Future,
     sync::{
         Arc, Mutex,
         atomic::{AtomicUsize, Ordering},
     },
 };
-use tokio::sync::broadcast;
+use tokio::sync::{OnceCell, broadcast};
 use uuid::Uuid;
 use yrs::Doc;
 
@@ -41,6 +42,7 @@ pub struct DocRoom {
     pub next_snapshot_version: Mutex<i32>,
     pub awareness: DashMap<u64, AwarenessPeer>,
     pub connection_awareness: DashMap<u64, Vec<u64>>,
+    initialization: OnceCell<()>,
     /// Broadcast channel: all WS sessions in this room subscribe.
     pub tx: broadcast::Sender<Bytes>,
 }
@@ -63,12 +65,24 @@ impl DocRoom {
             next_snapshot_version: Mutex::new(1),
             awareness: DashMap::new(),
             connection_awareness: DashMap::new(),
+            initialization: OnceCell::new(),
             tx,
         }
     }
 
     pub fn connection_count(&self) -> usize {
         self.connections.load(Ordering::SeqCst)
+    }
+
+    pub async fn ensure_initialized<E, F, Fut>(&self, initialize: F) -> Result<(), E>
+    where
+        F: FnOnce() -> Fut,
+        Fut: Future<Output = Result<(), E>>,
+    {
+        self.initialization
+            .get_or_try_init(initialize)
+            .await
+            .map(|_| ())
     }
 
     /// Returns true if the connection was accepted (under the 100-editor cap).

@@ -2,8 +2,48 @@ use chrono::Utc;
 use kernel::NewCollabSnapshot;
 use uuid::Uuid;
 
-use crate::room::{DocRoom, DocStore, encode_snapshot};
-use dal::{DeleteSnapshot, ReadLatestSnapshot, WriteSnapshot};
+use crate::{
+    room::{DocRoom, DocStore, encode_snapshot, verify_snapshot_checksum},
+    sync_protocol::apply_update_safe,
+};
+use dal::{DeleteSnapshot, ReadLatestSnapshot, ReadOpsSince, WriteSnapshot};
+use utils::errors::{NanoServiceError, NanoServiceErrorStatus};
+
+/// Restore the newest snapshot and subsequent WAL operations before a room is used.
+pub async fn restore_room<D>(dal: &D, doc_id: Uuid, room: &DocRoom) -> Result<(), NanoServiceError>
+where
+    D: ReadLatestSnapshot + ReadOpsSince,
+{
+    let since = match dal.read_latest_snapshot(doc_id).await? {
+        Some(snapshot) => {
+            if !verify_snapshot_checksum(&snapshot.data, &snapshot.checksum) {
+                return Err(NanoServiceError::new(
+                    "Snapshot checksum mismatch",
+                    NanoServiceErrorStatus::InternalServerError,
+                ));
+            }
+            apply_update_safe(&room.doc.read().unwrap(), &snapshot.data).ok_or_else(|| {
+                NanoServiceError::new(
+                    "Failed to apply snapshot",
+                    NanoServiceErrorStatus::InternalServerError,
+                )
+            })?;
+            snapshot.taken_at
+        }
+        None => chrono::DateTime::<Utc>::UNIX_EPOCH,
+    };
+
+    for op in dal.read_ops_since(doc_id, since).await? {
+        apply_update_safe(&room.doc.read().unwrap(), &op.data).ok_or_else(|| {
+            NanoServiceError::new(
+                "Failed to replay collaboration operation",
+                NanoServiceErrorStatus::InternalServerError,
+            )
+        })?;
+    }
+
+    Ok(())
+}
 
 /// Persist a snapshot for the given room to ScyllaDB.
 pub async fn persist_snapshot<D>(dal: &D, doc_id: Uuid, room: &DocRoom) -> bool
@@ -60,11 +100,10 @@ where
 mod tests {
     use super::*;
     use crate::room::{DocRoom, DocStore};
-    use chrono::{DateTime, Utc};
     use dashmap::DashMap;
     use kernel::{CollabSnapshot, NewCollabSnapshot};
     use std::sync::{Arc, Mutex};
-    use utils::errors::{NanoServiceError, NanoServiceErrorStatus};
+    use utils::errors::NanoServiceError;
 
     #[derive(Clone)]
     struct MockDal {

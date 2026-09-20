@@ -8,7 +8,7 @@ Permanent regression suite for [BUG_AUDIT.md](BUG_AUDIT.md). Audit finding **#1 
 
 | Finding | Test | Location | Status |
 |---|---|---|---|
-| #2 recovery | `regression_02_rejoin_after_eviction_restores_content` (in-memory) + `regression_02_wal_replay_contract_on_real_scylla` (WAL order/boundary/convergence on real Scylla) | WS suite + `dal/dal/tests/scylla_regression.rs` | red |
+| #2 recovery | `regression_02_rejoin_after_eviction_restores_content` (in-memory) + `regression_02_wal_replay_contract_on_real_scylla` (WAL order/boundary/convergence on real Scylla) | WS suite + `dal/dal/tests/scylla_regression.rs` | **green** |
 | #3 offline sync | `REG-03: reconnect handshake uploads edits...` | `frontend/src/features/collab/__tests__/collabRegression.test.tsx` | red |
 | #4 stale saves | `regression_04_stale_save_cannot_overwrite_newer_text` | `nanoservices/documents/networking/tests/regression.rs` (PG) | red |
 | #5 initialization | `REG-05` ×2 (duplicate seeding, resurrection/readonly) + `regression_05_readonly_update_is_ignored_without_closing` | collab hook + WS suite | red |
@@ -77,9 +77,9 @@ is tested.
 ## Current state (2026-09-20)
 
 - Frontend: **22 regression tests red**, 149 pre-existing tests green.
-- `collab-core`: **5 red**; `collab-networking`: **11 red + 1 green guard** (plus 3 handler unit tests green).
+- `collab-core`: **5 red**; `collab-networking`: **10 red, 2 green** (plus 3 handler unit tests green).
 - Postgres + Scylla suite: **7 red, 3 green** (server-policy, invite-concurrency, and presence guards).
-- Scylla DAL suite: **2 red, 2 green** — #33 is fixed: `write_op`/`write_snapshot` binds, the `read_ops_since` query bind, and timestamp deserialization now use Scylla's `CqlTimestamp`. The remaining red tests cover #2 recovery and #28 latest-snapshot ordering.
+- Scylla DAL suite: **1 red, 3 green** — #33 timestamp handling and #2's WAL replay contract are fixed. The remaining red test covers #28 latest-snapshot ordering.
 - `cargo test --workspace --lib` remains fully green; the pre-existing integration tests pass on `testcontainers-modules` 0.15.
 
 ## Workflow for fixing

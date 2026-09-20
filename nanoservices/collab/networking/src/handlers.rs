@@ -2,7 +2,7 @@ use actix_web::{HttpRequest, HttpResponse, web};
 use bytes::Bytes;
 use chrono::Utc;
 use collab_core::room::{AwarenessPeer, DocRoom, MAX_MSG_BYTES, get_or_create_room};
-use collab_core::snapshot::persist_snapshot;
+use collab_core::snapshot::{persist_snapshot, restore_room};
 use collab_core::sync_protocol::apply_update_safe;
 use collab_core::{
     CollabMessage, DocStore, decode_message, encode_full_sync_step2, encode_sync_step2,
@@ -78,6 +78,9 @@ pub async fn ws_handler(
         .clone();
 
     let room = get_or_create_room(&doc_store, doc_id);
+    room.ensure_initialized(|| restore_room(&scylla_dal, doc_id, &room))
+        .await
+        .map_err(|e| actix_web::error::ErrorInternalServerError(e.to_string()))?;
 
     if !room.add_connection() {
         return Ok(HttpResponse::TooManyRequests().body("Editor cap reached (max 100)"));
