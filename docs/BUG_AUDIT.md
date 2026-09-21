@@ -116,6 +116,8 @@ Typing and navigating away within 500ms cancels the timer without flushing the l
 
 **Fix:** recheck cancellation after async boundaries and clean up every resource created by that specific effect instance.
 
+**Resolved:** every session-setup await rechecks a supersede counter before creating any resource; re-renders supersede their predecessor's in-flight setup, and teardown is deferred by one tick so a following effect (the re-render handoff) cancels it while a real unmount destroys everything.
+
 ### 12. Ordinary parent renders destroy the collaboration session — P2, C
 
 **Locations:** `frontend/src/routes/documents.$documentId.tsx:193–202,369`; `frontend/src/widgets/editor/Editor.tsx:215–227`; `frontend/src/features/collab/useCollabEditor.ts:240`.
@@ -123,6 +125,8 @@ Typing and navigating away within 500ms cancels the timer without flushing the l
 `handleRemoteTitleUpdate` is a new function on every parent render. It changes `collabOptions`, which tears down the entire effect and Y.Doc. Typing a title, receiving a remote title, or toggling parent UI therefore unnecessarily reconnects and resets editor state/selection. Unsynced local state is particularly vulnerable.
 
 **Fix:** stabilize callbacks or use callback refs; do not tie the document/provider lifetime to ordinary presentation options.
+
+**Resolved:** the collaboration session is keyed by document and survives option/callback identity changes (callbacks are read through the session's latest options), and the route's title callback is memoized. Presentation changes that intentionally end the session (preview/leave) still tear it down.
 
 ### 13. Reconnect creates a new awareness instance but keeps the old editor binding — P2, R
 
@@ -132,6 +136,8 @@ Reconnect replaces the provider and its awareness, but `if (!view)` skips rebuil
 
 **Fix:** preserve a single awareness object or explicitly reconfigure the editor binding when replacing the provider.
 
+**Resolved:** replacing a provider reconfigures the existing editor in place (`StateEffect.reconfigure` with the new `yCollab` binding), so the yCollab facet always tracks the current provider's awareness without discarding document or selection.
+
 ### 14. Two reconnect mechanisms race, and successful reconnects leave timers armed — P2, C
 
 **Location:** `frontend/src/features/collab/useCollabEditor.ts:165–172,211–221`.
@@ -139,6 +145,8 @@ Reconnect replaces the provider and its awareness, but `if (!view)` skips rebuil
 `y-websocket` already automatically reconnects. The hook schedules a second reconnect that destroys the provider, without cancelling that timer on `connected` or deduplicating timers. A fast built-in recovery is torn down again by the old timer. Destroying a connected provider itself emits `disconnected`, which can schedule yet another replacement.
 
 **Fix:** use one reconnect owner; cancel/deduplicate retries and refresh ticket parameters through that lifecycle.
+
+**Resolved:** the hook's reconnect timer is the single retry owner: pending timers are cleared when the provider reports connected again (so a successful built-in recovery is never torn down), timers never stack, and each retry reconnects with a freshly issued ticket.
 
 ### 15. Preview mode stops receiving collaborators' edits — P2, C
 
@@ -191,6 +199,8 @@ The real `y-websocket` provider retransmits awareness changes it receives for ot
 Peers are deduplicated by the email local-part display name. `alice@company-a.com` and `alice@company-b.com` collapse into one entry, and all anonymous readers collapse into `Anonymous`. This can also hide another peer when excluding the local client.
 
 **Fix:** deduplicate authenticated users by user ID and anonymous sessions by client ID.
+
+**Resolved (test-scoped):** peers are no longer collapsed by display name — distinct users with identical names remain distinct — and the local user's own sessions (including superseded ones) are excluded from the avatar list by name and local client ID. Identity is still name-based because awareness payloads carry no user id; full user-ID identity lands with the #19 awareness-identity work.
 
 ### 21. Broadcast lag silently loses required CRDT updates — P1, C
 

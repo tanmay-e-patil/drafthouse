@@ -180,15 +180,18 @@ function DocumentEditor() {
     }
   }
 
-  function handleRemoteTitleUpdate(newTitle: string) {
-    setTitle(newTitle);
-    if (document) {
-      setDocument({ ...document, title: newTitle });
-      useDocumentStore
-        .getState()
-        .updateDocumentInList(document.id, { title: newTitle });
-    }
-  }
+  const handleRemoteTitleUpdate = useCallback(
+    (newTitle: string) => {
+      setTitle(newTitle);
+      if (document) {
+        setDocument({ ...document, title: newTitle });
+        useDocumentStore
+          .getState()
+          .updateDocumentInList(document.id, { title: newTitle });
+      }
+    },
+    [document],
+  );
 
   const toggleSidebar = useCallback(
     () => setSidebarCollapsed((v) => !v),

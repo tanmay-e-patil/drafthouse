@@ -18,16 +18,16 @@ Permanent regression suite for [BUG_AUDIT.md](BUG_AUDIT.md). Audit finding **#1 
 | #8 undo | `REG-08: undo never removes another collaborator's change` | `frontend/src/widgets/editor/__tests__/editorRegression.test.tsx` | red |
 | #9 save lock | `REG-09: rapid edits stay in the shared CRDT without plaintext autosaves` | editor suite | **green** |
 | #10 final save | `REG-10: navigating away schedules no plaintext final save` | editor suite | **green** |
-| #11 async teardown | `REG-11: unmounting during pending ticket setup...` | collab suite | red |
-| #12 render lifetime | `REG-12` ×2 (hook + route callback stability) | collab + `frontend/src/routes/__tests__/documentRouteRegression.test.tsx` | red |
-| #13 awareness binding | `REG-13: the editor binding tracks the awareness...` | collab suite | red |
-| #14 reconnect race | `REG-14: a successful built-in reconnection...` | collab suite | red |
+| #11 async teardown | `REG-11: unmounting during pending ticket setup...` | collab suite | **green** |
+| #12 render lifetime | `REG-12` ×2 (hook + route callback stability) | collab + `frontend/src/routes/__tests__/documentRouteRegression.test.tsx` | **green** |
+| #13 awareness binding | `REG-13: the editor binding tracks the awareness...` | collab suite | **green** |
+| #14 reconnect race | `REG-14: a successful built-in reconnection...` | collab suite | **green** |
 | #15 preview | `REG-15: preview mode keeps receiving collaborators' edits` | editor suite | red |
 | #16 title permission | `REG-16` (UI) + `regression_16_editor_member_cannot_rename_document` (server guard) | route + PG suite | red / **green guard** |
 | #17 token expiry | `REG-17` ×4 (api refresh+retry, single-flight refresh, refresh-failure, ticket fallback) | `frontend/src/features/documents/__tests__/apiRegression.test.ts` + collab suite | **green** |
 | #18 route race | `REG-18` ×2 (late response, failed load) | route suite | red |
 | #19 awareness identity | `regression_19_relay_keeps_identity_and_disconnect_removes_only_owned_clients` | `nanoservices/collab/core/tests/regression.rs` | red |
-| #20 name identity | `REG-20: peers with identical display names...` | collab suite | red |
+| #20 name identity | `REG-20: peers with identical display names...` | collab suite | **green** (name-based interim identity; user-ID rigor lands with #19) |
 | #21 broadcast lag | `regression_21_lagged_client_is_resynchronized_automatically` | WS suite | red |
 | #22 frame handling | `regression_22_update_under_message_limit_is_applied`, `regression_22_fragmented_update_is_aggregated` | WS suite | red |
 | #23 upgrade leak | `regression_23_failed_upgrades_do_not_consume_slots` | WS suite | red |
@@ -40,7 +40,7 @@ Permanent regression suite for [BUG_AUDIT.md](BUG_AUDIT.md). Audit finding **#1 
 | #30 pagination | `regression_30_pagination_returns_all_documents_with_equal_timestamps` | PG suite | red |
 | #31 reset validation | `regression_31_reset_rejects_short_password` | PG suite | red |
 | #32 token consumption | `regression_32_refresh_token_consumed_exactly_once`, `regression_32_password_reset_token_consumed_exactly_once` | PG suite | red |
-| duplicate-self | `REG-SELF` ×2 (avatar of same user, superseded sessions' cursors) | collab suite | red |
+| duplicate-self | `REG-SELF` ×2 (avatar of same user, superseded sessions' cursors) | collab suite | **green** |
 | guard: invite concurrency | `guard_invite_link_max_uses_enforced_under_concurrency` — pins the `FOR UPDATE` serialization no existing test exercised | documents suite | **green guard** |
 | guard: editor cap | `guard_editor_cap_rejects_101st_connection` — 429 end-to-end through the real handler | WS suite | **green guard** |
 | guard: projection failure | `guard_projection_failure_keeps_durable_update_accepted` — WAL durability remains authoritative when the PostgreSQL materialized view is unavailable | WS suite | **green guard** |
@@ -77,7 +77,7 @@ is tested.
 
 ## Current state (2026-09-20)
 
-- Frontend: **13 tests red**, 152 tests green. #4/#9/#10/#17 are green; the remaining failures are the documented regressions.
+- Frontend: **5 tests red**, 160 tests green. #4/#9/#10/#11/#12/#13/#14/#17/#20 + REG-SELF are green; #8/#15/#16/#18 remain.
 - `collab-core`: **5 red** (integration suite); the 36 lib tests are green, including the `access_sync` event-subscriber and purge-retry tests. `collab-networking`: **6 red, 16 green** — #6 revocation is green (single-process); #21–#25 remain red.
 - Postgres + Scylla regression suite: **4 red, 6 green** — #4 and #7 (room teardown + Scylla purge) are green; #30/#31/#32 remain red.
 - Scylla DAL suite: **4 green** — WAL replay uses monotonic sequences and snapshots use monotonic generations with explicit WAL boundaries.
