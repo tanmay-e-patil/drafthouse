@@ -171,3 +171,36 @@ async fn regression_27_due_room_is_snapshotted_by_sweep() {
     eviction_sweep(&storage, &store).await;
     assert!(!storage.saved.lock().unwrap().is_empty());
 }
+
+/// REG-27 (#27): a successful periodic snapshot must clear dirty state so an
+/// unchanged room is not written again at the next deadline.
+#[tokio::test]
+async fn regression_27_successful_snapshot_clears_dirty_state() {
+    let store = DocStore::new();
+    let room = get_or_create_room(&store, Uuid::new_v4());
+    room.add_connection();
+    seed(&room, "dirty once");
+    room.increment_ops();
+    *room.last_snapshot_at.lock().unwrap() = Instant::now() - Duration::from_secs(31);
+    let storage = Storage::default();
+
+    eviction_sweep(&storage, &store).await;
+    *room.last_snapshot_at.lock().unwrap() = Instant::now() - Duration::from_secs(31);
+    eviction_sweep(&storage, &store).await;
+
+    assert_eq!(storage.saved.lock().unwrap().len(), 1);
+}
+
+/// REG-27 (#27): elapsed time alone must not snapshot a room with no changes.
+#[tokio::test]
+async fn regression_27_clean_active_room_is_not_snapshotted() {
+    let store = DocStore::new();
+    let room = get_or_create_room(&store, Uuid::new_v4());
+    room.add_connection();
+    *room.last_snapshot_at.lock().unwrap() = Instant::now() - Duration::from_secs(31);
+    let storage = Storage::default();
+
+    eviction_sweep(&storage, &store).await;
+
+    assert!(storage.saved.lock().unwrap().is_empty());
+}

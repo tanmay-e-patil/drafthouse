@@ -280,6 +280,8 @@ Elapsed time is checked only when a new document update arrives. A user can make
 
 **Fix:** run a real periodic dirty-room snapshot task in addition to the operation threshold.
 
+**Resolved:** the background maintenance sweep now runs at the 30-second snapshot interval and persists active dirty rooms whose snapshot is due. Successful writes clear dirty state and advance the snapshot time; clean rooms are skipped, while failed writes remain due for retry.
+
 ### 28. “Latest snapshot” selects the highest ring slot, not the newest snapshot — P2, C
 
 **Locations:** `dal/dal/src/scylla_txs/collab.rs:112`; `nanoservices/collab/core/src/room.rs:117–125`.

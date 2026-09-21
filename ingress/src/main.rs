@@ -72,12 +72,14 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Expose the Scylla DAL so deletion events can purge WAL/snapshots (#7)
     collab_core::init_collab_dal(std::sync::Arc::new(scylla_dal.get_ref().clone()));
 
-    // Background eviction sweep every 60s
+    // Snapshot dirty rooms every 30s and evict rooms idle for five minutes.
     {
         let store = doc_store.clone();
         let dal = scylla_dal.get_ref().clone();
         tokio::spawn(async move {
-            let mut ticker = interval(Duration::from_secs(collab_core::room::EVICTION_SWEEP_SECS));
+            let mut ticker = interval(Duration::from_secs(
+                collab_core::room::SNAPSHOT_INTERVAL_SECS,
+            ));
             loop {
                 ticker.tick().await;
                 collab_core::snapshot::eviction_sweep(&dal, &store).await;

@@ -186,14 +186,22 @@ impl DocRoom {
         self.op_count.fetch_add(1, Ordering::SeqCst) + 1
     }
 
-    /// True if a snapshot should be triggered (100 ops or 30s elapsed).
+    /// True if dirty state should be snapshotted (100 ops or 30s elapsed).
     pub fn should_snapshot(&self) -> bool {
         let op_count = self.op_count.load(Ordering::SeqCst);
-        if op_count > 0 && op_count.is_multiple_of(SNAPSHOT_OPS_THRESHOLD) {
+        if op_count == 0 {
+            return false;
+        }
+        if op_count >= SNAPSHOT_OPS_THRESHOLD {
             return true;
         }
         let elapsed = self.last_snapshot_at.lock().unwrap().elapsed().as_secs();
         elapsed >= SNAPSHOT_INTERVAL_SECS
+    }
+
+    pub fn mark_snapshot_persisted(&self) {
+        self.op_count.store(0, Ordering::SeqCst);
+        *self.last_snapshot_at.lock().unwrap() = Instant::now();
     }
 
     pub fn next_operation_sequence(&self) -> i64 {
@@ -215,7 +223,6 @@ impl DocRoom {
         let mut generation = self.next_snapshot_generation.lock().unwrap();
         let current = *generation;
         *generation += 1;
-        *self.last_snapshot_at.lock().unwrap() = Instant::now();
         current
     }
 

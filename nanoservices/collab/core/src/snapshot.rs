@@ -88,6 +88,8 @@ where
             return false;
         }
 
+        room.mark_snapshot_persisted();
+
         let stale_generation = generation - i64::from(SNAPSHOT_RING_SIZE);
         if stale_generation > 0 {
             if let Err(e) = dal.delete_snapshot(doc_id, stale_generation).await {
@@ -106,11 +108,20 @@ pub async fn eviction_sweep<D>(dal: &D, store: &DocStore)
 where
     D: WriteSnapshot + ReadLatestSnapshot + DeleteSnapshot + Clone + Send + Sync + 'static,
 {
-    let eviction_candidates: Vec<(Uuid, Arc<DocRoom>)> = store
-        .iter()
-        .filter(|entry| entry.value().is_idle_for_eviction())
-        .map(|entry| (*entry.key(), Arc::clone(entry.value())))
-        .collect();
+    let mut snapshot_candidates = Vec::new();
+    let mut eviction_candidates = Vec::new();
+    for entry in store.iter() {
+        let candidate = (*entry.key(), Arc::clone(entry.value()));
+        if entry.value().is_idle_for_eviction() {
+            eviction_candidates.push(candidate);
+        } else if entry.value().should_snapshot() {
+            snapshot_candidates.push(candidate);
+        }
+    }
+
+    for (doc_id, room) in snapshot_candidates {
+        persist_snapshot(dal, doc_id, &room).await;
+    }
 
     for (doc_id, room) in eviction_candidates {
         if !persist_snapshot(dal, doc_id, &room).await {
