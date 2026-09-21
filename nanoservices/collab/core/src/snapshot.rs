@@ -1,5 +1,6 @@
 use chrono::Utc;
 use kernel::NewCollabSnapshot;
+use std::sync::Arc;
 use uuid::Uuid;
 
 use crate::{
@@ -105,16 +106,24 @@ pub async fn eviction_sweep<D>(dal: &D, store: &DocStore)
 where
     D: WriteSnapshot + ReadLatestSnapshot + DeleteSnapshot + Clone + Send + Sync + 'static,
 {
-    let evict_ids: Vec<Uuid> = store
+    let eviction_candidates: Vec<(Uuid, Arc<DocRoom>)> = store
         .iter()
         .filter(|entry| entry.value().is_idle_for_eviction())
-        .map(|entry| *entry.key())
+        .map(|entry| (*entry.key(), Arc::clone(entry.value())))
         .collect();
 
-    for doc_id in evict_ids {
-        if let Some((_, room)) = store.remove(&doc_id) {
-            tracing::info!(doc_id = %doc_id, "evicting idle room, flushing snapshot");
-            persist_snapshot(dal, doc_id, &room).await;
+    for (doc_id, room) in eviction_candidates {
+        if !persist_snapshot(dal, doc_id, &room).await {
+            continue;
+        }
+
+        if store
+            .remove_if(&doc_id, |_, current| {
+                Arc::ptr_eq(current, &room) && current.is_idle_for_eviction()
+            })
+            .is_some()
+        {
+            tracing::info!(doc_id = %doc_id, "evicted idle room after flushing snapshot");
         }
     }
 }

@@ -270,6 +270,8 @@ The sweep collects idle IDs and later unconditionally removes them, without atom
 
 **Fix:** coordinate room acquisition and eviction, revalidate idleness under that coordination, and do not discard the room until persistence succeeds.
 
+**Resolved:** eviction candidates remain registered while their final snapshots are persisted. Failed writes retain the room, and successful writes use an atomic conditional removal that verifies both the candidate's identity and its current idleness, so activity or replacement during the sweep preserves the registered room.
+
 ### 27. The advertised 30-second snapshot timer does not exist — P2, C
 
 **Locations:** `nanoservices/collab/core/src/room.rs:107–113`; `nanoservices/collab/networking/src/handlers.rs:205–208`; `ingress/src/main.rs:73–83`.
