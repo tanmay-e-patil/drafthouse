@@ -110,3 +110,14 @@ it("REG-15: preview mode keeps receiving collaborators' edits", async () => {
   act(() => ui.doc.getText("content").insert(5, " remote"));
   await waitFor(() => expect(ui.container.textContent).toContain("remote"));
 });
+
+it("REG-15: switching through preview retains the collaboration session", async () => {
+  const ui = await mount();
+  fireEvent.click(ui.getByRole("button", { name: "Preview" }));
+  act(() => ui.doc.getText("content").insert(5, " remote"));
+  await waitFor(() => expect(ui.container.textContent).toContain("remote"));
+  fireEvent.click(ui.getByRole("button", { name: "Edit" }));
+  await waitFor(() => expect(ui.view.state.doc.toString()).toBe("hello remote"));
+  expect(h.docs).toHaveLength(1);
+  expect(h.views).toHaveLength(1);
+});

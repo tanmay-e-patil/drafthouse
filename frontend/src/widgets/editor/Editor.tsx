@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useCollabStore } from "#/features/collab/store";
 import { useCollabEditor } from "#/features/collab/useCollabEditor";
 import type { EditorView, ViewUpdate } from "@codemirror/view";
@@ -70,6 +70,8 @@ export default function Editor({
   const [container, setContainer] = useState<HTMLElement | null>(null);
   const [mode, setMode] = useState<"edit" | "preview">("edit");
   const currentMode = readOnly ? "preview" : mode;
+  const currentModeRef = useRef(currentMode);
+  currentModeRef.current = currentMode;
   const [content, setContent] = useState(initialContent);
 
   const [editorView, setEditorView] = useState<EditorView | null>(null);
@@ -104,7 +106,7 @@ export default function Editor({
 
   const updateSelectionToolbar = useCallback((view: EditorView) => {
     const selection = view.state.selection.main;
-    if (readOnly || currentMode !== "edit" || selection.empty || !container) {
+    if (readOnly || currentModeRef.current !== "edit" || selection.empty || !container) {
       setSelectionToolbar({ open: false, left: 0, top: 0 });
       return;
     }
@@ -125,7 +127,7 @@ export default function Editor({
       left,
       top,
     });
-  }, [container, currentMode, readOnly]);
+  }, [container, readOnly]);
 
   const updateListener = useMemo(() => {
     if (!codeMirror) return null;
@@ -184,7 +186,7 @@ export default function Editor({
 
   const collabOptions = useMemo(
     () =>
-      codeMirror && container && (currentMode === "edit" || readOnly)
+      codeMirror && container
         ? {
             docId,
             container,
@@ -195,7 +197,7 @@ export default function Editor({
             onViewChange: setEditorView,
           }
         : null,
-    [codeMirror, container, currentMode, docId, extensions, initialContent, onTitleUpdate, readOnly],
+    [codeMirror, container, docId, extensions, initialContent, onTitleUpdate, readOnly],
   );
 
   useCollabEditor(collabOptions);
@@ -219,49 +221,44 @@ export default function Editor({
         />
       )}
 
-      {currentMode === "preview" ? (
-        <>
-          <div
-            className="prose prose-sm dark:prose-invert prose-headings:font-heading mx-auto w-full max-w-3xl flex-1 overflow-y-auto bg-card p-8"
-            dangerouslySetInnerHTML={{ __html: sanitizeMarkdownPreview(content) }}
-          />
-          {readOnly && (
-            <div
-              ref={setContainer}
-              className={cn("hidden", fontClassName)}
-              data-testid="editor-container"
-            />
-          )}
-        </>
-      ) : (
-        <div className="relative flex-1 overflow-hidden bg-card">
-          {currentMode === "edit" && selectionToolbar.open && (
-            <div
-              className="absolute z-20 flex -translate-x-1/2 items-center gap-1 rounded-lg border border-border/80 bg-popover/95 p-1 shadow-lg shadow-foreground/10 ring-1 ring-primary/10 backdrop-blur"
-              style={{ left: selectionToolbar.left, top: selectionToolbar.top }}
-              data-testid="selection-toolbar"
-            >
-              {EDITOR_ACTIONS.map((action) => (
-                <Button
-                  key={action.id}
-                  type="button"
-                  variant="ghost"
-                  size="xs"
-                  onClick={() => runToolbarAction(action.id)}
-                  aria-label={`Selection ${action.label}`}
-                >
-                  {action.shortLabel}
-                </Button>
-              ))}
-            </div>
-          )}
-          <div
-            ref={setContainer}
-            className={cn("cm-editor-container flex-1 overflow-hidden", fontClassName)}
-            data-testid="editor-container"
-          />
-        </div>
+      {currentMode === "preview" && (
+        <div
+          className="prose prose-sm dark:prose-invert prose-headings:font-heading mx-auto w-full max-w-3xl flex-1 overflow-y-auto bg-card p-8"
+          dangerouslySetInnerHTML={{ __html: sanitizeMarkdownPreview(content) }}
+        />
       )}
+      <div
+        className={cn(
+          "relative flex-1 overflow-hidden bg-card",
+          currentMode === "preview" && "hidden",
+        )}
+      >
+        {currentMode === "edit" && selectionToolbar.open && (
+          <div
+            className="absolute z-20 flex -translate-x-1/2 items-center gap-1 rounded-lg border border-border/80 bg-popover/95 p-1 shadow-lg shadow-foreground/10 ring-1 ring-primary/10 backdrop-blur"
+            style={{ left: selectionToolbar.left, top: selectionToolbar.top }}
+            data-testid="selection-toolbar"
+          >
+            {EDITOR_ACTIONS.map((action) => (
+              <Button
+                key={action.id}
+                type="button"
+                variant="ghost"
+                size="xs"
+                onClick={() => runToolbarAction(action.id)}
+                aria-label={`Selection ${action.label}`}
+              >
+                {action.shortLabel}
+              </Button>
+            ))}
+          </div>
+        )}
+        <div
+          ref={setContainer}
+          className={cn("cm-editor-container flex-1 overflow-hidden", fontClassName)}
+          data-testid="editor-container"
+        />
+      </div>
     </div>
   );
 }

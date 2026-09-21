@@ -156,6 +156,8 @@ For an editable user, selecting Preview sets collaboration options to null and r
 
 **Fix:** keep the shared document/provider alive independently of the edit/preview presentation.
 
+**Resolved:** edit and preview now share one continuously mounted collaboration container and stable hook options. Preview hides the CodeMirror presentation without destroying its Yjs session, so remote updates continue updating the rendered Markdown and switching back preserves the same editor state.
+
 ### 16. Editor members are offered title editing that always fails — P2, C
 
 **Locations:** `frontend/src/routes/documents.$documentId.tsx:162–164,276`; `nanoservices/documents/core/src/lib.rs:182–187`.
