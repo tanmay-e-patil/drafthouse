@@ -76,15 +76,34 @@ fn regression_19_relay_keeps_identity_and_disconnect_removes_only_owned_clients(
         last_active_ms: 1,
     };
     // Alice's connection introduces client 7.
-    room.apply_awareness_update(1, vec![(7, Some(peer(alice)))]);
+    room.apply_awareness_update(1, vec![(7, 2, Some(peer(alice)))]);
+    // An older owner update must not replace newer state.
+    let mut stale_alice = peer(alice);
+    stale_alice.color = "blue".into();
+    room.apply_awareness_update(1, vec![(7, 1, Some(stale_alice))]);
+    assert_eq!(room.awareness_peers()[0].color, "red");
+    // A newer owner update is accepted.
+    let mut current_alice = peer(alice);
+    current_alice.color = "green".into();
+    room.apply_awareness_update(1, vec![(7, 3, Some(current_alice))]);
+    assert_eq!(room.awareness_peers()[0].color, "green");
     // Bob's connection relays client 7 (normal y-websocket retransmission).
-    room.apply_awareness_update(2, vec![(7, Some(peer(bob)))]);
+    // Even a higher relay clock must not transfer ownership or attribution.
+    room.apply_awareness_update(2, vec![(7, 4, Some(peer(bob)))]);
     assert_eq!(room.awareness_peers()[0].user_id, Some(alice));
+    assert_eq!(room.awareness_peers()[0].color, "green");
     // Bob leaving must not delete Alice's presence.
     room.remove_connection_awareness(2);
     assert_eq!(room.awareness_peers().len(), 1);
     assert_eq!(room.awareness_peers()[0].user_id, Some(alice));
     room.remove_connection_awareness(1);
+    assert!(room.awareness_peers().is_empty());
+
+    // Protocol removal is accepted at the current clock but not an older one.
+    room.apply_awareness_update(3, vec![(8, 2, Some(peer(alice)))]);
+    room.apply_awareness_update(3, vec![(8, 1, None)]);
+    assert_eq!(room.awareness_peers().len(), 1);
+    room.apply_awareness_update(3, vec![(8, 2, None)]);
     assert!(room.awareness_peers().is_empty());
 }
 

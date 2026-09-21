@@ -419,15 +419,15 @@ async fn guard_presence_endpoint_lists_recent_deduplicated_peers_only() {
         last_active_ms,
     };
     // Two sessions of the same user (must collapse to one entry)...
-    room.apply_awareness_update(1, vec![(101, Some(peer(Some(owner), "owner", now_ms)))]);
+    room.apply_awareness_update(1, vec![(101, 1, Some(peer(Some(owner), "owner", now_ms)))]);
     room.apply_awareness_update(
         1,
-        vec![(102, Some(peer(Some(owner), "owner", now_ms - 60_000)))],
+        vec![(102, 1, Some(peer(Some(owner), "owner", now_ms - 60_000)))],
     );
     // ...and a stale anonymous peer past the 5-minute cutoff.
     room.apply_awareness_update(
         1,
-        vec![(103, Some(peer(None, "anon", now_ms - 6 * 60_000)))],
+        vec![(103, 1, Some(peer(None, "anon", now_ms - 6 * 60_000)))],
     );
 
     let pool = env.pool.clone();

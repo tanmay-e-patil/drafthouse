@@ -200,6 +200,8 @@ The real `y-websocket` provider retransmits awareness changes it receives for ot
 
 **Fix:** maintain protocol-correct awareness clocks and stable ownership/identity, rather than deriving all relayed client identities from the latest sender.
 
+**Resolved:** decoded awareness updates now retain their protocol clocks. The room atomically assigns each client ID to its introducing connection, accepts clock-valid updates only from that owner, preserves its authenticated attribution, and removes only that connection's owned client IDs on disconnect. Relays can no longer overwrite or delete another connection's presence.
+
 ### 20. Distinct users disappear from the avatar list because names are treated as identities — P2, C
 
 **Location:** `frontend/src/features/collab/useCollabEditor.ts:25–27,76–97`.
@@ -208,7 +210,7 @@ Peers are deduplicated by the email local-part display name. `alice@company-a.co
 
 **Fix:** deduplicate authenticated users by user ID and anonymous sessions by client ID.
 
-**Resolved (test-scoped):** peers are no longer collapsed by display name — distinct users with identical names remain distinct — and the local user's own sessions (including superseded ones) are excluded from the avatar list by name and local client ID. Identity is still name-based because awareness payloads carry no user id; full user-ID identity lands with the #19 awareness-identity work.
+**Resolved (test-scoped):** peers are no longer collapsed by display name — distinct users with identical names remain distinct — and the local user's own sessions (including superseded ones) are excluded from the avatar list by name and local client ID. Browser awareness remains name-based because client payloads carry no user ID; #19 now provides stable user-ID attribution for server-side presence.
 
 ### 21. Broadcast lag silently loses required CRDT updates — P1, C
 

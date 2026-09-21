@@ -286,7 +286,7 @@ async fn handle_binary<D, P>(
 fn awareness_updates_from_bytes(
     data: &[u8],
     user_id: Option<Uuid>,
-) -> Vec<(u64, Option<AwarenessPeer>)> {
+) -> Vec<(u64, u32, Option<AwarenessPeer>)> {
     let update = match AwarenessUpdate::decode_v1(data) {
         Ok(update) => update,
         Err(_) => return Vec::new(),
@@ -297,12 +297,13 @@ fn awareness_updates_from_bytes(
         .into_iter()
         .filter_map(|(client_id, entry)| {
             if entry.json.as_ref() == "null" {
-                return Some((client_id, None));
+                return Some((client_id, entry.clock, None));
             }
 
             let payload: AwarenessUserEnvelope = serde_json::from_str(&entry.json).ok()?;
             Some((
                 client_id,
+                entry.clock,
                 Some(AwarenessPeer {
                     user_id,
                     name: payload.user.name,
@@ -371,9 +372,10 @@ mod tests {
 
         let authenticated_user_id = Uuid::new_v4();
         let updates = awareness_updates_from_bytes(&bytes, Some(authenticated_user_id));
-        let (client_id, peer) = &updates[0];
+        let (client_id, clock, peer) = &updates[0];
         let peer = peer.as_ref().unwrap();
         assert_eq!(*client_id, 7);
+        assert_eq!(*clock, 1);
         assert_eq!(peer.user_id, Some(authenticated_user_id));
         assert_eq!(peer.name, "alice");
         assert_eq!(peer.color, "#E53E3E");
@@ -394,7 +396,8 @@ mod tests {
         let updates = awareness_updates_from_bytes(&bytes, Some(Uuid::new_v4()));
         assert_eq!(updates.len(), 1);
         assert_eq!(updates[0].0, 7);
-        assert!(updates[0].1.is_none());
+        assert_eq!(updates[0].1, 2);
+        assert!(updates[0].2.is_none());
     }
 
     #[test]
@@ -422,7 +425,7 @@ mod tests {
         assert!(
             updates
                 .iter()
-                .all(|(_, peer)| peer.as_ref().unwrap().user_id.is_none())
+                .all(|(_, _, peer)| peer.as_ref().unwrap().user_id.is_none())
         );
     }
 }

@@ -3,10 +3,10 @@ use chrono::{DateTime, Utc};
 use dashmap::DashMap;
 use std::time::Instant;
 use std::{
-    collections::HashMap,
+    collections::{HashMap, HashSet, hash_map::Entry},
     future::Future,
     sync::{
-        Arc, Mutex,
+        Arc, Mutex, PoisonError,
         atomic::{AtomicBool, AtomicI64, AtomicUsize, Ordering},
     },
 };
@@ -31,6 +31,21 @@ pub struct AwarenessPeer {
     pub name: String,
     pub color: String,
     pub last_active_ms: i64,
+}
+
+struct StoredAwareness {
+    owner_connection_id: Option<u64>,
+    clock: u32,
+    // The outer option is absent until a non-null state establishes identity;
+    // the inner option distinguishes an anonymous owner from an authenticated one.
+    user_id: Option<Option<Uuid>>,
+    peer: Option<AwarenessPeer>,
+}
+
+#[derive(Default)]
+struct RoomAwareness {
+    clients: HashMap<u64, StoredAwareness>,
+    clients_by_connection: HashMap<u64, HashSet<u64>>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -58,8 +73,7 @@ pub struct DocRoom {
     pub last_snapshot_at: Mutex<Instant>,
     sequence: AtomicI64,
     next_snapshot_generation: Mutex<i64>,
-    pub awareness: DashMap<u64, AwarenessPeer>,
-    pub connection_awareness: DashMap<u64, Vec<u64>>,
+    awareness: Mutex<RoomAwareness>,
     initialization: OnceCell<()>,
     update_gate: AsyncMutex<()>,
     /// Set when the document is deleted; the room must accept no further
@@ -90,8 +104,7 @@ impl DocRoom {
             last_snapshot_at: Mutex::new(Instant::now()),
             sequence: AtomicI64::new(0),
             next_snapshot_generation: Mutex::new(1),
-            awareness: DashMap::new(),
-            connection_awareness: DashMap::new(),
+            awareness: Mutex::new(RoomAwareness::default()),
             initialization: OnceCell::new(),
             update_gate: AsyncMutex::new(()),
             closed: AtomicBool::new(false),
@@ -215,17 +228,36 @@ impl DocRoom {
     }
 
     pub fn upsert_awareness(&self, client_id: u64, peer: AwarenessPeer) {
-        self.awareness.insert(client_id, peer);
+        self.awareness
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .clients
+            .insert(
+                client_id,
+                StoredAwareness {
+                    owner_connection_id: None,
+                    clock: 0,
+                    user_id: Some(peer.user_id),
+                    peer: Some(peer),
+                },
+            );
     }
 
     pub fn remove_awareness(&self, client_id: u64) {
-        self.awareness.remove(&client_id);
+        self.awareness
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .clients
+            .remove(&client_id);
     }
 
     pub fn awareness_peers(&self) -> Vec<AwarenessPeer> {
         self.awareness
-            .iter()
-            .map(|entry| entry.value().clone())
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .clients
+            .values()
+            .filter_map(|state| state.peer.clone())
             .collect()
     }
 
@@ -254,36 +286,69 @@ impl DocRoom {
     pub fn apply_awareness_update(
         &self,
         connection_id: u64,
-        updates: Vec<(u64, Option<AwarenessPeer>)>,
+        updates: Vec<(u64, u32, Option<AwarenessPeer>)>,
     ) {
-        let mut tracked = self
-            .connection_awareness
-            .get(&connection_id)
-            .map(|entry| entry.value().clone())
-            .unwrap_or_default();
+        let mut awareness = self
+            .awareness
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner);
 
-        for (client_id, peer) in updates {
-            if !tracked.contains(&client_id) {
-                tracked.push(client_id);
-            }
-
-            match peer {
-                Some(peer) => {
-                    self.awareness.insert(client_id, peer);
+        for (client_id, clock, peer) in updates {
+            match awareness.clients.entry(client_id) {
+                Entry::Vacant(entry) => {
+                    let user_id = peer.as_ref().map(|peer| peer.user_id);
+                    entry.insert(StoredAwareness {
+                        owner_connection_id: Some(connection_id),
+                        clock,
+                        user_id,
+                        peer,
+                    });
+                    awareness
+                        .clients_by_connection
+                        .entry(connection_id)
+                        .or_default()
+                        .insert(client_id);
                 }
-                None => {
-                    self.awareness.remove(&client_id);
+                Entry::Occupied(mut entry) => {
+                    let current = entry.get_mut();
+                    if current.owner_connection_id != Some(connection_id) {
+                        continue;
+                    }
+
+                    let removes_current_state =
+                        clock == current.clock && peer.is_none() && current.peer.is_some();
+                    if clock < current.clock || (clock == current.clock && !removes_current_state) {
+                        continue;
+                    }
+
+                    current.clock = clock;
+                    current.peer = peer.map(|mut peer| {
+                        if let Some(user_id) = current.user_id {
+                            peer.user_id = user_id;
+                        } else {
+                            current.user_id = Some(peer.user_id);
+                        }
+                        peer
+                    });
                 }
             }
         }
-
-        self.connection_awareness.insert(connection_id, tracked);
     }
 
     pub fn remove_connection_awareness(&self, connection_id: u64) {
-        if let Some((_, client_ids)) = self.connection_awareness.remove(&connection_id) {
+        let mut awareness = self
+            .awareness
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner);
+        if let Some(client_ids) = awareness.clients_by_connection.remove(&connection_id) {
             for client_id in client_ids {
-                self.awareness.remove(&client_id);
+                if awareness
+                    .clients
+                    .get(&client_id)
+                    .is_some_and(|state| state.owner_connection_id == Some(connection_id))
+                {
+                    awareness.clients.remove(&client_id);
+                }
             }
         }
     }
@@ -464,6 +529,7 @@ mod tests {
             11,
             vec![(
                 7,
+                1,
                 Some(AwarenessPeer {
                     user_id: None,
                     name: "alice".into(),
