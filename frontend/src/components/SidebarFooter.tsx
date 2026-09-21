@@ -26,7 +26,7 @@ export default function SidebarFooter({
     : "??";
 
   return (
-    <div className="flex items-center justify-between px-3 py-2">
+    <div className="flex shrink-0 items-center justify-between px-3 py-2">
       <DropdownMenu>
         <DropdownMenuTrigger
           render={

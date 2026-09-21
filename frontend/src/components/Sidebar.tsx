@@ -210,8 +210,8 @@ export default function Sidebar({ collapsed, onToggleCollapse }: SidebarProps) {
   }
 
   return (
-    <aside className="flex h-screen w-60 flex-col border-r border-sidebar-border bg-sidebar/95 shadow-sm shadow-foreground/5 backdrop-blur">
-      <div className="flex h-12 items-center justify-between px-3">
+    <aside className="flex h-screen w-60 flex-col overflow-hidden border-r border-sidebar-border bg-sidebar/95 shadow-sm shadow-foreground/5 backdrop-blur">
+      <div className="flex h-12 shrink-0 items-center justify-between px-3">
         <span className="flex items-center gap-2 font-heading text-sm font-semibold tracking-tight text-sidebar-foreground">
           <span className="brand-mark flex size-7 items-center justify-center rounded-lg">
             <FileText className="size-3.5" />
@@ -235,7 +235,7 @@ export default function Sidebar({ collapsed, onToggleCollapse }: SidebarProps) {
         </Tooltip>
       </div>
       <Separator />
-      <div className="px-3 pt-2 pb-1">
+      <div className="shrink-0 px-3 pt-2 pb-1">
         <Button
           variant="ghost"
           size="sm"
@@ -246,7 +246,7 @@ export default function Sidebar({ collapsed, onToggleCollapse }: SidebarProps) {
           New document
         </Button>
       </div>
-      <ScrollArea className="flex-1 px-2">
+      <ScrollArea className="min-h-0 flex-1 px-2">
         {documents.length === 0 && !isLoading && (
           <div className="flex flex-col items-center justify-center py-12 text-center text-muted-foreground">
             <FileText className="mb-2 size-8 opacity-40" />

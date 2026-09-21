@@ -21,8 +21,8 @@ export default function SidebarCollapsed({
   onToggleCollapse: () => void;
 }) {
   return (
-    <aside className="flex h-screen w-14 flex-col border-r border-sidebar-border bg-sidebar/95 shadow-sm shadow-foreground/5 backdrop-blur">
-      <div className="flex h-12 items-center justify-center">
+    <aside className="flex h-screen w-14 flex-col overflow-hidden border-r border-sidebar-border bg-sidebar/95 shadow-sm shadow-foreground/5 backdrop-blur">
+      <div className="flex h-12 shrink-0 items-center justify-center">
         <Tooltip>
           <TooltipTrigger
             render={
@@ -40,7 +40,7 @@ export default function SidebarCollapsed({
         </Tooltip>
       </div>
       <Separator />
-      <ScrollArea className="flex-1 px-2 pt-1">
+      <ScrollArea className="min-h-0 flex-1 px-2 pt-1">
         <div className="flex flex-col items-center gap-1">
           {documents.slice(0, 10).map((doc) => (
             <Tooltip key={doc.id}>
