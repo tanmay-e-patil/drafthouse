@@ -23,12 +23,7 @@ where
             NanoServiceErrorStatus::BadRequest,
         ));
     }
-    if password.len() < 8 {
-        return Err(NanoServiceError::new(
-            "Password must be at least 8 characters",
-            NanoServiceErrorStatus::BadRequest,
-        ));
-    }
+    password::validate_password(password)?;
 
     let existing = dal.get_user_by_email(email.to_string()).await?;
     if let Some(user) = existing {

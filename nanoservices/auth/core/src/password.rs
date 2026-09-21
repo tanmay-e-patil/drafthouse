@@ -4,6 +4,19 @@ use argon2::{
 };
 use utils::errors::{NanoServiceError, NanoServiceErrorStatus};
 
+const MIN_PASSWORD_LENGTH: usize = 8;
+
+pub fn validate_password(password: &str) -> Result<(), NanoServiceError> {
+    if password.len() < MIN_PASSWORD_LENGTH {
+        return Err(NanoServiceError::new(
+            "Password must be at least 8 characters",
+            NanoServiceErrorStatus::BadRequest,
+        ));
+    }
+
+    Ok(())
+}
+
 fn argon2() -> Argon2<'static> {
     // memory=64MB, iterations=3, parallelism=4 per architecture spec
     Argon2::new(
@@ -42,6 +55,15 @@ pub fn verify_password(password: &str, hash: &str) -> Result<bool, NanoServiceEr
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn validate_password_enforces_minimum_length() {
+        assert_eq!(
+            validate_password("1234567").unwrap_err().status,
+            NanoServiceErrorStatus::BadRequest
+        );
+        validate_password("12345678").unwrap();
+    }
 
     #[test]
     fn test_hash_and_verify_password() {

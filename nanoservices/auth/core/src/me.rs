@@ -23,7 +23,6 @@ use crate::{email, password};
 static EXPORT_DALS: LazyLock<Mutex<HashMap<uuid::Uuid, SqlxPostGresDescriptor>>> =
     LazyLock::new(|| Mutex::new(HashMap::new()));
 
-const MIN_PASSWORD_LENGTH: usize = 8;
 const MAX_EXPORT_FILENAME_STEM_LEN: usize = 80;
 
 pub fn register_export_dal(user_id: uuid::Uuid, dal: SqlxPostGresDescriptor) {
@@ -55,7 +54,7 @@ pub async fn change_password<D>(
 where
     D: GetUserById + DeleteAllRefreshTokensForUser + dal::UpdateUserPassword,
 {
-    validate_new_password(new_password)?;
+    password::validate_password(new_password)?;
 
     let user = load_user(dal, user_id).await?;
     ensure_password_matches(current_password, &user.password_hash).await?;
@@ -125,17 +124,6 @@ where
     dal.get_user_by_id(user_id).await?.ok_or_else(|| {
         NanoServiceError::new("User not found", NanoServiceErrorStatus::Unauthorized)
     })
-}
-
-fn validate_new_password(password: &str) -> Result<(), NanoServiceError> {
-    if password.len() < MIN_PASSWORD_LENGTH {
-        return Err(NanoServiceError::new(
-            "Password must be at least 8 characters",
-            NanoServiceErrorStatus::BadRequest,
-        ));
-    }
-
-    Ok(())
 }
 
 async fn ensure_password_matches(

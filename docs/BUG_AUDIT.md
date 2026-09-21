@@ -325,6 +325,8 @@ Registration and change-password reject passwords under eight bytes, but reset h
 
 **Fix:** share the same server-side password validation across registration, change, and reset.
 
+**Resolved:** the eight-byte minimum is enforced by one shared server-side password validator used by registration, change-password, and reset-password. Reset validates before token lookup and Argon2 hashing, so rejected input cannot mutate credentials, consume tokens, or incur password-hashing work.
+
 ### 32. One-time auth token consumption is not atomic — P2, C
 
 **Locations:** `nanoservices/auth/core/src/login.rs:96–134`; `nanoservices/auth/core/src/password_reset.rs:63–96`.

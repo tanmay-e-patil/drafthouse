@@ -58,6 +58,7 @@ where
         + UpdateUserPassword
         + DeleteAllRefreshTokensForUser,
 {
+    password::validate_password(new_password)?;
     let token_hash = token::hash_token(raw_token);
 
     let stored = dal
@@ -343,6 +344,18 @@ mod tests {
             result.unwrap_err().status,
             NanoServiceErrorStatus::BadRequest
         );
+    }
+
+    #[tokio::test]
+    async fn reset_password_validates_before_looking_up_token() {
+        let dal = MockDal::empty();
+
+        let error = reset_password(&dal, "nonexistent_token", "1234567")
+            .await
+            .unwrap_err();
+
+        assert_eq!(error.status, NanoServiceErrorStatus::BadRequest);
+        assert_eq!(error.message, "Password must be at least 8 characters");
     }
 
     #[tokio::test]
