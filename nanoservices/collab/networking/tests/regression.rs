@@ -614,19 +614,24 @@ mod regression {
             }
         }
         release.notify_one();
-        client.send(9, true, b"wake").await;
-        assert_eq!(client.frame().await.unwrap().0, 10);
+
+        // Resynchronization must begin without unrelated socket activity.
+        let (_, bytes) = client
+            .frame()
+            .await
+            .expect("lag must trigger an automatic full-state resync");
         let replica = Doc::new();
-        while let Some((_, bytes)) = client.frame().await {
-            match decode_message(&bytes) {
-                CollabMessage::Update(data) | CollabMessage::SyncStep2(data) => {
-                    apply_update_safe(&replica, &data).unwrap();
-                }
-                _ => {}
+        match decode_message(&bytes) {
+            CollabMessage::Update(data) | CollabMessage::SyncStep2(data) => {
+                apply_update_safe(&replica, &data).unwrap();
             }
+            _ => panic!("lag recovery must send document state"),
         }
         let text = replica.get_or_insert_text("content");
         assert_eq!(text.get_string(&replica.transact()), "AB");
+
+        client.send(9, true, b"wake").await;
+        assert_eq!(client.frame().await.unwrap().0, 10);
         env.stop().await;
     }
 

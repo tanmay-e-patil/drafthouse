@@ -220,6 +220,8 @@ The bounded channel stores 256 messages, but the select branch only matches `Ok(
 
 **Fix:** treat lag as a required resync/reconnect, never as a ignorable transport event.
 
+**Resolved:** the WebSocket broadcast branch now handles lag explicitly, replaces the stale receiver before snapshotting, and immediately sends the room's full CRDT state. Concurrent updates are either represented in that snapshot, retained by the fresh subscription, or safely duplicated; recovery no longer waits for unrelated socket activity.
+
 ### 22. Valid 64–100 KiB updates are silently dropped; fragmented binary messages are ignored — P1, C
 
 **Location:** `nanoservices/collab/networking/src/handlers.rs:87,119–137`.

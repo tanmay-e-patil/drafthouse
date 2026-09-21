@@ -14,6 +14,7 @@ use dal::{
 use futures_util::StreamExt;
 use serde::Deserialize;
 use serde_json::Value;
+use std::sync::PoisonError;
 use tracing::{info, warn};
 use uuid::Uuid;
 use yrs::sync::AwarenessUpdate;
@@ -183,8 +184,30 @@ pub async fn ws_handler(
                     }
                 }
                 // Broadcast from other clients
-                Ok(bytes) = broadcast_rx.recv() => {
-                    let _ = session.binary(bytes).await;
+                broadcast = broadcast_rx.recv() => {
+                    match broadcast {
+                        Ok(bytes) => {
+                            let _ = session.binary(bytes).await;
+                        }
+                        Err(tokio::sync::broadcast::error::RecvError::Lagged(skipped)) => {
+                            warn!(doc_id = %doc_id, skipped, "client lagged; sending full resync");
+                            // Start a fresh subscription before snapshotting. Updates concurrent
+                            // with the snapshot are then either included in it, queued afterward,
+                            // or both (CRDT updates are idempotent).
+                            broadcast_rx = room_clone.tx.subscribe();
+                            let full_sync = {
+                                let doc = room_clone
+                                    .doc
+                                    .read()
+                                    .unwrap_or_else(PoisonError::into_inner);
+                                encode_full_sync_step2(&doc)
+                            };
+                            if session.binary(Bytes::from(full_sync)).await.is_err() {
+                                break;
+                            }
+                        }
+                        Err(tokio::sync::broadcast::error::RecvError::Closed) => break,
+                    }
                 }
                 access_change = access_rx.recv() => {
                     match access_change {
