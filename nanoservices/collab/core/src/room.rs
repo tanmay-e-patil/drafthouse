@@ -118,7 +118,7 @@ impl DocRoom {
     }
 
     pub fn notify_access_change(&self, change: RoomAccessChange) {
-        let _ = self.access_tx.send(change);
+        drop(self.access_tx.send(change));
     }
 
     pub fn connection_count(&self) -> usize {
@@ -162,7 +162,10 @@ impl DocRoom {
                 if n < MAX_EDITORS { Some(n + 1) } else { None }
             });
         if prev.is_ok() {
-            *self.last_empty_at.lock().unwrap() = None;
+            *self
+                .last_empty_at
+                .lock()
+                .unwrap_or_else(PoisonError::into_inner) = None;
             true
         } else {
             tracing::warn!(
@@ -177,7 +180,10 @@ impl DocRoom {
         let prev = self.connections.fetch_sub(1, Ordering::SeqCst);
         if prev == 1 {
             // just became empty
-            *self.last_empty_at.lock().unwrap() = Some(Instant::now());
+            *self
+                .last_empty_at
+                .lock()
+                .unwrap_or_else(PoisonError::into_inner) = Some(Instant::now());
         }
     }
 
@@ -195,13 +201,21 @@ impl DocRoom {
         if op_count >= SNAPSHOT_OPS_THRESHOLD {
             return true;
         }
-        let elapsed = self.last_snapshot_at.lock().unwrap().elapsed().as_secs();
+        let elapsed = self
+            .last_snapshot_at
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .elapsed()
+            .as_secs();
         elapsed >= SNAPSHOT_INTERVAL_SECS
     }
 
     pub fn mark_snapshot_persisted(&self) {
         self.op_count.store(0, Ordering::SeqCst);
-        *self.last_snapshot_at.lock().unwrap() = Instant::now();
+        *self
+            .last_snapshot_at
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner) = Instant::now();
     }
 
     pub fn next_operation_sequence(&self) -> i64 {
@@ -214,20 +228,30 @@ impl DocRoom {
 
     pub fn restore_progress(&self, sequence: i64, generation: i64) {
         self.sequence.fetch_max(sequence, Ordering::SeqCst);
-        let mut next_generation = self.next_snapshot_generation.lock().unwrap();
+        let mut next_generation = self
+            .next_snapshot_generation
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner);
         *next_generation = (*next_generation).max(generation + 1);
     }
 
     /// Allocate a monotonically increasing snapshot generation.
     pub fn next_snapshot_generation(&self) -> i64 {
-        let mut generation = self.next_snapshot_generation.lock().unwrap();
+        let mut generation = self
+            .next_snapshot_generation
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner);
         let current = *generation;
         *generation += 1;
         current
     }
 
     pub fn is_idle_for_eviction(&self) -> bool {
-        if let Some(t) = *self.last_empty_at.lock().unwrap() {
+        if let Some(t) = *self
+            .last_empty_at
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+        {
             t.elapsed().as_secs() >= EVICTION_IDLE_SECS
         } else {
             false
@@ -425,14 +449,24 @@ mod tests {
     #[test]
     fn room_starts_with_last_empty_at_set() {
         let room = make_room();
-        assert!(room.last_empty_at.lock().unwrap().is_some());
+        assert!(
+            room.last_empty_at
+                .lock()
+                .unwrap_or_else(PoisonError::into_inner)
+                .is_some()
+        );
     }
 
     #[test]
     fn add_connection_clears_last_empty_at() {
         let room = make_room();
         room.add_connection();
-        assert!(room.last_empty_at.lock().unwrap().is_none());
+        assert!(
+            room.last_empty_at
+                .lock()
+                .unwrap_or_else(PoisonError::into_inner)
+                .is_none()
+        );
     }
 
     #[test]
@@ -440,7 +474,12 @@ mod tests {
         let room = make_room();
         room.add_connection();
         room.remove_connection();
-        assert!(room.last_empty_at.lock().unwrap().is_some());
+        assert!(
+            room.last_empty_at
+                .lock()
+                .unwrap_or_else(PoisonError::into_inner)
+                .is_some()
+        );
     }
 
     #[test]

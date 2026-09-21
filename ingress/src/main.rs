@@ -62,7 +62,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let pg_dal = web::Data::new(SqlxPostGresDescriptor { pool });
 
-    let scylla_dal = web::Data::new(ScyllaDescriptor::new().await?);
+    let scylla_dal = web::Data::new(Box::pin(ScyllaDescriptor::new()).await?);
     tracing::info!("Connected to ScyllaDB");
 
     let doc_store: web::Data<DocStore> = web::Data::new(DashMap::new());

@@ -27,7 +27,14 @@ where
                     NanoServiceErrorStatus::InternalServerError,
                 ));
             }
-            apply_update_safe(&room.doc.read().unwrap(), &snapshot.data).ok_or_else(|| {
+            apply_update_safe(
+                &room
+                    .doc
+                    .read()
+                    .unwrap_or_else(std::sync::PoisonError::into_inner),
+                &snapshot.data,
+            )
+            .ok_or_else(|| {
                 NanoServiceError::new(
                     "Failed to apply snapshot",
                     NanoServiceErrorStatus::InternalServerError,
@@ -42,7 +49,14 @@ where
     let ops = dal.read_ops_after(doc_id, through_sequence).await?;
     let had_ops = !ops.is_empty();
     for op in ops {
-        apply_update_safe(&room.doc.read().unwrap(), &op.data).ok_or_else(|| {
+        apply_update_safe(
+            &room
+                .doc
+                .read()
+                .unwrap_or_else(std::sync::PoisonError::into_inner),
+            &op.data,
+        )
+        .ok_or_else(|| {
             NanoServiceError::new(
                 "Failed to replay collaboration operation",
                 NanoServiceErrorStatus::InternalServerError,
@@ -64,7 +78,7 @@ where
     }
     room.serialize_update(|| async {
         let (data, checksum) = {
-            let doc = room.doc.read().unwrap();
+            let doc = room.doc.read().unwrap_or_else(std::sync::PoisonError::into_inner);
             encode_snapshot(&doc)
         };
 
@@ -91,11 +105,10 @@ where
         room.mark_snapshot_persisted();
 
         let stale_generation = generation - i64::from(SNAPSHOT_RING_SIZE);
-        if stale_generation > 0 {
-            if let Err(e) = dal.delete_snapshot(doc_id, stale_generation).await {
+        if stale_generation > 0
+            && let Err(e) = dal.delete_snapshot(doc_id, stale_generation).await {
                 tracing::warn!(doc_id = %doc_id, stale_generation, "stale snapshot deletion failed: {}", e);
             }
-        }
 
         tracing::debug!(doc_id = %doc_id, generation, through_sequence, "snapshot written");
         true

@@ -21,7 +21,12 @@ pub fn create_jwt(
     verified: bool,
 ) -> Result<String, NanoServiceError> {
     let now = Utc::now();
-    let iat = now.timestamp() as usize;
+    let iat = usize::try_from(now.timestamp()).map_err(|error| {
+        NanoServiceError::new(
+            format!("Failed to convert JWT timestamp: {error}"),
+            NanoServiceErrorStatus::InternalServerError,
+        )
+    })?;
     let exp = iat + jwt_expiry_secs();
 
     let claims = JwtClaims {
@@ -103,7 +108,7 @@ mod tests {
         let user_id = Uuid::new_v4();
         let token = create_jwt(user_id, "test@example.com", true).unwrap();
         let claims = verify_jwt(&token).unwrap();
-        assert!(require_verified(&claims).is_ok());
+        require_verified(&claims).unwrap();
     }
 
     #[test]

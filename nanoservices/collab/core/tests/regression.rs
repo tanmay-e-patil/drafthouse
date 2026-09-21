@@ -4,6 +4,12 @@
 //! finding #NN. They are intentionally red while the bug is unfixed; a fix
 //! must turn its test green without weakening the assertion.
 
+#![expect(
+    clippy::panic,
+    clippy::unwrap_used,
+    reason = "regression test fixtures use panics to fail immediately on invalid setup"
+)]
+
 use collab_core::{room::*, snapshot::*, sync_protocol::*};
 use dal::{DeleteSnapshot, ReadLatestSnapshot, WriteSnapshot};
 use kernel::{CollabSnapshot, NewCollabSnapshot};
@@ -11,7 +17,7 @@ use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 use utils::errors::{NanoServiceError, NanoServiceErrorStatus};
 use uuid::Uuid;
-use yrs::{Doc, GetString, ReadTxn, StateVector, Text, Transact};
+use yrs::{Text, Transact};
 
 #[derive(Clone, Default)]
 struct Storage {
@@ -47,18 +53,17 @@ impl DeleteSnapshot for Storage {
         Ok(())
     }
 }
-fn text(room: &DocRoom) -> String {
-    let doc = room.doc.read().unwrap();
-    doc.get_or_insert_text("content")
-        .get_string(&doc.transact())
-}
 fn seed(room: &DocRoom, content: &str) {
     let doc = room.doc.read().unwrap();
     doc.get_or_insert_text("content")
         .insert(&mut doc.transact_mut(), 0, content);
 }
 fn idle(room: &DocRoom) {
-    *room.last_empty_at.lock().unwrap() = Some(Instant::now() - Duration::from_secs(301));
+    *room.last_empty_at.lock().unwrap() = Some(
+        Instant::now()
+            .checked_sub(Duration::from_secs(301))
+            .unwrap(),
+    );
 }
 
 /// REG-19 (#19): a relayed awareness update must not reassign the peer's
@@ -165,7 +170,8 @@ async fn regression_27_due_room_is_snapshotted_by_sweep() {
     room.add_connection();
     seed(&room, "dirty");
     room.increment_ops();
-    *room.last_snapshot_at.lock().unwrap() = Instant::now() - Duration::from_secs(31);
+    *room.last_snapshot_at.lock().unwrap() =
+        Instant::now().checked_sub(Duration::from_secs(31)).unwrap();
     assert!(room.should_snapshot());
     let storage = Storage::default();
     eviction_sweep(&storage, &store).await;
@@ -181,11 +187,13 @@ async fn regression_27_successful_snapshot_clears_dirty_state() {
     room.add_connection();
     seed(&room, "dirty once");
     room.increment_ops();
-    *room.last_snapshot_at.lock().unwrap() = Instant::now() - Duration::from_secs(31);
+    *room.last_snapshot_at.lock().unwrap() =
+        Instant::now().checked_sub(Duration::from_secs(31)).unwrap();
     let storage = Storage::default();
 
     eviction_sweep(&storage, &store).await;
-    *room.last_snapshot_at.lock().unwrap() = Instant::now() - Duration::from_secs(31);
+    *room.last_snapshot_at.lock().unwrap() =
+        Instant::now().checked_sub(Duration::from_secs(31)).unwrap();
     eviction_sweep(&storage, &store).await;
 
     assert_eq!(storage.saved.lock().unwrap().len(), 1);
@@ -197,7 +205,8 @@ async fn regression_27_clean_active_room_is_not_snapshotted() {
     let store = DocStore::new();
     let room = get_or_create_room(&store, Uuid::new_v4());
     room.add_connection();
-    *room.last_snapshot_at.lock().unwrap() = Instant::now() - Duration::from_secs(31);
+    *room.last_snapshot_at.lock().unwrap() =
+        Instant::now().checked_sub(Duration::from_secs(31)).unwrap();
     let storage = Storage::default();
 
     eviction_sweep(&storage, &store).await;

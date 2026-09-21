@@ -14,14 +14,12 @@ pub async fn extract_verified_jwt(req: &HttpRequest) -> Result<JwtClaims, NanoSe
             )
         })?;
 
-    if !auth_header.starts_with("Bearer ") {
-        return Err(NanoServiceError::new(
+    let token = auth_header.strip_prefix("Bearer ").ok_or_else(|| {
+        NanoServiceError::new(
             "Invalid authorization header format",
             NanoServiceErrorStatus::Unauthorized,
-        ));
-    }
-
-    let token = auth_header.strip_prefix("Bearer ").unwrap();
+        )
+    })?;
     let claims = auth_core::jwt::verify_jwt(token)?;
     auth_core::jwt::require_verified(&claims)?;
     Ok(claims)

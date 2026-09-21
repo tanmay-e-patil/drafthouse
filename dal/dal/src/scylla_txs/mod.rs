@@ -14,7 +14,7 @@ impl ScyllaDescriptor {
     pub async fn new() -> Result<Self, Box<dyn std::error::Error>> {
         let nodes = env::var("SCYLLA_NODES").unwrap_or_else(|_| "127.0.0.1:9042".into());
         let keyspace = env::var("SCYLLA_KEYSPACE").unwrap_or_else(|_| "drafthouse".into());
-        let session = connect_with_retry(&nodes).await?;
+        let session = Box::pin(connect_with_retry(&nodes)).await?;
         Ok(Self {
             session: Arc::new(session),
             keyspace,
@@ -29,7 +29,7 @@ async fn connect_with_retry(nodes: &str) -> Result<Session, Box<dyn std::error::
     let mut last_err: Option<Box<dyn std::error::Error>> = None;
 
     for attempt in 1..=MAX_ATTEMPTS {
-        match SessionBuilder::new().known_node(nodes).build().await {
+        match Box::pin(SessionBuilder::new().known_node(nodes).build()).await {
             Ok(session) => return Ok(session),
             Err(err) if attempt < MAX_ATTEMPTS => {
                 eprintln!(

@@ -1,6 +1,12 @@
 //! Regression tests for ordered collaboration persistence against a real,
 //! disposable ScyllaDB container.
 
+#![expect(
+    clippy::large_futures,
+    clippy::unwrap_used,
+    reason = "integration test setup should fail immediately when its Scylla fixture is unavailable"
+)]
+
 use chrono::{Duration, Utc};
 use dal::{
     DeleteSnapshot, ReadAllSnapshots, ReadLatestSnapshot, ReadOpsAfter, ScyllaDescriptor, WriteOp,

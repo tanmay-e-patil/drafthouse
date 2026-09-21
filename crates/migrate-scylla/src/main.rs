@@ -10,7 +10,7 @@ async fn main() -> Result<()> {
     let migrations_dir =
         env::var("SCYLLA_MIGRATIONS_DIR").unwrap_or_else(|_| "migrations/scylla".into());
 
-    let session: Session = connect_with_retry(&nodes).await?;
+    let session: Session = Box::pin(connect_with_retry(&nodes)).await?;
 
     bootstrap_tracking(&session, &keyspace).await?;
 
@@ -23,7 +23,11 @@ async fn main() -> Result<()> {
     paths.sort();
 
     for path in paths {
-        let name = path.file_name().unwrap().to_string_lossy().to_string();
+        let name = path
+            .file_name()
+            .context("migration path has no file name")?
+            .to_string_lossy()
+            .to_string();
         if is_applied(&session, &keyspace, &name).await? {
             println!("skip  {name}");
             continue;
@@ -54,7 +58,7 @@ async fn connect_with_retry(nodes: &str) -> Result<Session> {
     let mut last_err = None;
 
     for attempt in 1..=MAX_ATTEMPTS {
-        match SessionBuilder::new().known_node(nodes).build().await {
+        match Box::pin(SessionBuilder::new().known_node(nodes).build()).await {
             Ok(session) => return Ok(session),
             Err(err) if attempt < MAX_ATTEMPTS => {
                 eprintln!(
@@ -68,9 +72,10 @@ async fn connect_with_retry(nodes: &str) -> Result<Session> {
         }
     }
 
-    Err(last_err
-        .context("connect to ScyllaDB after retries")
-        .unwrap_err())
+    match last_err {
+        Some(error) => Err(error).context("connect to ScyllaDB after retries"),
+        None => anyhow::bail!("connect to ScyllaDB after retries"),
+    }
 }
 
 async fn bootstrap_tracking(session: &Session, keyspace: &str) -> Result<()> {

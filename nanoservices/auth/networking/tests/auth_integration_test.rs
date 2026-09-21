@@ -1,3 +1,9 @@
+#![expect(
+    clippy::undocumented_unsafe_blocks,
+    clippy::unwrap_used,
+    reason = "serial integration tests mutate process environment and fail immediately on fixture errors"
+)]
+
 use actix_web::{App, http::StatusCode, test, web};
 use auth_networking::routes;
 use dal::postgres_txs::SqlxPostGresDescriptor;
@@ -1349,7 +1355,7 @@ async fn export_account_data_returns_202_and_sends_email() {
     assert_eq!(resp.status(), StatusCode::ACCEPTED);
 
     for _ in 0..100 {
-        if mock_server.received_requests().await.unwrap().len() > 0 {
+        if !mock_server.received_requests().await.unwrap().is_empty() {
             break;
         }
         tokio::time::sleep(std::time::Duration::from_millis(100)).await;

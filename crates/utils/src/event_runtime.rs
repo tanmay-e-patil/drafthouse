@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 use std::future::Future;
 use std::pin::Pin;
-use std::sync::Mutex;
+use std::sync::{Mutex, PoisonError};
 
 type HandlerFn = fn(Vec<u8>) -> Pin<Box<dyn Future<Output = ()> + Send>>;
 
@@ -10,7 +10,7 @@ static HANDLERS: Mutex<Option<HashMap<String, HandlerFn>>> = Mutex::new(None);
 pub fn insert_into_hashmap(type_name: String, handler: HandlerFn) {
     HANDLERS
         .lock()
-        .unwrap()
+        .unwrap_or_else(PoisonError::into_inner)
         .get_or_insert_with(HashMap::new)
         .insert(type_name, handler);
 }
@@ -18,7 +18,7 @@ pub fn insert_into_hashmap(type_name: String, handler: HandlerFn) {
 pub fn publish_event(name: &str, data: Vec<u8>) {
     let handler = HANDLERS
         .lock()
-        .unwrap()
+        .unwrap_or_else(PoisonError::into_inner)
         .as_ref()
         .and_then(|m| m.get(name).copied());
 
@@ -30,7 +30,7 @@ pub fn publish_event(name: &str, data: Vec<u8>) {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::sync::Arc;
+
     use std::sync::atomic::{AtomicBool, Ordering};
 
     #[tokio::test]

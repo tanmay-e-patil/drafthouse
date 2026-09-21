@@ -4,6 +4,12 @@
 //! Each `regression_NN_...` test asserts the REQUIRED behavior for audit
 //! finding #NN and is intentionally red while the bug is unfixed.
 
+#![expect(
+    clippy::large_futures,
+    clippy::unwrap_used,
+    reason = "integration test setup should fail immediately when database fixtures are unavailable"
+)]
+
 use chrono::Utc;
 use collab_core::{AwarenessPeer, DocStore, room::get_or_create_room};
 use dal::postgres_txs::SqlxPostGresDescriptor;

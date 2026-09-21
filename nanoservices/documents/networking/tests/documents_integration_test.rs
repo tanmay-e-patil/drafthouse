@@ -1,3 +1,8 @@
+#![expect(
+    clippy::unwrap_used,
+    reason = "integration test setup should fail immediately when its PostgreSQL fixture is unavailable"
+)]
+
 use actix_web::{App, http::StatusCode, test, web};
 use auth_networking::routes as auth_routes;
 use collab_core::{AwarenessPeer, DocRoom, DocStore};

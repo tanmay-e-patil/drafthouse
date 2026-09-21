@@ -58,8 +58,11 @@ pub async fn ws_handler(
     // Authenticated connections use signed short-lived capability tokens.
     // Public no-ticket viewers still hit Postgres once to confirm the doc is public.
     let (user_id, is_readonly) = if let Some(raw_token) = &query.ticket {
-        let claims = auth_core::ws_capability::verify_ws_capability(raw_token)
-            .map_err(|_| actix_web::error::ErrorUnauthorized("Invalid or expired ticket"))?;
+        let claims =
+            auth_core::ws_capability::verify_ws_capability(raw_token).map_err(|error| {
+                warn!(%error, "WebSocket capability validation failed");
+                actix_web::error::ErrorUnauthorized("Invalid or expired ticket")
+            })?;
 
         if claims.doc_id != doc_id {
             return Ok(HttpResponse::Unauthorized().body("Ticket doc mismatch"));
@@ -116,14 +119,13 @@ pub async fn ws_handler(
 
     let room = get_or_create_room(&doc_store, doc_id);
     room.ensure_initialized(|| async {
-        if !restore_room(&scylla_dal, doc_id, &room).await? {
-            if let Some(content) = pg_dal.get_document_content(doc_id).await? {
-                if !content.is_empty() {
-                    let doc = room.doc.write().unwrap();
-                    doc.get_or_insert_text("content")
-                        .insert(&mut doc.transact_mut(), 0, &content);
-                }
-            }
+        if !restore_room(&scylla_dal, doc_id, &room).await?
+            && let Some(content) = pg_dal.get_document_content(doc_id).await?
+            && !content.is_empty()
+        {
+            let doc = room.doc.write().unwrap_or_else(PoisonError::into_inner);
+            doc.get_or_insert_text("content")
+                .insert(&mut doc.transact_mut(), 0, &content);
         }
         Ok::<(), utils::errors::NanoServiceError>(())
     })
@@ -166,14 +168,17 @@ pub async fn ws_handler(
         // clients upload offline edits. Read-only clients only receive state.
         {
             let initial_sync = {
-                let doc = room_clone.doc.read().unwrap();
+                let doc = room_clone
+                    .doc
+                    .read()
+                    .unwrap_or_else(PoisonError::into_inner);
                 if is_readonly {
                     encode_full_sync_step2(&doc)
                 } else {
                     encode_sync_step1(&doc)
                 }
             };
-            let _ = session.binary(Bytes::from(initial_sync)).await;
+            drop(session.binary(Bytes::from(initial_sync)).await);
         }
 
         info!(doc_id = %doc_id, client_id = %client_id, "WS connected");
@@ -202,7 +207,7 @@ pub async fn ws_handler(
                             }
                         }
                         Some(Ok(actix_ws::AggregatedMessage::Ping(payload))) => {
-                            let _ = session.pong(&payload).await;
+                            drop(session.pong(&payload).await);
                         }
                         Some(Ok(actix_ws::AggregatedMessage::Close(_))) | None => break,
                         Some(Err(error)) => {
@@ -216,7 +221,7 @@ pub async fn ws_handler(
                 broadcast = broadcast_rx.recv() => {
                     match broadcast {
                         Ok(bytes) => {
-                            let _ = session.binary(bytes).await;
+                            drop(session.binary(bytes).await);
                         }
                         Err(tokio::sync::broadcast::error::RecvError::Lagged(skipped)) => {
                             warn!(doc_id = %doc_id, skipped, "client lagged; sending full resync");
@@ -251,7 +256,7 @@ pub async fn ws_handler(
         }
 
         drop(connection_guard);
-        let _ = session.close(None).await;
+        drop(session.close(None).await);
         info!(doc_id = %doc_id, client_id = %client_id, "WS disconnected");
     });
 
@@ -273,10 +278,10 @@ where
     match decode_message(data) {
         CollabMessage::SyncStep1(sv_bytes) => {
             let step2 = {
-                let doc = room.doc.read().unwrap();
+                let doc = room.doc.read().unwrap_or_else(PoisonError::into_inner);
                 encode_sync_step2(&doc, &sv_bytes)
             };
-            let _ = session.binary(Bytes::from(step2)).await;
+            drop(session.binary(Bytes::from(step2)).await);
             true
         }
         CollabMessage::Update(update_bytes) | CollabMessage::SyncStep2(update_bytes) => {
@@ -295,7 +300,7 @@ where
             {
                 Ok(Some(accepted)) => {
                     let broadcast_msg = Bytes::from(encode_update(&accepted.data));
-                    let _ = room.tx.send(broadcast_msg);
+                    drop(room.tx.send(broadcast_msg));
 
                     if room.should_snapshot() {
                         persist_snapshot(dal, meta.doc_id, room).await;
@@ -347,7 +352,7 @@ where
                 }
             }
             buf.extend_from_slice(&aw_bytes);
-            let _ = room.tx.send(Bytes::from(buf));
+            drop(room.tx.send(Bytes::from(buf)));
             true
         }
         CollabMessage::Unknown => {
@@ -414,7 +419,7 @@ where
             .ok_or_else(|| serde::de::Error::custom("expected i64 number")),
         Value::String(s) => s
             .parse::<i64>()
-            .map_err(|_| serde::de::Error::custom("expected i64 string")),
+            .map_err(|error| serde::de::Error::custom(format!("expected i64 string: {error}"))),
         _ => Err(serde::de::Error::custom("expected integer lastActive")),
     }
 }

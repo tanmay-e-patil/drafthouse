@@ -205,7 +205,7 @@ mod tests {
         let user = test_user();
         let dal = MockDal::with_user(user);
         let result = forgot_password(&dal, "test@example.com").await;
-        assert!(result.is_ok());
+        result.unwrap();
         assert_eq!(dal.password_reset_tokens.lock().unwrap().len(), 1);
     }
 
@@ -224,7 +224,7 @@ mod tests {
         let dal = MockDal::with_user_and_token(user, stored_token);
 
         let result = reset_password(&dal, &raw, "brandNewPassword123").await;
-        assert!(result.is_ok());
+        result.unwrap();
 
         assert!(dal.password_updated.lock().unwrap().is_some());
         assert_eq!(dal.sessions_revoked_for.lock().unwrap().len(), 1);

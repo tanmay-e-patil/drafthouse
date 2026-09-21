@@ -42,7 +42,11 @@ pub fn impl_transaction(attr: TokenStream, item: TokenStream) -> TokenStream {
 
     let fn_output = match &input_fn.sig.output {
         syn::ReturnType::Type(_, ty) => ty.as_ref(),
-        syn::ReturnType::Default => panic!("Function must have a return type."),
+        syn::ReturnType::Default => {
+            return syn::Error::new_spanned(&input_fn.sig, "function must have a return type")
+                .into_compile_error()
+                .into();
+        }
     };
 
     let expanded = quote! {

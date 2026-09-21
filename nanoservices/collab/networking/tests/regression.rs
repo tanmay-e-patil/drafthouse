@@ -5,6 +5,11 @@
 //! `regression_NN_...` test asserts the REQUIRED behavior for audit finding
 //! #NN and is intentionally red while the bug is unfixed.
 
+#![expect(
+    clippy::unwrap_used,
+    reason = "regression test fixtures use known-valid values and should fail immediately on setup errors"
+)]
+
 mod dal {
     pub use ::dal::*;
     use kernel::{
@@ -348,8 +353,11 @@ mod regression {
         client.frame().await;
         let room = env.store.get(&env.id).unwrap().clone();
         assert_eq!(room.connection_count(), 0);
-        *room.last_empty_at.lock().unwrap() =
-            Some(std::time::Instant::now() - Duration::from_secs(301));
+        *room.last_empty_at.lock().unwrap() = Some(
+            std::time::Instant::now()
+                .checked_sub(Duration::from_secs(301))
+                .unwrap(),
+        );
         collab_core::snapshot::eviction_sweep(&env.storage, &env.store).await;
         assert!(!env.storage.snapshots.lock().unwrap().is_empty());
         let _reader = env.connect(true).await;

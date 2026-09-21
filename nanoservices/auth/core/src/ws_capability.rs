@@ -27,7 +27,12 @@ pub fn create_ws_capability(
     doc_id: Uuid,
     readonly: bool,
 ) -> Result<String, NanoServiceError> {
-    let iat = Utc::now().timestamp() as usize;
+    let iat = usize::try_from(Utc::now().timestamp()).map_err(|error| {
+        NanoServiceError::new(
+            format!("Failed to convert capability timestamp: {error}"),
+            NanoServiceErrorStatus::InternalServerError,
+        )
+    })?;
     let claims = WsCapabilityClaims {
         sub: user_id,
         doc_id,

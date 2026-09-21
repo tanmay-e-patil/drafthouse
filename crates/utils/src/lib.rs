@@ -75,7 +75,18 @@ impl ResponseError for NanoServiceError {
             detail: self.message.clone(),
         };
 
-        HttpResponse::build(actix_web::http::StatusCode::from_u16(status_code).unwrap()).json(body)
+        HttpResponse::build(match self.status {
+            NanoServiceErrorStatus::BadRequest => actix_web::http::StatusCode::BAD_REQUEST,
+            NanoServiceErrorStatus::Unauthorized => actix_web::http::StatusCode::UNAUTHORIZED,
+            NanoServiceErrorStatus::Forbidden => actix_web::http::StatusCode::FORBIDDEN,
+            NanoServiceErrorStatus::NotFound => actix_web::http::StatusCode::NOT_FOUND,
+            NanoServiceErrorStatus::Conflict => actix_web::http::StatusCode::CONFLICT,
+            NanoServiceErrorStatus::Gone => actix_web::http::StatusCode::GONE,
+            NanoServiceErrorStatus::InternalServerError => {
+                actix_web::http::StatusCode::INTERNAL_SERVER_ERROR
+            }
+        })
+        .json(body)
     }
 }
 

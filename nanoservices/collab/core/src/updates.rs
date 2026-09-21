@@ -81,7 +81,14 @@ where
         })
         .await?;
 
-        let data = apply_update_safe(&room.doc.read().unwrap(), update_bytes).ok_or_else(|| {
+        let data = apply_update_safe(
+            &room
+                .doc
+                .read()
+                .unwrap_or_else(std::sync::PoisonError::into_inner),
+            update_bytes,
+        )
+        .ok_or_else(|| {
             NanoServiceError::new(
                 "Failed to apply persisted collaboration update",
                 NanoServiceErrorStatus::InternalServerError,
@@ -89,7 +96,10 @@ where
         })?;
 
         let content = {
-            let doc = room.doc.read().unwrap();
+            let doc = room
+                .doc
+                .read()
+                .unwrap_or_else(std::sync::PoisonError::into_inner);
             doc.get_or_insert_text("content")
                 .get_string(&doc.transact())
         };
@@ -112,9 +122,11 @@ mod tests {
     use std::sync::{Arc, Mutex};
     use yrs::{Doc, ReadTxn, StateVector, Text};
 
+    type WalWrite = (i64, Vec<u8>);
+
     #[derive(Clone, Default)]
     struct Wal {
-        writes: Arc<Mutex<Vec<(i64, Vec<u8>)>>>,
+        writes: Arc<Mutex<Vec<WalWrite>>>,
         fail: bool,
     }
 
@@ -182,7 +194,10 @@ mod tests {
         let room = DocRoom::new();
         let initial = "x".repeat(crate::room::MAX_DOC_BYTES - 1024);
         {
-            let doc = room.doc.read().unwrap();
+            let doc = room
+                .doc
+                .read()
+                .unwrap_or_else(std::sync::PoisonError::into_inner);
             doc.get_or_insert_text("content")
                 .insert(&mut doc.transact_mut(), 0, &initial);
         }
@@ -213,7 +228,10 @@ mod tests {
         assert!(wal.writes.lock().unwrap().is_empty());
         assert!(projection.value.lock().unwrap().is_none());
         let content = {
-            let doc = room.doc.read().unwrap();
+            let doc = room
+                .doc
+                .read()
+                .unwrap_or_else(std::sync::PoisonError::into_inner);
             doc.get_or_insert_text("content")
                 .get_string(&doc.transact())
         };
@@ -244,7 +262,10 @@ mod tests {
         );
         assert_eq!(room.current_sequence(), 1, "failed sequence remains a gap");
         let content = {
-            let doc = room.doc.read().unwrap();
+            let doc = room
+                .doc
+                .read()
+                .unwrap_or_else(std::sync::PoisonError::into_inner);
             doc.get_or_insert_text("content")
                 .get_string(&doc.transact())
         };

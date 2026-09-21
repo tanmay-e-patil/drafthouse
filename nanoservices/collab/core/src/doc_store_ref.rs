@@ -4,7 +4,7 @@ use std::sync::{Arc, OnceLock};
 static DOC_STORE: OnceLock<Arc<DocStore>> = OnceLock::new();
 
 pub fn init_doc_store(store: Arc<DocStore>) {
-    let _ = DOC_STORE.set(store);
+    drop(DOC_STORE.set(store));
 }
 
 pub fn get_doc_store() -> Option<&'static Arc<DocStore>> {

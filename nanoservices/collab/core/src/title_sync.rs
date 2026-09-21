@@ -14,7 +14,7 @@ async fn on_title_updated(event: TitleUpdated) {
     };
     if let Some(room) = store.get(&event.doc_id) {
         let msg = Bytes::from(encode_title_update(&event.title));
-        let _ = room.tx.send(msg);
+        drop(room.tx.send(msg));
     }
 }
 
@@ -68,7 +68,7 @@ mod tests {
     async fn on_title_updated_inner(store: &crate::DocStore, event: TitleUpdated) {
         if let Some(room) = store.get(&event.doc_id) {
             let msg = Bytes::from(encode_title_update(&event.title));
-            let _ = room.tx.send(msg);
+            drop(room.tx.send(msg));
         }
     }
 }

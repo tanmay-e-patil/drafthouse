@@ -246,14 +246,15 @@ pub async fn list_documents<D>(
 where
     D: ListDocumentsByOwner + CountDocumentsByOwner,
 {
-    let effective_limit = limit.unwrap_or(DEFAULT_PAGE_LIMIT).min(100);
+    let effective_limit = limit.unwrap_or(DEFAULT_PAGE_LIMIT).clamp(1, 100);
+    let effective_limit_usize = usize::try_from(effective_limit).unwrap_or(20);
     let docs = dal
         .list_documents_by_owner(owner_id, cursor, effective_limit + 1)
         .await?;
 
     let has_more = docs.len() as i64 > effective_limit;
     let data: Vec<Document> = if has_more {
-        docs.into_iter().take(effective_limit as usize).collect()
+        docs.into_iter().take(effective_limit_usize).collect()
     } else {
         docs
     };
@@ -522,7 +523,6 @@ where
 mod tests {
     use super::*;
     use chrono::Utc;
-    #[allow(unused_imports)]
     use kernel::TitleUpdated;
     use kernel::{DocumentMember, InviteLink, MemberRole};
     use std::sync::{Arc, Mutex};
@@ -942,7 +942,10 @@ mod tests {
                     });
                 }
 
-                Ok(owned.into_iter().take(limit as usize).collect())
+                Ok(owned
+                    .into_iter()
+                    .take(usize::try_from(limit).unwrap_or_default())
+                    .collect())
             }
         }
     }
@@ -1303,7 +1306,7 @@ mod tests {
         let doc = test_document(owner_id);
         let dal = MockDal::with_document(doc.clone());
         let result = delete_document(&dal, doc.id, owner_id).await;
-        assert!(result.is_ok());
+        result.unwrap();
         assert!(dal.documents.lock().unwrap().is_empty());
     }
 
@@ -1659,7 +1662,7 @@ mod tests {
         let dal = MockDal::with_document_and_link(doc.clone(), link);
 
         let result = revoke_invite_link(&dal, doc.id, owner_id, "tok7").await;
-        assert!(result.is_ok());
+        result.unwrap();
         let revoked = dal.invite_links.lock().unwrap()[0].revoked_at;
         assert!(revoked.is_some());
     }
@@ -1728,7 +1731,7 @@ mod tests {
         let dal = MockDal::with_document_and_member(doc.clone(), member);
 
         let result = remove_member(&dal, doc.id, owner_id, user_id).await;
-        assert!(result.is_ok());
+        result.unwrap();
         assert!(dal.members.lock().unwrap().is_empty());
     }
 

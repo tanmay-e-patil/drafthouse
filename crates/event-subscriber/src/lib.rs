@@ -29,7 +29,14 @@ pub fn subscribe_to_event(_attr: TokenStream, item: TokenStream) -> TokenStream 
 
     let param_type = match param {
         FnArg::Typed(PatType { ty, .. }) => ty,
-        _ => panic!("subscribe_to_event: unexpected self parameter"),
+        receiver => {
+            return syn::Error::new_spanned(
+                receiver,
+                "subscribe_to_event: unexpected self parameter",
+            )
+            .into_compile_error()
+            .into();
+        }
     };
 
     // Bare type name used as routing key (matches publisher's split("::").last())
