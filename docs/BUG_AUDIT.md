@@ -260,6 +260,8 @@ The advertised application limit is 100 KiB, but `actix-ws` 0.3.1 defaults to a 
 
 **Fix:** enforce an explicit document resource policy at the authoritative update boundary and communicate rejection to the client.
 
+**Resolved:** the serialized CRDT state is now projected with each candidate update under the room's ordering gate and checked against the 1 MiB policy before sequence allocation or WAL persistence. Oversized updates cannot mutate durable or live state, and the server communicates rejection with WebSocket close code 1009.
+
 ### 26. Eviction can remove a newly active room and discards it before snapshot success — P1, C
 
 **Location:** `nanoservices/collab/core/src/snapshot.rs:45–55`.

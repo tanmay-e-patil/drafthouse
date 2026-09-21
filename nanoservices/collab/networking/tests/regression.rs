@@ -717,10 +717,15 @@ mod regression {
     async fn regression_25_document_size_limit_is_enforced() {
         let env = Env::new(false).await;
         let mut client = env.connect(false).await;
+        let mut rejected = false;
         for _ in 0..22 {
             client.send(2, true, &update(&"x".repeat(50_000))).await;
-            let _ = client.frame().await;
+            if client.frame().await.is_some_and(|(opcode, _)| opcode == 8) {
+                rejected = true;
+                break;
+            }
         }
+        assert!(rejected, "size-policy rejection must close the client");
         assert!(env.content().len() <= MAX_DOC_BYTES);
         env.stop().await;
     }

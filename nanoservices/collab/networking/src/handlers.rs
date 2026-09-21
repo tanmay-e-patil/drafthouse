@@ -16,6 +16,7 @@ use serde::Deserialize;
 use serde_json::Value;
 use std::sync::{Arc, PoisonError};
 use tracing::{info, warn};
+use utils::errors::NanoServiceErrorStatus;
 use uuid::Uuid;
 use yrs::sync::AwarenessUpdate;
 use yrs::updates::decoder::Decode;
@@ -303,6 +304,20 @@ where
                 }
                 Ok(None) => {
                     warn!(doc_id = %meta.doc_id, "malformed update bytes, dropping client");
+                    false
+                }
+                Err(error) if error.status == NanoServiceErrorStatus::BadRequest => {
+                    warn!(doc_id = %meta.doc_id, %error, "document policy rejected update");
+                    if let Err(close_error) = session
+                        .clone()
+                        .close(Some(actix_ws::CloseReason {
+                            code: actix_ws::CloseCode::Size,
+                            description: Some("Document size limit exceeded".into()),
+                        }))
+                        .await
+                    {
+                        warn!(doc_id = %meta.doc_id, %close_error, "failed to send size-limit close frame");
+                    }
                     false
                 }
                 Err(error) => {

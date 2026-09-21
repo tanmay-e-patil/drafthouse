@@ -3,13 +3,32 @@ use dal::{ProjectDocumentContent, WriteOp};
 use kernel::NewCollabOp;
 use utils::errors::{NanoServiceError, NanoServiceErrorStatus};
 use uuid::Uuid;
-use yrs::{GetString, Transact, Update, updates::decoder::Decode};
+use yrs::{Doc, GetString, ReadTxn, StateVector, Transact, Update, updates::decoder::Decode};
 
-use crate::{room::DocRoom, sync_protocol::apply_update_safe};
+use crate::{
+    room::{DocRoom, MAX_DOC_BYTES},
+    sync_protocol::apply_update_safe,
+};
 
 pub struct AcceptedUpdate {
     pub sequence: i64,
     pub data: Vec<u8>,
+}
+
+fn projected_document_size(room: &DocRoom, update_bytes: &[u8]) -> Option<usize> {
+    let current_state = {
+        let doc = room.doc.read().ok()?;
+        doc.transact()
+            .encode_state_as_update_v1(&StateVector::default())
+    };
+    let candidate = Doc::new();
+    apply_update_safe(&candidate, &current_state)?;
+    apply_update_safe(&candidate, update_bytes)?;
+    let size = candidate
+        .transact()
+        .encode_state_as_update_v1(&StateVector::default())
+        .len();
+    Some(size)
 }
 
 /// Durably accept one collaboration update under the room's ordering gate.
@@ -38,6 +57,16 @@ where
             return Err(NanoServiceError::new(
                 "Document deleted; update rejected",
                 NanoServiceErrorStatus::NotFound,
+            ));
+        }
+
+        let Some(projected_size) = projected_document_size(room, update_bytes) else {
+            return Ok(None);
+        };
+        if projected_size > MAX_DOC_BYTES {
+            return Err(NanoServiceError::new(
+                "Document size limit exceeded; update rejected",
+                NanoServiceErrorStatus::BadRequest,
             ));
         }
 
@@ -144,6 +173,51 @@ mod tests {
         text.insert(&mut doc.transact_mut(), 1, "B");
         let second = doc.transact().encode_state_as_update_v1(&after_a);
         (first, second)
+    }
+
+    #[tokio::test]
+    async fn oversized_update_is_rejected_before_wal_or_mutation() {
+        let wal = Wal::default();
+        let projection = Projection::default();
+        let room = DocRoom::new();
+        let initial = "x".repeat(crate::room::MAX_DOC_BYTES - 1024);
+        {
+            let doc = room.doc.read().unwrap();
+            doc.get_or_insert_text("content")
+                .insert(&mut doc.transact_mut(), 0, &initial);
+        }
+        let candidate = Doc::new();
+        candidate.get_or_insert_text("content").insert(
+            &mut candidate.transact_mut(),
+            0,
+            &"y".repeat(2048),
+        );
+        let update = candidate
+            .transact()
+            .encode_state_as_update_v1(&StateVector::default());
+
+        let error = accept_update(
+            &wal,
+            &projection,
+            Uuid::new_v4(),
+            Uuid::new_v4(),
+            &room,
+            &update,
+        )
+        .await
+        .err()
+        .expect("oversized update must be rejected");
+
+        assert_eq!(error.status, NanoServiceErrorStatus::BadRequest);
+        assert_eq!(room.current_sequence(), 0);
+        assert!(wal.writes.lock().unwrap().is_empty());
+        assert!(projection.value.lock().unwrap().is_none());
+        let content = {
+            let doc = room.doc.read().unwrap();
+            doc.get_or_insert_text("content")
+                .get_string(&doc.transact())
+        };
+        assert_eq!(content, initial);
     }
 
     #[tokio::test]

@@ -32,7 +32,7 @@ Permanent regression suite for [BUG_AUDIT.md](BUG_AUDIT.md). Audit finding **#1 
 | #22 frame handling | `regression_22_update_under_message_limit_is_applied`, `regression_22_fragmented_update_is_aggregated`, `regression_22_oversized_fragmented_update_is_rejected` | WS suite | **green** |
 | #23 upgrade leak | `regression_23_failed_upgrades_do_not_consume_slots` | WS suite | **green** |
 | #24 decoder panic | `regression_24_malformed_length_is_rejected_without_panicking` + `regression_24_malformed_frame_releases_connection_slot` | core + WS suite | **green** |
-| #25 size limit | `regression_25_document_size_limit_is_enforced` | WS suite | red |
+| #25 size limit | `regression_25_document_size_limit_is_enforced` + `oversized_update_is_rejected_before_wal_or_mutation` | WS + core suites | **green** |
 | #26 eviction | `regression_26_failed_snapshot_retains_room`, `regression_26_connection_arriving_during_sweep_keeps_room` | core suite | red |
 | #27 snapshot timer | `regression_27_due_room_is_snapshotted_by_sweep` | core suite | red |
 | #28 latest snapshot | `regression_28_latest_snapshot_is_newest_write_not_highest_slot` | `dal/dal/tests/scylla_regression.rs` (Scylla container) | **green** |
@@ -78,7 +78,7 @@ is tested.
 ## Current state (2026-09-20)
 
 - Frontend: **168 tests green**. All frontend regression findings are green.
-- `collab-core`: **3 red, 2 green** (integration suite); the 36 lib tests are green, including the `access_sync` event-subscriber and purge-retry tests. `collab-networking`: **1 red, 22 green** — #6 revocation and #21–#24 are green (single-process); #25 remains red.
+- `collab-core`: **3 red, 2 green** (integration suite); all 37 lib tests are green, including the size-policy, `access_sync` event-subscriber, and purge-retry tests. `collab-networking`: **23 green** — the full single-process WebSocket regression suite is green.
 - Postgres + Scylla regression suite: **4 red, 6 green** — #4 and #7 (room teardown + Scylla purge) are green; #30/#31/#32 remain red.
 - Scylla DAL suite: **4 green** — WAL replay uses monotonic sequences and snapshots use monotonic generations with explicit WAL boundaries.
 - `cargo test --workspace --lib` remains fully green; the pre-existing integration tests pass on `testcontainers-modules` 0.15.
