@@ -250,6 +250,8 @@ The advertised application limit is 100 KiB, but `actix-ws` 0.3.1 defaults to a 
 
 **Fix:** use checked length arithmetic and reject malformed frames before slicing; use cleanup guards independent of normal loop completion.
 
+**Resolved:** protocol decoding now bounds varint shifts to the target `usize`, checks length addition, and obtains payloads through checked slice ranges. Malformed collaboration messages terminate their session, while an RAII connection guard releases awareness and editor capacity even if the session task returns early, is cancelled, or unwinds.
+
 ### 25. The document size limit is never enforced — P1, C
 
 **Locations:** `nanoservices/collab/core/src/room.rs:17`; `nanoservices/collab/networking/src/handlers.rs:174–206`.

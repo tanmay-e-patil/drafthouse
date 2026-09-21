@@ -45,47 +45,47 @@ fn read_varint(data: &[u8], pos: &mut usize) -> Option<usize> {
     let mut result = 0usize;
     let mut shift = 0;
     loop {
-        if *pos >= data.len() {
+        if shift >= usize::BITS {
             return None;
         }
-        let b = data[*pos] as usize;
-        *pos += 1;
-        result |= (b & 0x7F) << shift;
+
+        let b = usize::from(*data.get(*pos)?);
+        *pos = (*pos).checked_add(1)?;
+        let payload = b & 0x7F;
+        if payload > (usize::MAX >> shift) {
+            return None;
+        }
+        result |= payload << shift;
+
         if b & 0x80 == 0 {
             return Some(result);
         }
         shift += 7;
-        if shift >= 64 {
-            return None;
-        }
     }
 }
 
 fn read_bytes<'a>(data: &'a [u8], pos: &mut usize) -> Option<&'a [u8]> {
     let len = read_varint(data, pos)?;
-    if *pos + len > data.len() {
-        return None;
-    }
-    let slice = &data[*pos..*pos + len];
-    *pos += len;
+    let end = (*pos).checked_add(len)?;
+    let slice = data.get(*pos..end)?;
+    *pos = end;
     Some(slice)
 }
 
 pub fn decode_message(data: &[u8]) -> CollabMessage {
-    if data.is_empty() {
+    let Some(&msg_type) = data.first() else {
         return CollabMessage::Unknown;
-    }
-    let mut pos = 0;
-    let msg_type = data[pos] as usize;
-    pos += 1;
+    };
+    let msg_type = usize::from(msg_type);
+    let mut pos = 1;
 
     match msg_type {
         0 => {
             // Sync
-            if pos >= data.len() {
+            let Some(&step) = data.get(pos) else {
                 return CollabMessage::Unknown;
-            }
-            let step = data[pos] as usize;
+            };
+            let step = usize::from(step);
             pos += 1;
             match read_bytes(data, &mut pos) {
                 Some(payload) => match step {

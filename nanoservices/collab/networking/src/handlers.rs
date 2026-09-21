@@ -14,7 +14,7 @@ use dal::{
 use futures_util::StreamExt;
 use serde::Deserialize;
 use serde_json::Value;
-use std::sync::PoisonError;
+use std::sync::{Arc, PoisonError};
 use tracing::{info, warn};
 use uuid::Uuid;
 use yrs::sync::AwarenessUpdate;
@@ -28,6 +28,18 @@ struct ConnectionMeta {
     user_id: Option<Uuid>,
     connection_id: u64,
     is_readonly: bool,
+}
+
+struct ConnectionGuard {
+    room: Arc<DocRoom>,
+    connection_id: u64,
+}
+
+impl Drop for ConnectionGuard {
+    fn drop(&mut self) {
+        self.room.remove_connection_awareness(self.connection_id);
+        self.room.remove_connection();
+    }
 }
 
 pub async fn ws_handler(
@@ -134,6 +146,10 @@ pub async fn ws_handler(
     let mut broadcast_rx = room.tx.subscribe();
     let mut access_rx = room.subscribe_to_access_changes();
     let connection_id = Uuid::new_v4().as_u128() as u64;
+    let connection_guard = ConnectionGuard {
+        room: room.clone(),
+        connection_id,
+    };
 
     actix_web::rt::spawn(async move {
         let client_id = user_id.unwrap_or_else(Uuid::new_v4);
@@ -171,7 +187,7 @@ pub async fn ws_handler(
                                 warn!(doc_id = %doc_id, "message too large ({} bytes), dropping", data.len());
                                 break;
                             }
-                            handle_binary(
+                            if !handle_binary(
                                 &data,
                                 meta,
                                 &room_clone,
@@ -179,7 +195,10 @@ pub async fn ws_handler(
                                 &scylla_dal,
                                 &pg_projection,
                             )
-                            .await;
+                            .await
+                            {
+                                return;
+                            }
                         }
                         Some(Ok(actix_ws::AggregatedMessage::Ping(payload))) => {
                             let _ = session.pong(&payload).await;
@@ -230,8 +249,7 @@ pub async fn ws_handler(
             }
         }
 
-        room_clone.remove_connection_awareness(connection_id);
-        room_clone.remove_connection();
+        drop(connection_guard);
         let _ = session.close(None).await;
         info!(doc_id = %doc_id, client_id = %client_id, "WS disconnected");
     });
@@ -246,7 +264,8 @@ async fn handle_binary<D, P>(
     session: &mut actix_ws::Session,
     dal: &D,
     projection: &P,
-) where
+) -> bool
+where
     D: WriteOp + WriteSnapshot + ReadLatestSnapshot + DeleteSnapshot,
     P: ProjectDocumentContent,
 {
@@ -257,10 +276,11 @@ async fn handle_binary<D, P>(
                 encode_sync_step2(&doc, &sv_bytes)
             };
             let _ = session.binary(Bytes::from(step2)).await;
+            true
         }
         CollabMessage::Update(update_bytes) | CollabMessage::SyncStep2(update_bytes) => {
             if meta.is_readonly {
-                return;
+                return true;
             }
             match accept_update(
                 dal,
@@ -279,12 +299,15 @@ async fn handle_binary<D, P>(
                     if room.should_snapshot() {
                         persist_snapshot(dal, meta.doc_id, room).await;
                     }
+                    true
                 }
                 Ok(None) => {
                     warn!(doc_id = %meta.doc_id, "malformed update bytes, dropping client");
+                    false
                 }
                 Err(error) => {
                     warn!(doc_id = %meta.doc_id, %error, "WAL write failed; update rejected");
+                    true
                 }
             }
         }
@@ -310,8 +333,12 @@ async fn handle_binary<D, P>(
             }
             buf.extend_from_slice(&aw_bytes);
             let _ = room.tx.send(Bytes::from(buf));
+            true
         }
-        CollabMessage::Unknown => {}
+        CollabMessage::Unknown => {
+            warn!(doc_id = %meta.doc_id, "malformed collaboration message; dropping client");
+            false
+        }
     }
 }
 
