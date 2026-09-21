@@ -335,7 +335,7 @@ Refresh reads a token, deletes it, then creates a replacement through separate c
 
 **Fix:** consume tokens conditionally and mutate associated auth state within a transaction, with a single successful consumer.
 
-**Partially resolved:** refresh-token rotation now locks and validates the old token, deletes it, inserts its replacement, and commits as one PostgreSQL transaction. Concurrent reuse has one successful consumer, and replacement insertion failure rolls back consumption. Password-reset token consumption remains to be made atomic.
+**Resolved:** refresh-token rotation conditionally consumes the old token and inserts its replacement in one PostgreSQL mutation. Password reset hashes the new password before entering PostgreSQL, then conditionally consumes the unexpired reset token, updates the credential, and revokes every refresh session in one atomic statement. Concurrent reuse has one successful consumer, and injected failures roll back token consumption and all associated credential/session mutations.
 
 ## Suggested remediation order
 

@@ -3,7 +3,7 @@ use crate::auth_txs::{
     DeleteAllRefreshTokensForUser, DeleteRefreshToken, DeleteUser, GetEmailVerificationToken,
     GetPasswordResetToken, GetRefreshTokenByHash, GetUserByEmail, GetUserById,
     InvalidateEmailVerificationTokens, MarkPasswordResetTokenUsed, MarkUserVerified,
-    MarkWelcomeDocCreated, RotateRefreshToken, UpdateUserPassword,
+    MarkWelcomeDocCreated, ResetPasswordWithToken, RotateRefreshToken, UpdateUserPassword,
 };
 use dal_tx_impl::impl_transaction;
 use kernel::{
@@ -321,6 +321,49 @@ async fn mark_password_reset_token_used(&self, token_hash: String) -> Result<(),
         "Failed to mark password reset token as used"
     )?;
     Ok(())
+}
+
+#[impl_transaction(
+    SqlxPostGresDescriptor,
+    ResetPasswordWithToken,
+    reset_password_with_token
+)]
+async fn reset_password_with_token(
+    &self,
+    token_hash: String,
+    password_hash: String,
+) -> Result<Option<uuid::Uuid>, NanoServiceError> {
+    let user_id = sqlx::query_scalar(
+        "WITH consumed AS (
+           UPDATE password_reset_tokens
+           SET used_at = now()
+           WHERE token_hash = $1 AND expires_at >= now() AND used_at IS NULL
+           RETURNING user_id
+         ), updated AS (
+           UPDATE users
+           SET password_hash = $2
+           FROM consumed
+           WHERE users.id = consumed.user_id
+           RETURNING users.id
+         ), revoked AS (
+           DELETE FROM refresh_tokens
+           USING updated
+           WHERE refresh_tokens.user_id = updated.id
+         )
+         SELECT id FROM updated",
+    )
+    .bind(token_hash)
+    .bind(password_hash)
+    .fetch_optional(&self.pool)
+    .await
+    .map_err(|e| {
+        NanoServiceError::new(
+            format!("Failed to reset password: {e}"),
+            NanoServiceErrorStatus::InternalServerError,
+        )
+    })?;
+
+    Ok(user_id)
 }
 
 #[impl_transaction(SqlxPostGresDescriptor, UpdateUserPassword, update_user_password)]

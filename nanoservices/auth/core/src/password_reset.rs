@@ -1,8 +1,5 @@
 use chrono::Utc;
-use dal::{
-    CreatePasswordResetToken, DeleteAllRefreshTokensForUser, GetPasswordResetToken, GetUserByEmail,
-    MarkPasswordResetTokenUsed, UpdateUserPassword,
-};
+use dal::{CreatePasswordResetToken, GetUserByEmail, ResetPasswordWithToken};
 use kernel::{ForgotPasswordResponse, ResetPasswordResponse};
 use utils::errors::{NanoServiceError, NanoServiceErrorStatus};
 
@@ -53,50 +50,24 @@ pub async fn reset_password<D>(
     new_password: &str,
 ) -> Result<ResetPasswordResponse, NanoServiceError>
 where
-    D: GetPasswordResetToken
-        + MarkPasswordResetTokenUsed
-        + UpdateUserPassword
-        + DeleteAllRefreshTokensForUser,
+    D: ResetPasswordWithToken,
 {
     password::validate_password(new_password)?;
     let token_hash = token::hash_token(raw_token);
+    let new_hash = password::hash_password(new_password)?;
 
-    let stored = dal
-        .get_password_reset_token(token_hash)
+    let user_id = dal
+        .reset_password_with_token(token_hash, new_hash)
         .await?
         .ok_or_else(|| {
-            tracing::warn!("password reset failed: invalid token");
+            tracing::warn!("password reset failed: token invalid, expired, or already used");
             NanoServiceError::new(
                 "Invalid or expired reset token",
                 NanoServiceErrorStatus::BadRequest,
             )
         })?;
 
-    if stored.expires_at < Utc::now() {
-        tracing::warn!(user_id = %stored.user_id, "password reset failed: token expired");
-        return Err(NanoServiceError::new(
-            "Reset token has expired",
-            NanoServiceErrorStatus::BadRequest,
-        ));
-    }
-
-    if stored.used_at.is_some() {
-        tracing::warn!(user_id = %stored.user_id, "password reset failed: token already used");
-        return Err(NanoServiceError::new(
-            "Reset token has already been used",
-            NanoServiceErrorStatus::BadRequest,
-        ));
-    }
-
-    let new_hash = password::hash_password(new_password)?;
-
-    dal.update_user_password(stored.user_id, new_hash).await?;
-    dal.mark_password_reset_token_used(token::hash_token(raw_token))
-        .await?;
-    dal.delete_all_refresh_tokens_for_user(stored.user_id)
-        .await?;
-
-    tracing::info!(user_id = %stored.user_id, "password reset successful");
+    tracing::info!(user_id = %user_id, "password reset successful");
 
     Ok(ResetPasswordResponse {
         message: "Password has been reset successfully.".to_string(),
@@ -190,63 +161,32 @@ mod tests {
         }
     }
 
-    impl GetPasswordResetToken for MockDal {
-        fn get_password_reset_token(
+    impl ResetPasswordWithToken for MockDal {
+        fn reset_password_with_token(
             &self,
             token_hash: String,
-        ) -> impl std::future::Future<Output = Result<Option<PasswordResetToken>, NanoServiceError>> + Send
+            password_hash: String,
+        ) -> impl std::future::Future<Output = Result<Option<Uuid>, NanoServiceError>> + Send
         {
             let tokens = Arc::clone(&self.password_reset_tokens);
-            async move {
-                Ok(tokens
-                    .lock()
-                    .unwrap()
-                    .iter()
-                    .find(|t| t.token_hash == token_hash)
-                    .cloned())
-            }
-        }
-    }
-
-    impl MarkPasswordResetTokenUsed for MockDal {
-        fn mark_password_reset_token_used(
-            &self,
-            token_hash: String,
-        ) -> impl std::future::Future<Output = Result<(), NanoServiceError>> + Send {
-            let tokens = Arc::clone(&self.password_reset_tokens);
-            async move {
-                let mut tokens = tokens.lock().unwrap();
-                if let Some(t) = tokens.iter_mut().find(|t| t.token_hash == token_hash) {
-                    t.used_at = Some(Utc::now());
-                }
-                Ok(())
-            }
-        }
-    }
-
-    impl UpdateUserPassword for MockDal {
-        fn update_user_password(
-            &self,
-            user_id: Uuid,
-            password_hash: String,
-        ) -> impl std::future::Future<Output = Result<(), NanoServiceError>> + Send {
             let updated = Arc::clone(&self.password_updated);
-            async move {
-                *updated.lock().unwrap() = Some((user_id, password_hash));
-                Ok(())
-            }
-        }
-    }
-
-    impl DeleteAllRefreshTokensForUser for MockDal {
-        fn delete_all_refresh_tokens_for_user(
-            &self,
-            user_id: Uuid,
-        ) -> impl std::future::Future<Output = Result<(), NanoServiceError>> + Send {
             let revoked = Arc::clone(&self.sessions_revoked_for);
             async move {
+                let user_id = {
+                    let mut tokens = tokens.lock().unwrap();
+                    let Some(token) = tokens.iter_mut().find(|token| {
+                        token.token_hash == token_hash
+                            && token.expires_at >= Utc::now()
+                            && token.used_at.is_none()
+                    }) else {
+                        return Ok(None);
+                    };
+                    token.used_at = Some(Utc::now());
+                    token.user_id
+                };
+                *updated.lock().unwrap() = Some((user_id, password_hash));
                 revoked.lock().unwrap().push(user_id);
-                Ok(())
+                Ok(Some(user_id))
             }
         }
     }

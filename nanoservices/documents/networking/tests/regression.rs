@@ -19,7 +19,6 @@ use testcontainers_modules::{
     scylladb::ScyllaDB,
     testcontainers::{ContainerAsync, runners::AsyncRunner},
 };
-use tokio::sync::Barrier;
 use utils::errors::{NanoServiceError, NanoServiceErrorStatus};
 use uuid::Uuid;
 
@@ -302,49 +301,9 @@ async fn regression_31_reset_rejects_short_password() {
     );
 }
 
-// The barrier keeps the password-reset read/consume race deterministic.
-// Refresh rotation now exercises its real atomic PostgreSQL transaction.
+// Both auth operations delegate directly to their atomic PostgreSQL mutation.
 struct RacingDal {
     inner: SqlxPostGresDescriptor,
-    both_have_read: Barrier,
-}
-impl GetRefreshTokenByHash for RacingDal {
-    async fn get_refresh_token_by_hash(
-        &self,
-        hash: String,
-    ) -> Result<Option<RefreshToken>, NanoServiceError> {
-        let token = self.inner.get_refresh_token_by_hash(hash).await?;
-        self.both_have_read.wait().await;
-        Ok(token)
-    }
-}
-impl GetPasswordResetToken for RacingDal {
-    async fn get_password_reset_token(
-        &self,
-        hash: String,
-    ) -> Result<Option<PasswordResetToken>, NanoServiceError> {
-        let token = self.inner.get_password_reset_token(hash).await?;
-        self.both_have_read.wait().await;
-        Ok(token)
-    }
-}
-impl GetUserById for RacingDal {
-    async fn get_user_by_id(&self, id: Uuid) -> Result<Option<User>, NanoServiceError> {
-        self.inner.get_user_by_id(id).await
-    }
-}
-impl DeleteRefreshToken for RacingDal {
-    async fn delete_refresh_token(&self, hash: String) -> Result<(), NanoServiceError> {
-        self.inner.delete_refresh_token(hash).await
-    }
-}
-impl CreateRefreshToken for RacingDal {
-    async fn create_refresh_token(
-        &self,
-        token: NewRefreshToken,
-    ) -> Result<RefreshToken, NanoServiceError> {
-        self.inner.create_refresh_token(token).await
-    }
 }
 impl RotateRefreshToken for RacingDal {
     async fn rotate_refresh_token(
@@ -358,19 +317,15 @@ impl RotateRefreshToken for RacingDal {
             .await
     }
 }
-impl MarkPasswordResetTokenUsed for RacingDal {
-    async fn mark_password_reset_token_used(&self, hash: String) -> Result<(), NanoServiceError> {
-        self.inner.mark_password_reset_token_used(hash).await
-    }
-}
-impl UpdateUserPassword for RacingDal {
-    async fn update_user_password(&self, id: Uuid, hash: String) -> Result<(), NanoServiceError> {
-        self.inner.update_user_password(id, hash).await
-    }
-}
-impl DeleteAllRefreshTokensForUser for RacingDal {
-    async fn delete_all_refresh_tokens_for_user(&self, id: Uuid) -> Result<(), NanoServiceError> {
-        self.inner.delete_all_refresh_tokens_for_user(id).await
+impl ResetPasswordWithToken for RacingDal {
+    async fn reset_password_with_token(
+        &self,
+        token_hash: String,
+        password_hash: String,
+    ) -> Result<Option<Uuid>, NanoServiceError> {
+        self.inner
+            .reset_password_with_token(token_hash, password_hash)
+            .await
     }
 }
 
@@ -389,10 +344,7 @@ async fn regression_32_refresh_token_consumed_exactly_once() {
     })
     .await
     .unwrap();
-    let dal = RacingDal {
-        inner: dal,
-        both_have_read: Barrier::new(2),
-    };
+    let dal = RacingDal { inner: dal };
     let (a, b) = tokio::join!(
         auth_core::login::refresh_access_token(&dal, &raw),
         auth_core::login::refresh_access_token(&dal, &raw)
@@ -448,6 +400,55 @@ async fn regression_32_failed_refresh_rotation_retains_original_token() {
     );
 }
 
+/// REG-32 (#32): a failed credential update must roll back token consumption
+/// and session revocation.
+#[tokio::test]
+async fn regression_32_failed_password_reset_retains_auth_state() {
+    let env = TestEnv::new().await;
+    let dal = env.dal();
+    let owner = user(&dal).await;
+    let raw = reset_token(&dal, owner).await;
+    let token_hash = auth_core::token::hash_token(&raw);
+    dal.create_refresh_token(NewRefreshToken {
+        user_id: owner,
+        token_hash: "existing-session".to_string(),
+        expires_at: Utc::now() + chrono::Duration::days(1),
+    })
+    .await
+    .unwrap();
+    sqlx::query(
+        "ALTER TABLE password_reset_tokens ADD CONSTRAINT reject_token_consumption CHECK (used_at IS NULL)",
+    )
+    .execute(&dal.pool)
+    .await
+    .unwrap();
+
+    auth_core::password_reset::reset_password(&dal, &raw, "replacement-password")
+        .await
+        .unwrap_err();
+
+    let token = dal
+        .get_password_reset_token(token_hash)
+        .await
+        .unwrap()
+        .unwrap();
+    assert!(
+        token.used_at.is_none(),
+        "failed reset must not consume the reset token"
+    );
+    let stored = dal.get_user_by_id(owner).await.unwrap().unwrap();
+    assert!(
+        auth_core::password::verify_password("original-password", &stored.password_hash).unwrap()
+    );
+    let sessions: i64 =
+        sqlx::query_scalar("SELECT COUNT(*) FROM refresh_tokens WHERE user_id = $1")
+            .bind(owner)
+            .fetch_one(&dal.pool)
+            .await
+            .unwrap();
+    assert_eq!(sessions, 1, "failed reset must not revoke sessions");
+}
+
 /// REG-32 (#32): a password reset token is consumed exactly once.
 #[tokio::test]
 async fn regression_32_password_reset_token_consumed_exactly_once() {
@@ -455,10 +456,14 @@ async fn regression_32_password_reset_token_consumed_exactly_once() {
     let dal = env.dal();
     let owner = user(&dal).await;
     let raw = reset_token(&dal, owner).await;
-    let dal = RacingDal {
-        inner: dal,
-        both_have_read: Barrier::new(2),
-    };
+    dal.create_refresh_token(NewRefreshToken {
+        user_id: owner,
+        token_hash: "session-to-revoke".to_string(),
+        expires_at: Utc::now() + chrono::Duration::days(1),
+    })
+    .await
+    .unwrap();
+    let dal = RacingDal { inner: dal };
     let (a, b) = tokio::join!(
         auth_core::password_reset::reset_password(&dal, &raw, "password-one"),
         auth_core::password_reset::reset_password(&dal, &raw, "password-two")
@@ -481,6 +486,13 @@ async fn regression_32_password_reset_token_consumed_exactly_once() {
     };
     let stored = dal.inner.get_user_by_id(owner).await.unwrap().unwrap();
     assert!(auth_core::password::verify_password(winner, &stored.password_hash).unwrap());
+    let sessions: i64 =
+        sqlx::query_scalar("SELECT COUNT(*) FROM refresh_tokens WHERE user_id = $1")
+            .bind(owner)
+            .fetch_one(&dal.inner.pool)
+            .await
+            .unwrap();
+    assert_eq!(sessions, 0, "successful reset must revoke all sessions");
 }
 
 /// Guard (not tied to one audit finding): invite-link `max_uses` must be
