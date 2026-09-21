@@ -122,7 +122,11 @@ pub async fn ws_handler(
     }
 
     // Perform WebSocket upgrade
-    let (response, mut session, mut msg_stream) = actix_ws::handle(&req, stream)?;
+    let (response, mut session, msg_stream) = actix_ws::handle(&req, stream)?;
+    let mut msg_stream = msg_stream
+        .max_frame_size(MAX_MSG_BYTES)
+        .aggregate_continuations()
+        .max_continuation_size(MAX_MSG_BYTES);
 
     let room_clone = room.clone();
     let pg_projection = pg_dal.get_ref().clone();
@@ -161,7 +165,7 @@ pub async fn ws_handler(
                 // Incoming message from this client
                 msg = msg_stream.next() => {
                     match msg {
-                        Some(Ok(actix_ws::Message::Binary(data))) => {
+                        Some(Ok(actix_ws::AggregatedMessage::Binary(data))) => {
                             if data.len() > MAX_MSG_BYTES {
                                 warn!(doc_id = %doc_id, "message too large ({} bytes), dropping", data.len());
                                 break;
@@ -176,11 +180,15 @@ pub async fn ws_handler(
                             )
                             .await;
                         }
-                        Some(Ok(actix_ws::Message::Ping(payload))) => {
+                        Some(Ok(actix_ws::AggregatedMessage::Ping(payload))) => {
                             let _ = session.pong(&payload).await;
                         }
-                        Some(Ok(actix_ws::Message::Close(_))) | None => break,
-                        _ => {}
+                        Some(Ok(actix_ws::AggregatedMessage::Close(_))) | None => break,
+                        Some(Err(error)) => {
+                            warn!(doc_id = %doc_id, %error, "WebSocket protocol error; closing client");
+                            break;
+                        }
+                        Some(Ok(_)) => {}
                     }
                 }
                 // Broadcast from other clients

@@ -666,6 +666,22 @@ mod regression {
         env.stop().await;
     }
 
+    /// REG-22 (#22): fragmented messages cannot bypass the aggregate message
+    /// limit or allocate an unbounded payload.
+    #[actix_web::test]
+    async fn regression_22_oversized_fragmented_update_is_rejected() {
+        let env = Env::new(false).await;
+        let mut client = env.connect(false).await;
+        let oversized = vec![0; MAX_MSG_BYTES + 1];
+        let mid = oversized.len() / 2;
+        client.send(2, false, &oversized[..mid]).await;
+        client.send(0, true, &oversized[mid..]).await;
+        let (opcode, _) = client.frame().await.expect("connection must be closed");
+        assert_eq!(opcode, 8);
+        assert_eq!(env.content(), "");
+        env.stop().await;
+    }
+
     /// REG-23 (#23): failed upgrades must not consume editor slots.
     #[actix_web::test]
     async fn regression_23_failed_upgrades_do_not_consume_slots() {

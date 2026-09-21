@@ -230,6 +230,8 @@ The advertised application limit is 100 KiB, but `actix-ws` 0.3.1 defaults to a 
 
 **Fix:** configure consistent frame/message limits, aggregate continuations, and close/report protocol errors explicitly. Design a transfer path for large legitimate sync updates.
 
+**Resolved:** Actix now enforces the advertised 100 KiB limit for both individual frames and aggregated continuations. Its bounded aggregator reconstructs fragmented binary messages before protocol decoding, while oversized or malformed WebSocket input is logged and closes the session instead of being silently ignored.
+
 ### 23. Failed WebSocket upgrades permanently consume room connection slots — P1, C
 
 **Location:** `nanoservices/collab/networking/src/handlers.rs:80–87`.
