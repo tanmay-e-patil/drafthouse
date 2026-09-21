@@ -302,8 +302,8 @@ async fn regression_31_reset_rejects_short_password() {
     );
 }
 
-// A barrier pauses only after the real database read. All mutations remain
-// real SQL; it makes the existing read/consume race deterministic.
+// The barrier keeps the password-reset read/consume race deterministic.
+// Refresh rotation now exercises its real atomic PostgreSQL transaction.
 struct RacingDal {
     inner: SqlxPostGresDescriptor,
     both_have_read: Barrier,
@@ -344,6 +344,18 @@ impl CreateRefreshToken for RacingDal {
         token: NewRefreshToken,
     ) -> Result<RefreshToken, NanoServiceError> {
         self.inner.create_refresh_token(token).await
+    }
+}
+impl RotateRefreshToken for RacingDal {
+    async fn rotate_refresh_token(
+        &self,
+        token_hash: String,
+        replacement_hash: String,
+        replacement_expires_at: chrono::DateTime<Utc>,
+    ) -> Result<Option<User>, NanoServiceError> {
+        self.inner
+            .rotate_refresh_token(token_hash, replacement_hash, replacement_expires_at)
+            .await
     }
 }
 impl MarkPasswordResetTokenUsed for RacingDal {
@@ -393,6 +405,47 @@ async fn regression_32_refresh_token_consumed_exactly_once() {
         .await
         .unwrap();
     assert_eq!(count, 1, "exactly one replacement token must remain");
+}
+
+/// REG-32 (#32): replacement insertion failure must roll back consumption of
+/// the original refresh token.
+#[tokio::test]
+async fn regression_32_failed_refresh_rotation_retains_original_token() {
+    let env = TestEnv::new().await;
+    let dal = env.dal();
+    let owner = user(&dal).await;
+    let raw = Uuid::new_v4().to_string();
+    let token_hash = auth_core::token::hash_token(&raw);
+    dal.create_refresh_token(NewRefreshToken {
+        user_id: owner,
+        token_hash: token_hash.clone(),
+        expires_at: Utc::now() + chrono::Duration::days(1),
+    })
+    .await
+    .unwrap();
+    sqlx::query(
+        "ALTER TABLE refresh_tokens ADD CONSTRAINT reject_blocked_hash CHECK (token_hash <> 'blocked')",
+    )
+    .execute(&dal.pool)
+    .await
+    .unwrap();
+
+    let result = dal
+        .rotate_refresh_token(
+            token_hash.clone(),
+            "blocked".to_string(),
+            Utc::now() + chrono::Duration::days(1),
+        )
+        .await;
+
+    result.unwrap_err();
+    assert!(
+        dal.get_refresh_token_by_hash(token_hash)
+            .await
+            .unwrap()
+            .is_some(),
+        "failed replacement must not consume the original token"
+    );
 }
 
 /// REG-32 (#32): a password reset token is consumed exactly once.

@@ -39,7 +39,7 @@ Permanent regression suite for [BUG_AUDIT.md](BUG_AUDIT.md). Audit finding **#1 
 | #29 WAL failure | `regression_29_failed_wal_write_is_not_broadcast` | WS suite | **green** |
 | #30 pagination | `regression_30_pagination_returns_all_documents_with_equal_timestamps`, `regression_30_cursor_is_stable_when_boundary_document_changes`, `regression_30_malformed_compound_cursor_is_rejected` | PG suite | **green** |
 | #31 reset validation | `regression_31_reset_rejects_short_password` | PG suite | **green** |
-| #32 token consumption | `regression_32_refresh_token_consumed_exactly_once`, `regression_32_password_reset_token_consumed_exactly_once` | PG suite | red |
+| #32 token consumption | `regression_32_refresh_token_consumed_exactly_once`, `regression_32_failed_refresh_rotation_retains_original_token`, `regression_32_password_reset_token_consumed_exactly_once` | PG suite | refresh **green**; reset red |
 | duplicate-self | `REG-SELF` ×2 (avatar of same user, superseded sessions' cursors) | collab suite | **green** |
 | guard: invite concurrency | `guard_invite_link_max_uses_enforced_under_concurrency` — pins the `FOR UPDATE` serialization no existing test exercised | documents suite | **green guard** |
 | guard: editor cap | `guard_editor_cap_rejects_101st_connection` — 429 end-to-end through the real handler | WS suite | **green guard** |
@@ -79,7 +79,7 @@ is tested.
 
 - Frontend: **168 tests green**. All frontend regression findings are green.
 - `collab-core`: **7 green** (integration suite); all 37 lib tests are green, including the size-policy, `access_sync` event-subscriber, purge-retry, eviction, and periodic snapshot tests. `collab-networking`: **23 green** — the full single-process WebSocket regression suite is green.
-- Postgres + Scylla regression suite: **2 red, 10 green** — #4, #7 (room teardown + Scylla purge), #30, and #31 are green; #32 remains red.
+- Postgres + Scylla regression suite: **1 red, 12 green** — #4, #7 (room teardown + Scylla purge), #30, #31, and #32 refresh rotation are green; #32 password reset remains red.
 - Scylla DAL suite: **4 green** — WAL replay uses monotonic sequences and snapshots use monotonic generations with explicit WAL boundaries.
 - `cargo test --workspace --lib` remains fully green; the pre-existing integration tests pass on `testcontainers-modules` 0.15.
 

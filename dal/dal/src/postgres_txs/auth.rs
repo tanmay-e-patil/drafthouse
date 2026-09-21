@@ -3,7 +3,7 @@ use crate::auth_txs::{
     DeleteAllRefreshTokensForUser, DeleteRefreshToken, DeleteUser, GetEmailVerificationToken,
     GetPasswordResetToken, GetRefreshTokenByHash, GetUserByEmail, GetUserById,
     InvalidateEmailVerificationTokens, MarkPasswordResetTokenUsed, MarkUserVerified,
-    MarkWelcomeDocCreated, UpdateUserPassword,
+    MarkWelcomeDocCreated, RotateRefreshToken, UpdateUserPassword,
 };
 use dal_tx_impl::impl_transaction;
 use kernel::{
@@ -179,6 +179,43 @@ async fn get_refresh_token_by_hash(
     })?;
 
     Ok(row)
+}
+
+#[impl_transaction(SqlxPostGresDescriptor, RotateRefreshToken, rotate_refresh_token)]
+async fn rotate_refresh_token(
+    &self,
+    token_hash: String,
+    replacement_hash: String,
+    replacement_expires_at: chrono::DateTime<chrono::Utc>,
+) -> Result<Option<User>, NanoServiceError> {
+    let user = sqlx::query_as::<_, User>(
+        "WITH consumed AS (
+           DELETE FROM refresh_tokens
+           WHERE token_hash = $1 AND expires_at >= now()
+           RETURNING user_id
+         ), replacement AS (
+           INSERT INTO refresh_tokens (user_id, token_hash, expires_at)
+           SELECT user_id, $2, $3 FROM consumed
+           RETURNING user_id
+         )
+         SELECT u.id, u.email, u.password_hash, u.email_verified_at, u.created_at,
+                u.welcome_doc_created
+         FROM users u
+         JOIN replacement r ON r.user_id = u.id",
+    )
+    .bind(token_hash)
+    .bind(replacement_hash)
+    .bind(replacement_expires_at)
+    .fetch_optional(&self.pool)
+    .await
+    .map_err(|e| {
+        NanoServiceError::new(
+            format!("Failed to rotate refresh token: {e}"),
+            NanoServiceErrorStatus::InternalServerError,
+        )
+    })?;
+
+    Ok(user)
 }
 
 #[impl_transaction(SqlxPostGresDescriptor, DeleteRefreshToken, delete_refresh_token)]

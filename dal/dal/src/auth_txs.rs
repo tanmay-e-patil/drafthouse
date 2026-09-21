@@ -13,6 +13,7 @@ crate::define_dal_transactions!(
     MarkUserVerified => mark_user_verified(user_id: uuid::Uuid) -> (),
     CreateRefreshToken => create_refresh_token(new_token: NewRefreshToken) -> RefreshToken,
     GetRefreshTokenByHash => get_refresh_token_by_hash(token_hash: String) -> Option<RefreshToken>,
+    RotateRefreshToken => rotate_refresh_token(token_hash: String, replacement_hash: String, replacement_expires_at: chrono::DateTime<chrono::Utc>) -> Option<User>,
     DeleteRefreshToken => delete_refresh_token(token_hash: String) -> (),
     DeleteAllRefreshTokensForUser => delete_all_refresh_tokens_for_user(user_id: uuid::Uuid) -> (),
     DeleteUser => delete_user(user_id: uuid::Uuid) -> (),

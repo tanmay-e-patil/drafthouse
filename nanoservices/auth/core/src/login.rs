@@ -1,7 +1,7 @@
 use chrono::Utc;
 use dal::{
-    CreateRefreshToken, DeleteAllRefreshTokensForUser, DeleteRefreshToken, GetRefreshTokenByHash,
-    GetUserByEmail, GetUserById, MarkWelcomeDocCreated,
+    CreateRefreshToken, DeleteAllRefreshTokensForUser, DeleteRefreshToken, GetUserByEmail,
+    MarkWelcomeDocCreated, RotateRefreshToken,
 };
 use kernel::{LoginResponse, NewRefreshToken, RefreshResponse};
 use utils::errors::{NanoServiceError, NanoServiceErrorStatus};
@@ -87,47 +87,24 @@ pub async fn refresh_access_token<D>(
     raw_refresh_token: &str,
 ) -> Result<(RefreshResponse, String), NanoServiceError>
 where
-    D: GetRefreshTokenByHash + GetUserById + DeleteRefreshToken + CreateRefreshToken,
+    D: RotateRefreshToken,
 {
     let token_hash = token::hash_token(raw_refresh_token);
+    let new_raw = token::generate_verification_token()?;
+    let new_hash = token::hash_token(&new_raw);
+    let expires_at = Utc::now() + chrono::Duration::days(refresh_token_expiry_days());
 
-    let stored = dal
-        .get_refresh_token_by_hash(token_hash.clone())
+    let user = dal
+        .rotate_refresh_token(token_hash, new_hash, expires_at)
         .await?
         .ok_or_else(|| {
-            tracing::warn!("token refresh failed: token not found");
+            tracing::warn!("token refresh failed: token invalid, revoked, or expired");
             NanoServiceError::new(
                 "Invalid or revoked refresh token",
                 NanoServiceErrorStatus::Unauthorized,
             )
         })?;
-
-    if stored.expires_at < Utc::now() {
-        tracing::warn!(user_id = %stored.user_id, "token refresh failed: token expired");
-        dal.delete_refresh_token(token_hash).await?;
-        return Err(NanoServiceError::new(
-            "Refresh token expired",
-            NanoServiceErrorStatus::Unauthorized,
-        ));
-    }
-
-    let user = dal.get_user_by_id(stored.user_id).await?.ok_or_else(|| {
-        NanoServiceError::new("User not found", NanoServiceErrorStatus::Unauthorized)
-    })?;
-
-    dal.delete_refresh_token(stored.token_hash.clone()).await?;
-
     let access_token = jwt::create_jwt(user.id, &user.email, user.email_verified_at.is_some())?;
-    let new_raw = token::generate_verification_token()?;
-    let new_hash = token::hash_token(&new_raw);
-    let expires_at = Utc::now() + chrono::Duration::days(refresh_token_expiry_days());
-
-    dal.create_refresh_token(NewRefreshToken {
-        user_id: user.id,
-        token_hash: new_hash,
-        expires_at,
-    })
-    .await?;
 
     Ok((
         RefreshResponse {
@@ -159,6 +136,7 @@ where
 mod tests {
     use super::*;
     use chrono::{Duration, Utc};
+    use dal::{GetRefreshTokenByHash, GetUserById};
     use kernel::{NewRefreshToken, RefreshToken, User};
     use std::sync::{Arc, Mutex};
     use uuid::Uuid;
@@ -285,6 +263,44 @@ mod tests {
                     .find(|t| t.token_hash == token_hash)
                     .cloned();
                 Ok(found)
+            }
+        }
+    }
+
+    impl RotateRefreshToken for MockDal {
+        fn rotate_refresh_token(
+            &self,
+            token_hash: String,
+            replacement_hash: String,
+            replacement_expires_at: chrono::DateTime<Utc>,
+        ) -> impl std::future::Future<Output = Result<Option<User>, NanoServiceError>> + Send
+        {
+            let user = self.user.clone();
+            let tokens = Arc::clone(&self.refresh_tokens);
+            async move {
+                let mut tokens = tokens.lock().unwrap();
+                let Some(index) = tokens
+                    .iter()
+                    .position(|token| token.token_hash == token_hash)
+                else {
+                    return Ok(None);
+                };
+                if tokens[index].expires_at < Utc::now() {
+                    tokens.remove(index);
+                    return Ok(None);
+                }
+                let Some(user) = user.filter(|user| user.id == tokens[index].user_id) else {
+                    return Ok(None);
+                };
+
+                tokens.remove(index);
+                tokens.push(RefreshToken {
+                    id: Uuid::new_v4(),
+                    user_id: user.id,
+                    token_hash: replacement_hash,
+                    expires_at: replacement_expires_at,
+                });
+                Ok(Some(user))
             }
         }
     }

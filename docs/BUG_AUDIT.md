@@ -335,6 +335,8 @@ Refresh reads a token, deletes it, then creates a replacement through separate c
 
 **Fix:** consume tokens conditionally and mutate associated auth state within a transaction, with a single successful consumer.
 
+**Partially resolved:** refresh-token rotation now locks and validates the old token, deletes it, inserts its replacement, and commits as one PostgreSQL transaction. Concurrent reuse has one successful consumer, and replacement insertion failure rolls back consumption. Password-reset token consumption remains to be made atomic.
+
 ## Suggested remediation order
 
 1. Verify deployment secret injection immediately; fix the default-secret configuration.
