@@ -187,7 +187,11 @@ async fn regression_30_pagination_returns_all_documents_with_equal_timestamps() 
         .unwrap();
     assert!(first.has_more);
     assert_eq!(first.data.len(), 2);
-    let second = documents_core::list_documents(&dal, owner, first.next_cursor, Some(2))
+    let cursor = first
+        .next_cursor
+        .as_deref()
+        .and_then(DocumentCursor::decode);
+    let second = documents_core::list_documents(&dal, owner, cursor, Some(2))
         .await
         .unwrap();
     assert_eq!(second.data.len(), 1, "the third document must be returned");
@@ -196,6 +200,76 @@ async fn regression_30_pagination_returns_all_documents_with_equal_timestamps() 
     seen.sort();
     seen.dedup();
     assert_eq!(seen.len(), 3);
+}
+
+/// REG-30 (#30): changing the page-boundary document after issuing a cursor
+/// must not move that cursor or duplicate documents on the next page.
+#[tokio::test]
+async fn regression_30_cursor_is_stable_when_boundary_document_changes() {
+    let env = TestEnv::new().await;
+    let dal = env.dal();
+    let owner = user(&dal).await;
+    for _ in 0..3 {
+        document(&dal, owner).await;
+    }
+    sqlx::query("UPDATE documents SET updated_at = '2026-01-01T00:00:00Z' WHERE owner_id = $1")
+        .bind(owner)
+        .execute(&dal.pool)
+        .await
+        .unwrap();
+
+    let first = documents_core::list_documents(&dal, owner, None, Some(2))
+        .await
+        .unwrap();
+    let cursor = first
+        .next_cursor
+        .as_deref()
+        .and_then(DocumentCursor::decode);
+    let boundary_id = first.data.last().unwrap().id;
+    sqlx::query("UPDATE documents SET updated_at = '2027-01-01T00:00:00Z' WHERE id = $1")
+        .bind(boundary_id)
+        .execute(&dal.pool)
+        .await
+        .unwrap();
+
+    let second = documents_core::list_documents(&dal, owner, cursor, Some(2))
+        .await
+        .unwrap();
+    let mut seen: Vec<Uuid> = first.data.iter().map(|d| d.id).collect();
+    seen.extend(second.data.iter().map(|d| d.id));
+    let total = seen.len();
+    seen.sort();
+    seen.dedup();
+    assert_eq!(total, 3, "pagination must not return a duplicate");
+    assert_eq!(seen.len(), 3, "pagination must not skip a document");
+}
+
+/// REG-30 (#30): the HTTP boundary rejects legacy or malformed cursors rather
+/// than silently treating them as compound pagination positions.
+#[tokio::test]
+async fn regression_30_malformed_compound_cursor_is_rejected() {
+    use actix_web::{App, http::StatusCode, test, web};
+
+    let env = TestEnv::new().await;
+    let owner = user(&env.dal()).await;
+    let pool = env.pool.clone();
+    let app = test::init_service(App::new().configure(move |cfg| {
+        documents_networking::routes::configure(
+            cfg,
+            web::Data::new(SqlxPostGresDescriptor { pool: pool.clone() }),
+            web::Data::new(DashMap::new()),
+        )
+    }))
+    .await;
+    let token = auth_core::jwt::create_jwt(owner, "owner@regression.invalid", true).unwrap();
+    let req = test::TestRequest::get()
+        .uri(&format!("/documents?cursor={}", Uuid::new_v4()))
+        .insert_header(("Authorization", format!("Bearer {token}")))
+        .to_request();
+
+    let resp = test::call_service(&app, req).await;
+
+    assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
 }
 
 async fn reset_token(dal: &SqlxPostGresDescriptor, owner: Uuid) -> String {

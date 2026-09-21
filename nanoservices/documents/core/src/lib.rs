@@ -8,9 +8,9 @@ use dal::{
 };
 use kernel::{
     CreateInviteLinkRequest, Document, DocumentAccessChange, DocumentAccessChanged,
-    DocumentContentResponse, DocumentListResponse, DocumentMember, InviteLink, MemberRole,
-    NewDocument, NewInviteLink, TitleUpdated, UpdateDocumentRequest, UpdateMemberRoleRequest,
-    WsTicketResponse,
+    DocumentContentResponse, DocumentCursor, DocumentListResponse, DocumentMember, InviteLink,
+    MemberRole, NewDocument, NewInviteLink, TitleUpdated, UpdateDocumentRequest,
+    UpdateMemberRoleRequest, WsTicketResponse,
 };
 use nan_serve_publish_event::publish_event;
 use rand::Rng;
@@ -240,7 +240,7 @@ where
 pub async fn list_documents<D>(
     dal: &D,
     owner_id: uuid::Uuid,
-    cursor: Option<uuid::Uuid>,
+    cursor: Option<DocumentCursor>,
     limit: Option<i64>,
 ) -> Result<DocumentListResponse, NanoServiceError>
 where
@@ -259,7 +259,13 @@ where
     };
 
     let next_cursor = if has_more {
-        data.last().map(|d| d.id)
+        data.last().map(|document| {
+            DocumentCursor {
+                updated_at: document.updated_at,
+                id: document.id,
+            }
+            .encode()
+        })
     } else {
         None
     };
@@ -913,34 +919,30 @@ mod tests {
         fn list_documents_by_owner(
             &self,
             owner_id: Uuid,
-            cursor: Option<Uuid>,
+            cursor: Option<DocumentCursor>,
             limit: i64,
         ) -> impl std::future::Future<Output = Result<Vec<Document>, NanoServiceError>> + Send
         {
             let docs = Arc::clone(&self.documents);
             async move {
                 let all = docs.lock().unwrap();
-                let owned: Vec<Document> = all
+                let mut owned: Vec<Document> = all
                     .iter()
                     .filter(|d| d.owner_id == owner_id)
                     .cloned()
                     .collect();
+                owned.sort_by(|a, b| {
+                    b.updated_at
+                        .cmp(&a.updated_at)
+                        .then_with(|| b.id.cmp(&a.id))
+                });
+                if let Some(cursor) = cursor {
+                    owned.retain(|document| {
+                        (document.updated_at, document.id) < (cursor.updated_at, cursor.id)
+                    });
+                }
 
-                let start_idx = if let Some(cursor_id) = cursor {
-                    owned
-                        .iter()
-                        .position(|d| d.id == cursor_id)
-                        .map(|i| i + 1)
-                        .unwrap_or(owned.len())
-                } else {
-                    0
-                };
-
-                Ok(owned
-                    .into_iter()
-                    .skip(start_idx)
-                    .take(limit as usize)
-                    .collect())
+                Ok(owned.into_iter().take(limit as usize).collect())
             }
         }
     }
@@ -1365,7 +1367,11 @@ mod tests {
         assert!(first_page.has_more);
         assert!(first_page.next_cursor.is_some());
 
-        let second_page = list_documents(&dal, owner_id, first_page.next_cursor, Some(3))
+        let cursor = first_page
+            .next_cursor
+            .as_deref()
+            .and_then(DocumentCursor::decode);
+        let second_page = list_documents(&dal, owner_id, cursor, Some(3))
             .await
             .unwrap();
         assert_eq!(second_page.data.len(), 2);

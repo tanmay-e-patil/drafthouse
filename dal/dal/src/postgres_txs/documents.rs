@@ -10,8 +10,8 @@ use crate::documents_txs::{
 use chrono::Utc;
 use dal_tx_impl::impl_transaction;
 use kernel::{
-    Document, DocumentMember, InviteLink, MemberRole, NewDocument, NewInviteLink, NewWsTicket,
-    WsTicket,
+    Document, DocumentCursor, DocumentMember, InviteLink, MemberRole, NewDocument, NewInviteLink,
+    NewWsTicket, WsTicket,
 };
 use utils::errors::{NanoServiceError, NanoServiceErrorStatus};
 
@@ -79,10 +79,10 @@ async fn delete_document(&self, id: uuid::Uuid) -> Result<(), NanoServiceError> 
 async fn list_documents_by_owner(
     &self,
     owner_id: uuid::Uuid,
-    cursor: Option<uuid::Uuid>,
+    cursor: Option<DocumentCursor>,
     limit: i64,
 ) -> Result<Vec<Document>, NanoServiceError> {
-    let rows = if let Some(cursor_id) = cursor {
+    let rows = if let Some(cursor) = cursor {
         sqlx::query_as::<_, Document>(
             "SELECT d.id, d.owner_id, d.title, d.is_public, d.created_at, d.updated_at
              FROM documents d
@@ -93,12 +93,13 @@ async fn list_documents_by_owner(
                  WHERE dm.doc_id = d.id AND dm.user_id = $1
                )
              )
-             AND d.updated_at < (SELECT updated_at FROM documents WHERE id = $2)
-             ORDER BY d.updated_at DESC
-             LIMIT $3",
+             AND (d.updated_at, d.id) < ($2, $3)
+             ORDER BY d.updated_at DESC, d.id DESC
+             LIMIT $4",
         )
         .bind(owner_id)
-        .bind(cursor_id)
+        .bind(cursor.updated_at)
+        .bind(cursor.id)
         .bind(limit)
         .fetch_all(&self.pool)
         .await
@@ -111,7 +112,7 @@ async fn list_documents_by_owner(
                SELECT 1 FROM document_members dm
                WHERE dm.doc_id = d.id AND dm.user_id = $1
              )
-             ORDER BY d.updated_at DESC
+             ORDER BY d.updated_at DESC, d.id DESC
              LIMIT $2",
         )
         .bind(owner_id)

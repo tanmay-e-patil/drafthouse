@@ -2,8 +2,8 @@ use actix_web::{HttpRequest, HttpResponse, web};
 use collab_core::{DocStore, awareness_last_active_to_datetime};
 use dal::postgres_txs::SqlxPostGresDescriptor;
 use kernel::{
-    CreateDocumentRequest, CreateInviteLinkRequest, DocumentPresencePeer, DocumentPresenceResponse,
-    UpdateDocumentRequest, UpdateMemberRoleRequest,
+    CreateDocumentRequest, CreateInviteLinkRequest, DocumentCursor, DocumentPresencePeer,
+    DocumentPresenceResponse, UpdateDocumentRequest, UpdateMemberRoleRequest,
 };
 use utils::errors::{NanoServiceError, NanoServiceErrorStatus};
 use uuid::Uuid;
@@ -57,12 +57,13 @@ pub async fn list_documents(
     let claims = crate::middleware::extract_verified_jwt(&req).await?;
     let cursor = query
         .cursor
-        .as_ref()
-        .map(|c| Uuid::parse_str(c))
-        .transpose()
-        .map_err(|_| {
-            NanoServiceError::new("Invalid cursor format", NanoServiceErrorStatus::BadRequest)
-        })?;
+        .as_deref()
+        .map(|value| {
+            DocumentCursor::decode(value).ok_or_else(|| {
+                NanoServiceError::new("Invalid cursor format", NanoServiceErrorStatus::BadRequest)
+            })
+        })
+        .transpose()?;
     let limit = query.limit.map(|l| l as i64);
     let result = documents_core::list_documents(dal, claims.sub, cursor, limit).await?;
     Ok(HttpResponse::Ok().json(result))

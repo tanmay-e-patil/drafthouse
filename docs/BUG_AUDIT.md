@@ -315,6 +315,8 @@ The cursor filter uses only `updated_at < cursor.updated_at`, and ordering has n
 
 **Fix:** use a stable compound `(updated_at, id)` cursor and matching ordering/filtering.
 
+**Resolved:** document lists now return an opaque cursor containing the boundary row's immutable `(updated_at, id)` position. PostgreSQL filters and orders by that same descending tuple, so equal timestamps have a deterministic tie-breaker and later mutations of the boundary document cannot move an issued cursor. Malformed cursors are rejected at the HTTP boundary.
+
 ### 31. Password reset bypasses minimum password validation — P2, C
 
 **Location:** `nanoservices/auth/core/src/password_reset.rs:90–94`.

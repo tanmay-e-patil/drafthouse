@@ -203,10 +203,30 @@ pub struct CreateDocumentRequest {
     pub title: Option<String>,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct DocumentCursor {
+    pub updated_at: DateTime<Utc>,
+    pub id: Uuid,
+}
+
+impl DocumentCursor {
+    pub fn encode(self) -> String {
+        format!("{}:{}", self.updated_at.timestamp_micros(), self.id)
+    }
+
+    pub fn decode(value: &str) -> Option<Self> {
+        let (updated_at_micros, id) = value.split_once(':')?;
+        Some(Self {
+            updated_at: DateTime::from_timestamp_micros(updated_at_micros.parse().ok()?)?,
+            id: id.parse().ok()?,
+        })
+    }
+}
+
 #[derive(Debug, Clone, Serialize)]
 pub struct DocumentListResponse {
     pub data: Vec<Document>,
-    pub next_cursor: Option<Uuid>,
+    pub next_cursor: Option<String>,
     pub has_more: bool,
 }
 
