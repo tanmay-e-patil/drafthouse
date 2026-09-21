@@ -3,6 +3,7 @@ import { useCollabStore } from "#/features/collab/store";
 import { useCollabEditor } from "#/features/collab/useCollabEditor";
 import type { EditorView, ViewUpdate } from "@codemirror/view";
 import type { Extension } from "@codemirror/state";
+import { yUndoManagerKeymap } from "y-codemirror.next";
 import { Button } from "#/components/ui/button";
 import { EDITOR_ACTIONS } from "./editorActions";
 import { getFormattingEdit, type FormattingActionId } from "./formatting";
@@ -161,7 +162,6 @@ export default function Editor({
       codeMirror.view.lineNumbers(),
       codeMirror.view.highlightActiveLineGutter(),
       codeMirror.view.highlightSpecialChars(),
-      codeMirror.commands.history(),
       codeMirror.view.drawSelection(),
       codeMirror.view.highlightActiveLine(),
       codeMirror.language.syntaxHighlighting(codeMirror.language.defaultHighlightStyle, { fallback: true }),
@@ -172,8 +172,8 @@ export default function Editor({
       }),
       editorKeymap,
       codeMirror.view.keymap.of([
+        ...yUndoManagerKeymap,
         ...codeMirror.commands.defaultKeymap,
-        ...codeMirror.commands.historyKeymap,
       ]),
       updateListener,
       codeMirror.view.EditorView.theme({

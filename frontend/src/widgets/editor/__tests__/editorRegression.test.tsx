@@ -82,6 +82,36 @@ it("REG-08: undo never removes another collaborator's change", async () => {
   remote.destroy();
 });
 
+it("REG-08: collaboration keybindings undo and redo only local edits", async () => {
+  const { view, doc } = await mount();
+  act(() => view.dispatch({ changes: { from: 5, insert: " local" } }));
+  const remote = new Y.Doc();
+  Y.applyUpdate(remote, Y.encodeStateAsUpdate(doc));
+  remote.getText("content").insert(0, "remote ");
+  act(() => Y.applyUpdate(doc, Y.encodeStateAsUpdate(remote), remote));
+
+  const isMac = /Mac/.test(navigator.platform);
+  fireEvent.keyDown(view.contentDOM, {
+    key: "z",
+    ...(isMac ? { metaKey: true } : { ctrlKey: true }),
+  });
+  await waitFor(() =>
+    expect(view.state.doc.toString()).toBe("remote hello"),
+  );
+  expect(doc.getText("content").toString()).toBe("remote hello");
+
+  fireEvent.keyDown(view.contentDOM, {
+    key: isMac ? "z" : "y",
+    shiftKey: isMac,
+    ...(isMac ? { metaKey: true } : { ctrlKey: true }),
+  });
+  await waitFor(() =>
+    expect(view.state.doc.toString()).toBe("remote hello local"),
+  );
+  expect(doc.getText("content").toString()).toBe("remote hello local");
+  remote.destroy();
+});
+
 it("REG-09: rapid edits stay in the shared CRDT without plaintext autosaves", async () => {
   const { view, doc } = await mount();
   act(() => view.dispatch({ changes: { from: 5, insert: " A" } }));

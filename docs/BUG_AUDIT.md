@@ -86,6 +86,8 @@ The editor installs ordinary CodeMirror `history()` and `historyKeymap` alongsid
 
 **Fix:** use the collaboration-aware Yjs undo manager/keymap instead of the independent CodeMirror history stack.
 
+**Resolved:** the editor no longer installs CodeMirror's independent history extension or keymap. Undo and redo shortcuts now use the `Y.UndoManager` supplied by `yCollab`, which tracks local editor transactions while preserving updates received from remote provider origins.
+
 ## Client lifecycle and saving
 
 ### 9. Autosave drops edits made during an in-flight save — P1, C

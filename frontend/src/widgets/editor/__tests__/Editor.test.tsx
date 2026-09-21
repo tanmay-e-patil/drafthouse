@@ -27,12 +27,13 @@ vi.mock("@codemirror/state", () => ({
     create: vi.fn(() => ({ doc: "# Hello" })),
     allowMultipleSelections: { of: vi.fn() },
   },
+  StateEffect: {
+    reconfigure: { of: vi.fn((extensions) => extensions) },
+  },
 }));
 
 vi.mock("@codemirror/commands", () => ({
   defaultKeymap: [],
-  history: vi.fn(() => []),
-  historyKeymap: [],
 }));
 
 vi.mock("@codemirror/language", () => ({

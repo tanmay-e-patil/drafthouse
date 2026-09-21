@@ -15,7 +15,7 @@ Permanent regression suite for [BUG_AUDIT.md](BUG_AUDIT.md). Audit finding **#1 
 | #6 revocation | `regression_06_reader_disconnected_when_document_becomes_private`, `regression_06_removed_member_is_disconnected`, `regression_06_downgraded_editor_is_disconnected`, `regression_06_stale_editable_ticket_is_downgraded_on_reconnect`, `regression_06_revoked_member_ticket_is_refused_on_reconnect`, `regression_06_editor_disconnected_after_document_deletion`, `access_events_are_published_only_after_successful_writes` (documents-core unit) | WS suite + documents-core | **green** |
 | #7 erasure | `regression_07_deletion_tears_down_live_rooms`, `regression_07_deletion_purges_scylla_data` (Scylla container) | PG suite | **green** |
 | #33 Scylla DAL broken | `regression_33_wal_and_snapshot_writes_succeed` | `dal/dal/tests/scylla_regression.rs` (Scylla container) | **green** |
-| #8 undo | `REG-08: undo never removes another collaborator's change` | `frontend/src/widgets/editor/__tests__/editorRegression.test.tsx` | red |
+| #8 undo | `REG-08` ×2 (remote preservation, local undo/redo) | `frontend/src/widgets/editor/__tests__/editorRegression.test.tsx` | **green** |
 | #9 save lock | `REG-09: rapid edits stay in the shared CRDT without plaintext autosaves` | editor suite | **green** |
 | #10 final save | `REG-10: navigating away schedules no plaintext final save` | editor suite | **green** |
 | #11 async teardown | `REG-11: unmounting during pending ticket setup...` | collab suite | **green** |
@@ -77,7 +77,7 @@ is tested.
 
 ## Current state (2026-09-20)
 
-- Frontend: **1 test red**, 166 tests green. #4/#9/#10/#11/#12/#13/#14/#15/#16/#17/#18/#20 + REG-SELF are green; #8 remains.
+- Frontend: **168 tests green**. All frontend regression findings are green.
 - `collab-core`: **5 red** (integration suite); the 36 lib tests are green, including the `access_sync` event-subscriber and purge-retry tests. `collab-networking`: **6 red, 16 green** — #6 revocation is green (single-process); #21–#25 remain red.
 - Postgres + Scylla regression suite: **4 red, 6 green** — #4 and #7 (room teardown + Scylla purge) are green; #30/#31/#32 remain red.
 - Scylla DAL suite: **4 green** — WAL replay uses monotonic sequences and snapshots use monotonic generations with explicit WAL boundaries.
