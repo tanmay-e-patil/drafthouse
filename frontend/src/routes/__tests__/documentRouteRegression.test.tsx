@@ -8,6 +8,7 @@
  */
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { act, cleanup, fireEvent, render, waitFor } from "@testing-library/react";
+import { useEffect } from "react";
 import { useAuthStore } from "#/features/auth/store";
 
 const h = vi.hoisted(() => ({
@@ -31,6 +32,12 @@ vi.mock("#/features/documents/api", () => ({
 vi.mock("#/widgets/editor/Editor", () => ({
   default: (props: any) => {
     h.props = props;
+    useEffect(
+      () => () => {
+        if (h.props === props) h.props = null;
+      },
+      [props],
+    );
     return <div>Audit editor</div>;
   },
 }));

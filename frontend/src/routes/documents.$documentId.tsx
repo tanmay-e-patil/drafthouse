@@ -122,35 +122,45 @@ function DocumentEditor() {
     hydrate();
   }, [hydrate]);
 
-  const fetchDocument = useCallback(async () => {
-    setState({ loading: true, contentLoading: true });
-    try {
-      setState({ inaccessibleDocument: false, authRequired: false });
-      const [doc, contentResp] = await Promise.all([
-        getDocumentApi(documentId),
-        getDocumentContentApi(documentId),
-      ]);
-      setState({ document: doc, title: doc.title, content: contentResp.content });
-      upsertDocument(doc);
-    } catch (error) {
-      if (isInaccessibleDocumentError(error)) {
-        setState({
-          inaccessibleDocument: true,
-          authRequired: error instanceof ApiError && error.status === 401,
-        });
-      } else {
-        notifyTransientError(error);
-      }
-    } finally {
-      setState({ loading: false, contentLoading: false });
-    }
-  }, [documentId, upsertDocument]);
-
   useEffect(() => {
-    if (hydrated) {
-      fetchDocument();
+    if (!hydrated) return;
+
+    let active = true;
+    setState(initialEditorState);
+
+    async function fetchDocument() {
+      try {
+        const [doc, contentResp] = await Promise.all([
+          getDocumentApi(documentId),
+          getDocumentContentApi(documentId),
+        ]);
+        if (!active) return;
+
+        setState({ document: doc, title: doc.title, content: contentResp.content });
+        upsertDocument(doc);
+      } catch (error) {
+        if (!active) return;
+
+        if (isInaccessibleDocumentError(error)) {
+          setState({
+            inaccessibleDocument: true,
+            authRequired: error instanceof ApiError && error.status === 401,
+          });
+        } else {
+          notifyTransientError(error);
+        }
+      } finally {
+        if (active) {
+          setState({ loading: false, contentLoading: false });
+        }
+      }
     }
-  }, [hydrated, fetchDocument]);
+
+    void fetchDocument();
+    return () => {
+      active = false;
+    };
+  }, [documentId, hydrated, upsertDocument]);
 
   useEffect(() => {
     if (!loading && !contentLoading && titleRef.current) {
@@ -216,7 +226,7 @@ function DocumentEditor() {
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, [setFocusMode]);
 
-  if (loading) {
+  if (loading || (document !== null && document.id !== documentId)) {
     return (
       <DocumentLoadingState
         documentId={documentId}

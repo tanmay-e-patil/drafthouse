@@ -182,6 +182,8 @@ Token refresh occurs only on page hydration; API calls neither refresh proactive
 
 **Fix:** cancel/ignore stale loads, reset document state on navigation, and require state identity to match the current route before mounting an editor.
 
+**Resolved:** each document load now owns an effect-scoped active flag, so cleanup prevents obsolete success, error, and completion handlers from mutating route state. Navigation resets all document-bound editor state before loading, and the route refuses to mount an editor when the loaded document ID differs from the current route ID.
+
 ## Server protocol, presence, and persistence
 
 ### 19. Awareness relays are attributed to the wrong authenticated user — P2, R

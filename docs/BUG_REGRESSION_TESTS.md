@@ -25,7 +25,7 @@ Permanent regression suite for [BUG_AUDIT.md](BUG_AUDIT.md). Audit finding **#1 
 | #15 preview | `REG-15: preview mode keeps receiving collaborators' edits` | editor suite | red |
 | #16 title permission | `REG-16` (UI) + `regression_16_editor_member_cannot_rename_document` (server guard) | route + PG suite | red / **green guard** |
 | #17 token expiry | `REG-17` ×4 (api refresh+retry, single-flight refresh, refresh-failure, ticket fallback) | `frontend/src/features/documents/__tests__/apiRegression.test.ts` + collab suite | **green** |
-| #18 route race | `REG-18` ×2 (late response, failed load) | route suite | red |
+| #18 route race | `REG-18` ×2 (late response, failed load) | route suite | **green** |
 | #19 awareness identity | `regression_19_relay_keeps_identity_and_disconnect_removes_only_owned_clients` | `nanoservices/collab/core/tests/regression.rs` | red |
 | #20 name identity | `REG-20: peers with identical display names...` | collab suite | **green** (name-based interim identity; user-ID rigor lands with #19) |
 | #21 broadcast lag | `regression_21_lagged_client_is_resynchronized_automatically` | WS suite | red |
@@ -77,7 +77,7 @@ is tested.
 
 ## Current state (2026-09-20)
 
-- Frontend: **5 tests red**, 160 tests green. #4/#9/#10/#11/#12/#13/#14/#17/#20 + REG-SELF are green; #8/#15/#16/#18 remain.
+- Frontend: **3 tests red**, 162 tests green. #4/#9/#10/#11/#12/#13/#14/#17/#18/#20 + REG-SELF are green; #8/#15/#16 remain.
 - `collab-core`: **5 red** (integration suite); the 36 lib tests are green, including the `access_sync` event-subscriber and purge-retry tests. `collab-networking`: **6 red, 16 green** — #6 revocation is green (single-process); #21–#25 remain red.
 - Postgres + Scylla regression suite: **4 red, 6 green** — #4 and #7 (room teardown + Scylla purge) are green; #30/#31/#32 remain red.
 - Scylla DAL suite: **4 green** — WAL replay uses monotonic sequences and snapshots use monotonic generations with explicit WAL boundaries.
