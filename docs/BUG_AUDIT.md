@@ -240,6 +240,8 @@ The advertised application limit is 100 KiB, but `actix-ws` 0.3.1 defaults to a 
 
 **Fix:** acquire the slot only after successful upgrade validation, or release it with an ownership guard on every exit path.
 
+**Resolved:** the handler now validates the WebSocket upgrade before incrementing the room connection count. Invalid upgrade requests cannot consume editor capacity, while the existing 100-editor cap still rejects the 101st valid connection.
+
 ### 24. Malformed protocol lengths panic outside the safety boundary — P1, R
 
 **Location:** `nanoservices/collab/core/src/sync_protocol.rs:64–71`.

@@ -117,12 +117,13 @@ pub async fn ws_handler(
     .await
     .map_err(|e| actix_web::error::ErrorInternalServerError(e.to_string()))?;
 
+    // Validate the WebSocket upgrade before consuming a room connection slot.
+    let (response, mut session, msg_stream) = actix_ws::handle(&req, stream)?;
+
     if !room.add_connection() {
         return Ok(HttpResponse::TooManyRequests().body("Editor cap reached (max 100)"));
     }
 
-    // Perform WebSocket upgrade
-    let (response, mut session, msg_stream) = actix_ws::handle(&req, stream)?;
     let mut msg_stream = msg_stream
         .max_frame_size(MAX_MSG_BYTES)
         .aggregate_continuations()
