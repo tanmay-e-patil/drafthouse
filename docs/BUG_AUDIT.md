@@ -164,6 +164,8 @@ The UI enables title changes for editor members and only excludes viewers. The b
 
 **Fix:** align the title control with the intended owner/editor permission policy.
 
+**Resolved:** title editing now follows the backend's owner-only policy. The title input is disabled for editor and viewer members, the blur handler independently refuses non-owner updates, and owners retain the existing rename flow.
+
 ### 17. Access tokens expire during normal long editing sessions without refresh — P1, C
 
 **Locations:** `frontend/src/features/auth/store.ts:41–47`; `frontend/src/features/documents/api.ts:45–51`; `frontend/src/features/collab/useCollabEditor.ts:106–113`; `nanoservices/auth/core/src/jwt.rs:11–15`.

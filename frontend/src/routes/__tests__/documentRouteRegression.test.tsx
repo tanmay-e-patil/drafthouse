@@ -139,6 +139,20 @@ it("REG-16: editor members are not offered a title edit the API rejects", async 
   expect((title as HTMLInputElement).disabled).toBe(true);
 });
 
+it("REG-16: owners can still rename their documents", async () => {
+  h.get.mockResolvedValue(doc("A"));
+  h.content.mockResolvedValue({ content: "A text" });
+  h.update.mockResolvedValue({ ...doc("A"), title: "Renamed" });
+  const ui = render(<Component />);
+  const title = await ui.findByLabelText("Document title");
+  expect((title as HTMLInputElement).disabled).toBe(false);
+  fireEvent.change(title, { target: { value: "Renamed" } });
+  fireEvent.blur(title);
+  await waitFor(() =>
+    expect(h.update).toHaveBeenCalledWith("A", { title: "Renamed" }),
+  );
+});
+
 it("REG-12: typing a title keeps the collaboration callback stable", async () => {
   h.get.mockResolvedValue(doc("A"));
   h.content.mockResolvedValue({ content: "A text" });

@@ -114,6 +114,11 @@ function DocumentEditor() {
   const editorFont = usePreferencesStore((s) => s.editorFont);
   const setEditorFont = usePreferencesStore((s) => s.setEditorFont);
   const currentUserId = useMemo(() => getJwtSubject(accessToken), [accessToken]);
+  const canEditTitle =
+    document !== null &&
+    (document.access_role
+      ? document.access_role === "owner"
+      : currentUserId === document.owner_id);
   const fontClassName =
     EDITOR_FONT_OPTIONS.find((option) => option.value === editorFont)?.className ??
     "font-sans";
@@ -169,7 +174,8 @@ function DocumentEditor() {
   }, [loading, contentLoading]);
 
   async function handleTitleBlur() {
-    if (!document || saving || document.access_role === "viewer") return;
+    if (!document || saving || !canEditTitle) return;
+
     const trimmed = title.trim();
     if (trimmed === document.title) return;
     setSaving(true);
@@ -276,7 +282,7 @@ function DocumentEditor() {
               value={title}
               onChange={(e) => setTitle(e.target.value)}
               onBlur={handleTitleBlur}
-              disabled={saving || isReadOnly}
+              disabled={saving || !canEditTitle}
               placeholder="Untitled"
             />
             <div className="flex items-center gap-2">
