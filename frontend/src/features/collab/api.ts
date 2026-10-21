@@ -1,6 +1,5 @@
+import { API_BASE } from "#/shared/apiConfig";
 import { authFetch } from "#/shared/authFetch";
-
-const API_BASE = import.meta.env.VITE_API_URL ?? "http://localhost:8080";
 
 export interface WsTicketResponse {
   ticket: string;

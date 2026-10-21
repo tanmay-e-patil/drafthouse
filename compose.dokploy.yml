@@ -1,18 +1,4 @@
 services:
-  postgres:
-    image: postgres:16-alpine
-    environment:
-      POSTGRES_USER: ${POSTGRES_USER:-drafthouse}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-drafthouse}
-      POSTGRES_DB: ${POSTGRES_DB:-drafthouse}
-    volumes:
-      - pg_data:/var/lib/postgresql/data
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-drafthouse}"]
-      interval: 5s
-      timeout: 5s
-      retries: 10
-
   scylla:
     image: scylladb/scylla:6.2
     command: --smp 1 --memory 512M --developer-mode 1
@@ -31,11 +17,10 @@ services:
     image: ghcr.io/tanmay-e-patil/drafthouse:latest
     entrypoint: ["/app/migrate-pg"]
     environment:
-      DATABASE_URL: postgres://${POSTGRES_USER:-drafthouse}:${POSTGRES_PASSWORD:-drafthouse}@postgres:5432/${POSTGRES_DB:-drafthouse}
+      DATABASE_URL: ${DATABASE_URL:?Set DATABASE_URL to the existing Postgres database}
       MIGRATIONS_DIR: /app/migrations/postgres
-    depends_on:
-      postgres:
-        condition: service_healthy
+    networks:
+      - postgres
     restart: "no"
 
   migrate-scylla:
@@ -53,10 +38,13 @@ services:
   app:
     image: ghcr.io/tanmay-e-patil/drafthouse:latest
     pull_policy: always
-    ports:
-      - "${APP_PORT:-8080}:8080"
+    expose:
+      - "8080"
+    networks:
+      - default
+      - postgres
     environment:
-      DATABASE_URL: postgres://${POSTGRES_USER:-drafthouse}:${POSTGRES_PASSWORD:-drafthouse}@postgres:5432/${POSTGRES_DB:-drafthouse}
+      DATABASE_URL: ${DATABASE_URL:?Set DATABASE_URL to the existing Postgres database}
       SCYLLA_NODES: scylla:9042
       SCYLLA_KEYSPACE: drafthouse
       BIND_ADDR: 0.0.0.0:8080
@@ -70,5 +58,10 @@ services:
     restart: unless-stopped
 
 volumes:
-  pg_data:
   scylla_data:
+
+networks:
+  default:
+  postgres:
+    external: true
+    name: ${POSTGRES_NETWORK:?Set POSTGRES_NETWORK to the existing database network}

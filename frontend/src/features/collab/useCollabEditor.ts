@@ -1,3 +1,4 @@
+import { getWsBase } from "#/shared/apiConfig";
 import { useEffect, useRef } from "react";
 import * as Y from "yjs";
 import { WebsocketProvider } from "y-websocket";
@@ -10,8 +11,6 @@ import { useAuthStore } from "#/features/auth/store";
 import { decodeTitleUpdate } from "./titleUpdate";
 import { assignColor } from "./awarenessColors";
 import { useAwarenessStore, type AwarenessPeer } from "./awarenessStore";
-
-const WS_BASE = import.meta.env.VITE_WS_URL ?? "ws://localhost:8080";
 
 /** Maximum reconnection delay in ms (30 seconds). */
 const MAX_RECONNECT_MS = 30_000;
@@ -173,7 +172,7 @@ export function useCollabEditor(
     ]);
     if (stale()) return;
 
-    const provider = new WebsocketProvider(`${WS_BASE}/collab`, docId, session.ydoc, {
+    const provider = new WebsocketProvider(`${getWsBase()}/collab`, docId, session.ydoc, {
       connect: true,
       params,
       resyncInterval: -1,

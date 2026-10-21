@@ -1,7 +1,6 @@
+import { API_BASE } from "#/shared/apiConfig";
 import { authFetch } from "#/shared/authFetch";
 import { ApiError } from "#/shared/errors";
-
-const API_BASE = import.meta.env.VITE_API_URL ?? "http://localhost:8080";
 
 export type MemberRole = "editor" | "viewer";
 

@@ -1,3 +1,4 @@
+import { API_BASE } from "#/shared/apiConfig";
 import { createFileRoute, Link, useSearch } from "@tanstack/react-router";
 import { useState, type FormEvent } from "react";
 import { Button } from "#/components/ui/button";
@@ -16,8 +17,6 @@ import {
 export const Route = createFileRoute("/resend-verification")({
   component: ResendVerification,
 });
-
-const API_BASE = import.meta.env.VITE_API_URL ?? "http://localhost:8080";
 
 interface ApiError {
   detail: string;

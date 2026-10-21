@@ -1,3 +1,4 @@
+import { API_BASE } from "#/shared/apiConfig";
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useState, type FormEvent } from "react";
 import { Button } from "#/components/ui/button";
@@ -14,8 +15,6 @@ import {
 } from "#/components/ui/card";
 
 export const Route = createFileRoute("/register")({ component: Register });
-
-const API_BASE = import.meta.env.VITE_API_URL ?? "http://localhost:8080";
 
 interface ApiError {
   detail: string;

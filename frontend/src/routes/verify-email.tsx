@@ -1,5 +1,7 @@
+import { API_BASE } from "#/shared/apiConfig";
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { createServerFn } from "@tanstack/react-start";
+import { getRequestUrl } from "@tanstack/react-start/server";
 import { useEffect, useState } from "react";
 import { AuthLayout } from "#/features/auth/AuthLayout";
 import {
@@ -9,8 +11,6 @@ import {
   CardHeader,
   CardTitle,
 } from "#/components/ui/card";
-
-const API_BASE = import.meta.env.VITE_API_URL ?? "http://localhost:8080";
 
 interface ApiError {
   detail: string;
@@ -22,7 +22,8 @@ const verifyEmail = createServerFn({ method: "POST" })
   .validator((token: string) => token)
   .handler(async ({ data: token }): Promise<VerifyResult> => {
     try {
-      const res = await fetch(`${API_BASE}/auth/verify-email`, {
+      const url = new URL(`${API_BASE}/auth/verify-email`, getRequestUrl());
+      const res = await fetch(url, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ token }),

@@ -4,6 +4,9 @@ Collaborative markdown editor. Real-time multi-user editing via CRDT. Rust backe
 
 See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for full design decisions.
 
+See [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md) for single-domain Dokploy deployment
+using an existing PostgreSQL container.
+
 ---
 
 ## Architecture
