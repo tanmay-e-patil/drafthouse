@@ -1,4 +1,5 @@
-FROM --platform=$BUILDPLATFORM lukemathwalker/cargo-chef:latest-rust-1-alpine AS chef
+# Compile on the target architecture (QEMU is configured in CI for ARM64).
+FROM lukemathwalker/cargo-chef:latest-rust-1-alpine AS chef
 
 ARG TARGETARCH
 
