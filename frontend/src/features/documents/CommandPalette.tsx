@@ -4,6 +4,7 @@ import { Dialog, DialogContent } from "#/components/ui/dialog";
 import { Input } from "#/components/ui/input";
 import { listDocumentsApi, type Document } from "./api";
 import { useDocumentStore } from "./store";
+import { notifyTransientError } from "#/shared/errors";
 import { cn } from "#/lib/utils";
 
 interface CommandPaletteProps {
@@ -76,8 +77,8 @@ export function CommandPalette({
       }
     }
 
-    loadAllDocuments().catch(() => {
-      if (!cancelled) setLoading(false);
+    loadAllDocuments().catch((error) => {
+      if (!cancelled) notifyTransientError(error);
     });
 
     return () => {

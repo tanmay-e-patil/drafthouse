@@ -1,6 +1,8 @@
 import { describe, it, expect, vi, afterEach, beforeEach } from "vitest";
 import { render, screen, fireEvent, waitFor } from "@testing-library/react";
 import { ShareModal } from "../ShareModal";
+import { toast } from "sonner";
+import { ApiError } from "#/shared/errors";
 import * as api from "../api";
 
 vi.mock("../api", () => ({
@@ -175,4 +177,26 @@ describe("ShareModal", () => {
       });
     });
   });
+});
+
+
+it("handles clipboard rejection without reporting success", async () => {
+  Object.assign(navigator, { clipboard: { writeText: vi.fn().mockRejectedValue(new Error("Denied")) } });
+  vi.mocked(api.listInviteLinksApi).mockResolvedValue([{
+    token: "token", doc_id: "doc-123", role: "editor", created_by: "owner",
+    max_uses: null, use_count: 0, expires_at: null, revoked_at: null,
+  }]);
+  render(<ShareModal {...defaultProps} />);
+  fireEvent.click(await screen.findByRole("button", { name: "Copy editor link" }));
+  await waitFor(() => expect(toast.error).toHaveBeenCalledWith("Could not copy link. Please try again."));
+  expect(toast.success).not.toHaveBeenCalled();
+});
+
+it.each([429, 503])("uses shared feedback for HTTP %i when sharing", async (status) => {
+  vi.mocked(api.createInviteLinkApi).mockRejectedValue(new ApiError("Internal detail", status));
+  render(<ShareModal {...defaultProps} />);
+  fireEvent.click(screen.getByRole("button", { name: "Generate editor link" }));
+  await waitFor(() => expect(toast.error).toHaveBeenCalledWith(status === 429
+    ? "You're doing that too quickly. Please wait a moment and try again."
+    : "Something went wrong on our side. Please try again in a moment."));
 });

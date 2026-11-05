@@ -29,6 +29,7 @@ import {
 } from "#/features/preferences/store";
 import { Maximize2, Minimize2, Share2 } from "lucide-react";
 import { Link } from "@tanstack/react-router";
+import { AppErrorPage } from "./-rootPages";
 import { DocumentLoadingState, InaccessibleDocumentState } from "./-documentStates";
 
 export const Route = createFileRoute("/documents/$documentId")({
@@ -255,7 +256,7 @@ function DocumentEditor() {
     );
   }
 
-  if (!document) return null;
+  if (!document) return <AppErrorPage />;
 
   const isOwner = currentUserId === document.owner_id;
   const isReadOnly = document.access_role

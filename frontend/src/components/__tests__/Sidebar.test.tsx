@@ -42,6 +42,22 @@ describe("Sidebar", () => {
     });
   });
 
+  it("creates a document from the empty state", async () => {
+    const doc = { id: "new-doc", title: "Untitled", owner_id: "owner", is_public: false, created_at: "", updated_at: "" };
+    vi.stubGlobal("fetch", vi.fn().mockImplementation((_url, init) => Promise.resolve({
+      ok: true,
+      json: async () => init?.method === "POST"
+        ? doc
+        : { data: [], next_cursor: null, has_more: false },
+    })));
+    render(<Sidebar collapsed={false} onToggleCollapse={noop} />);
+    await userEvent.click(await screen.findByRole("button", { name: "Create document" }));
+    await waitFor(() => expect(navigate).toHaveBeenCalledWith({
+      to: "/documents/$documentId", params: { documentId: "new-doc" },
+    }));
+    expect(useDocumentStore.getState().documents).toContainEqual(doc);
+  });
+
   it("renders document list when documents exist", async () => {
     vi.stubGlobal(
       "fetch",

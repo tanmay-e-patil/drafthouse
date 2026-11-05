@@ -8,6 +8,7 @@
  */
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { act, cleanup, fireEvent, render, waitFor } from "@testing-library/react";
+import { ApiError, notifyTransientError } from "#/shared/errors";
 import { useEffect } from "react";
 import { useAuthStore } from "#/features/auth/store";
 
@@ -49,6 +50,7 @@ vi.mock("#/routes/-documentStates", () => ({
   DocumentLoadingState: () => <div>Loading</div>,
   InaccessibleDocumentState: () => <div>Inaccessible</div>,
 }));
+vi.mock("#/routes/-rootPages", () => ({ AppErrorPage: () => <div>Something went wrong</div> }));
 vi.mock("#/shared/errors", async (original) => ({
   ...(await original<object>()),
   notifyTransientError: vi.fn(),
@@ -76,6 +78,7 @@ function deferred<T>() {
 }
 
 beforeEach(() => {
+  vi.mocked(notifyTransientError).mockClear();
   h.id = "A";
   h.props = null;
   h.get.mockReset();
@@ -161,4 +164,23 @@ it("REG-12: typing a title keeps the collaboration callback stable", async () =>
   const previous = h.props.onTitleUpdate;
   fireEvent.change(title, { target: { value: "typing" } });
   expect(h.props.onTitleUpdate).toBe(previous);
+});
+
+
+it.each([401, 403, 404])("shows an inaccessible state for HTTP %i", async (status) => {
+  h.get.mockRejectedValue(new ApiError("Unavailable", status));
+  h.content.mockResolvedValue({ content: "" });
+  const ui = render(<Component />);
+  expect(await ui.findByText("Inaccessible")).toBeDefined();
+  expect(notifyTransientError).not.toHaveBeenCalled();
+});
+
+it("shows an error page and notifies on transient load failures", async () => {
+  const error = new ApiError("Server detail", 503);
+  h.get.mockRejectedValue(error);
+  h.content.mockResolvedValue({ content: "" });
+  const ui = render(<Component />);
+  expect(await ui.findByText("Something went wrong")).toBeDefined();
+  expect(notifyTransientError).toHaveBeenCalledWith(error);
+  expect(h.props).toBeNull();
 });
