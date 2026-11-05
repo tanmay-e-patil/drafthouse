@@ -1,3 +1,5 @@
+import { Link } from "@tanstack/react-router";
+import { buttonVariants } from "#/components/ui/buttonVariants";
 import Sidebar from "#/components/Sidebar";
 import { CommandPalette } from "#/features/documents/CommandPalette";
 
@@ -53,6 +55,9 @@ export function InaccessibleDocumentState({
               ? "This document is private. You need an invite link to access it."
               : "This document was deleted, or you do not have access to it."}
           </p>
+          <Link className={buttonVariants({ className: "mt-6" })} to="/">
+            Back to dashboard
+          </Link>
         </div>
       </main>
     </div>

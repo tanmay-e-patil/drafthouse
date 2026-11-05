@@ -33,6 +33,7 @@ import {
   MoreHorizontal,
   PanelLeftClose,
 } from "lucide-react";
+import { DocumentListEmptyState } from "#/widgets/documents/DocumentListEmptyState";
 import SidebarCollapsed from "#/components/SidebarCollapsed";
 import SidebarFooter from "#/components/SidebarFooter";
 
@@ -248,19 +249,7 @@ export default function Sidebar({ collapsed, onToggleCollapse }: SidebarProps) {
       </div>
       <ScrollArea className="min-h-0 flex-1 px-2">
         {documents.length === 0 && !isLoading && (
-          <div className="flex flex-col items-center justify-center py-12 text-center text-muted-foreground">
-            <FileText className="mb-2 size-8 opacity-40" />
-            <p className="text-xs">No documents yet</p>
-            <Button
-              variant="outline"
-              size="sm"
-              className="mt-3 gap-1.5"
-              onClick={handleCreate}
-            >
-              <Plus className="size-3.5" />
-              Create document
-            </Button>
-          </div>
+          <DocumentListEmptyState onCreate={handleCreate} />
         )}
         {documents.map((doc) => (
           <div

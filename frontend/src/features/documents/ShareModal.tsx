@@ -30,6 +30,7 @@ import {
 } from "#/components/ui/select";
 import { Copy, Check, Trash2, Link as LinkIcon, Globe } from "lucide-react";
 import { toast } from "sonner";
+import { notifyTransientError } from "#/shared/errors";
 
 const INVITE_ROLES: MemberRole[] = ["editor", "viewer"];
 
@@ -63,8 +64,8 @@ export function ShareModal({
       ]);
       setMembers(m);
       setLinks(l);
-    } catch {
-      toast.error("Failed to load sharing data");
+    } catch (error) {
+      notifyTransientError(error, "Failed to load sharing data");
     }
   }, [docId]);
 
@@ -84,7 +85,7 @@ export function ShareModal({
       const link = await createInviteLinkApi(docId, { role });
       setLinks((prev) => [link, ...prev]);
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : "Failed to create link");
+      notifyTransientError(e, e instanceof Error ? e.message : "Failed to create link");
     } finally {
       setLoading(false);
     }
@@ -96,7 +97,7 @@ export function ShareModal({
       setLinks((prev) => prev.filter((l) => l.token !== token));
       toast.success("Invite link revoked");
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : "Failed to revoke link");
+      notifyTransientError(e, e instanceof Error ? e.message : "Failed to revoke link");
     }
   }
 
@@ -106,7 +107,7 @@ export function ShareModal({
       setMembers((prev) => prev.filter((m) => m.user_id !== userId));
       toast.success("Member removed");
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : "Failed to remove member");
+      notifyTransientError(e, e instanceof Error ? e.message : "Failed to remove member");
     }
   }
 
@@ -117,7 +118,7 @@ export function ShareModal({
         prev.map((m) => (m.user_id === userId ? updated : m)),
       );
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : "Failed to update role");
+      notifyTransientError(e, e instanceof Error ? e.message : "Failed to update role");
     }
   }
 
@@ -127,18 +128,22 @@ export function ShareModal({
       await updateDocumentApi(docId, { is_public: next });
       onPublicToggle(next);
     } catch (e) {
-      toast.error(
-        e instanceof Error ? e.message : "Failed to update public access",
+      notifyTransientError(
+        e, e instanceof Error ? e.message : "Failed to update public access",
       );
     }
   }
 
-  function copyToClipboard(token: string) {
-    const url = `${APP_ORIGIN}/invite/${token}`;
-    navigator.clipboard.writeText(url);
-    setCopiedToken(token);
-    toast.success("Link copied");
-    setTimeout(() => setCopiedToken(null), 2000);
+  async function copyToClipboard(token: string) {
+    try {
+      const url = `${APP_ORIGIN}/invite/${token}`;
+      await navigator.clipboard.writeText(url);
+      setCopiedToken(token);
+      toast.success("Link copied");
+      setTimeout(() => setCopiedToken(null), 2000);
+    } catch {
+      toast.error("Could not copy link. Please try again.");
+    }
   }
 
   return (

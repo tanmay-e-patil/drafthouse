@@ -14,7 +14,7 @@ export function isInaccessibleDocumentError(error: unknown): boolean {
   return error instanceof ApiError && (error.status === 401 || error.status === 403 || error.status === 404);
 }
 
-export function notifyTransientError(error: unknown): void {
+export function notifyTransientError(error: unknown, fallbackMessage?: string): void {
   if (error instanceof ApiError) {
     if (error.status === 429) {
       toast.error("You're doing that too quickly. Please wait a moment and try again.");
@@ -29,5 +29,10 @@ export function notifyTransientError(error: unknown): void {
 
   if (error instanceof TypeError) {
     toast.error("Network error. Check your connection and try again.");
+    return;
+  }
+
+  if (fallbackMessage) {
+    toast.error(fallbackMessage);
   }
 }

@@ -3,6 +3,7 @@ import { AppErrorPage, NotFoundPage } from './-rootPages'
 import { Toaster } from '#/components/ui/sonner'
 import { TooltipProvider } from '#/components/ui/tooltip'
 import { ThemeProvider } from 'next-themes'
+import type { ReactNode } from 'react'
 
 import appCss from '../styles.css?url'
 
@@ -38,12 +39,13 @@ export const Route = createRootRoute({
       { rel: 'manifest', href: '/manifest.json' },
     ],
   }),
-  component: RootLayout,
+  component: Outlet,
+  shellComponent: RootLayout,
   errorComponent: AppErrorPage,
   notFoundComponent: NotFoundPage,
 })
 
-function RootLayout() {
+function RootLayout({ children }: { children: ReactNode }) {
   return (
     <html lang="en" suppressHydrationWarning>
       <head>
@@ -53,10 +55,10 @@ function RootLayout() {
       <body className="font-sans antialiased">
         <ThemeProvider attribute="class" defaultTheme="system" enableSystem disableTransitionOnChange>
           <TooltipProvider delay={300}>
-            <Outlet />
+            {children}
+            <Toaster richColors position="bottom-right" />
           </TooltipProvider>
         </ThemeProvider>
-        <Toaster richColors position="bottom-right" />
         <Scripts />
       </body>
     </html>
